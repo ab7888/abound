@@ -69,7 +69,6 @@ const MERCHANT_MAP = {
   ]
 };
 
-// Build first-word lookup for fast matching
 const FIRST_WORD_MAP = {};
 Object.entries(MERCHANT_MAP).forEach(([cat, merchants]) => {
   merchants.forEach(m => {
@@ -78,7 +77,6 @@ Object.entries(MERCHANT_MAP).forEach(([cat, merchants]) => {
   });
 });
 
-// Intercompany patterns — credit card repayments between accounts
 const INTERCOMPANY_PATTERNS = [
   "american express","amex","nw world","mastercard","visa","credit card","card repayment",
   "card payment","creditcard","barclaycard","natwest card","hsbc card","lloyds card",
@@ -87,23 +85,15 @@ const INTERCOMPANY_PATTERNS = [
 
 function merchantLookup(narrative) {
   const n = narrative.toLowerCase().trim();
-
-  // Check intercompany first
   if (INTERCOMPANY_PATTERNS.some(p => n.includes(p))) return INTERCOMPANY_CATEGORY;
-
-  // Exact / contains match against full merchant list
   for (const [cat, merchants] of Object.entries(MERCHANT_MAP)) {
     if (merchants.some(m => n.includes(m))) return cat;
   }
-
-  // First-word match
   const firstWord = n.split(/[\s\*\-\_\.\/\\]+/)[0].toLowerCase();
   if (FIRST_WORD_MAP[firstWord]) return FIRST_WORD_MAP[firstWord];
-
-  return null; // unknown — send to Claude
+  return null;
 }
 
-// ─── Date parser ──────────────────────────────────────────────────────────────
 function parseDate(val) {
   if (!val) return null;
   if (val instanceof Date) return isNaN(val) ? null : val;
@@ -124,7 +114,6 @@ function parseDate(val) {
   return null;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 function getWeekMonday(date) {
   const d = new Date(date), day = d.getDay();
   d.setDate(d.getDate()+(day===0?-6:1-day)); d.setHours(0,0,0,0); return d;
@@ -134,7 +123,6 @@ function fmt(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month
 function fmtMoney(n) { if(n===null||n===undefined||isNaN(n)||n===0) return "-"; return `£${Math.abs(Math.round(n)).toLocaleString()}`; }
 function rollingAvg(vals) { const nz=vals.filter(v=>v>0); return nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0; }
 
-// ─── File reading ─────────────────────────────────────────────────────────────
 function readExcelFile(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -163,7 +151,6 @@ function readExcelFile(file) {
 function normaliseRows(rows, accountLabel) {
   if (!rows.length) return [];
   const keys = Object.keys(rows[0]);
-  console.log(`[${accountLabel}] columns:`, keys);
   const isMainAccount = accountLabel === "Main Account";
   const dateKey = keys.find(k=>/^date$/i.test(k.trim()))||keys.find(k=>/date/i.test(k));
   const narKey = keys.find(k=>/^description$/i.test(k.trim()))||keys.find(k=>/^narrative$/i.test(k.trim()))||keys.find(k=>/desc|narr|merchant|payee|detail|ref/i.test(k));
@@ -182,13 +169,11 @@ function normaliseRows(rows, accountLabel) {
   }).filter(Boolean);
 }
 
-// ─── Smart categorisation: lookup first, Claude for unknowns only ─────────────
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
 
-  // Step 1: merchant lookup
   const withLookup = transactions.map(t => {
     if (t.isIncome) return {...t, category:"Salary"};
     const cat = merchantLookup(t.narrative);
@@ -197,14 +182,10 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
 
   const known = withLookup.filter(t => t.category !== null);
   const unknown = withLookup.filter(t => t.category === null);
-
   onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
 
-  if (unknown.length === 0) {
-    onProgress({type:"done"}); return withLookup;
-  }
+  if (unknown.length === 0) { onProgress({type:"done"}); return withLookup; }
 
-  // Step 2: send only unknowns to Claude
   const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
   if (!apiKey||!apiKey.startsWith("sk-")) {
     onProgress({type:"done"});
@@ -219,10 +200,8 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   for (let i=0; i<unknown.length; i+=batchSize) {
     const batchNum = Math.floor(i/batchSize)+1;
     onProgress({type:"progress", batchNum, totalBatches, pct:30+Math.round((batchNum/totalBatches)*65)});
-
     const batch = unknown.slice(i, i+batchSize);
     const lines = batch.map((t,j)=>`${j}: ${t.narrative.slice(0,60)} | £${t.amount.toFixed(2)}`).join("\n");
-
     const prompt = `You are a UK personal finance assistant categorising bank transactions. You are expert at reading raw bank narrative strings which contain merchant names, location codes, currency info, and transaction type codes.
 
 Transaction type codes you may see: CD = card purchase, DD = direct debit, SO = standing order, POS = card purchase, FP/BACS = incoming payment, BGC = bank giro credit, ATM = cash withdrawal, CHG = charge/fee, INT = interest.
@@ -259,20 +238,14 @@ Respond ONLY with a JSON array of ${batch.length} category strings in order. No 
           "anthropic-version":"2023-06-01",
           "anthropic-dangerous-direct-browser-access":"true",
         },
-        body:JSON.stringify({
-          model:"claude-haiku-4-5-20251001",
-          max_tokens:600,
-          messages:[{role:"user",content:prompt}]
-        })
+        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
       });
       clearTimeout(timer);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       const text = data.content?.[0]?.text||"[]";
       const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
-      claudeResults.push(...batch.map((t,j)=>({
-        ...t, category: allCats.includes(parsed[j])?parsed[j]:"Other Payments"
-      })));
+      claudeResults.push(...batch.map((t,j)=>({...t, category: allCats.includes(parsed[j])?parsed[j]:"Other Payments"})));
     } catch(err) {
       console.error("Claude batch failed:", err.message);
       claudeResults.push(...batch.map(t=>({...t,category:"Other Payments"})));
@@ -280,17 +253,13 @@ Respond ONLY with a JSON array of ${batch.length} category strings in order. No 
   }
 
   onProgress({type:"done"});
-
-  // Merge: known + claude results, preserving original order
   const claudeMap = new Map(claudeResults.map(t=>[t.narrative+t.date+t.amount, t.category]));
   return withLookup.map(t=>{
     if (t.category !== null) return t;
-    const key = t.narrative+t.date+t.amount;
-    return {...t, category: claudeMap.get(key)||"Other Payments"};
+    return {...t, category: claudeMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
   });
 }
 
-// ─── Loading Screen ───────────────────────────────────────────────────────────
 function LoadingScreen({pct, message, done}) {
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0f0e1a",padding:40}}>
@@ -321,7 +290,6 @@ function LoadingScreen({pct, message, done}) {
   );
 }
 
-// ─── SCREEN 1: Upload ─────────────────────────────────────────────────────────
 function UploadScreen({onDone}) {
   const [accounts, setAccounts] = useState([{id:1,labelIndex:0,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
@@ -383,9 +351,7 @@ function UploadScreen({onDone}) {
             </div>
           ))}
         </div>
-        <button onClick={addCard} style={{marginTop:12,width:"100%",padding:"11px",border:"1.5px dashed #374151",borderRadius:10,background:"none",color:"#6b7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>
-          + Add a credit card
-        </button>
+        <button onClick={addCard} style={{marginTop:12,width:"100%",padding:"11px",border:"1.5px dashed #374151",borderRadius:10,background:"none",color:"#6b7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Add a credit card</button>
         <button onClick={handleContinue} disabled={!hasMainFile||loading} style={{marginTop:12,width:"100%",padding:"14px",background:hasMainFile?"linear-gradient(135deg,#10b981,#059669)":"#1f1d35",color:hasMainFile?"#fff":"#374151",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:hasMainFile?"pointer":"not-allowed",transition:"all 0.3s",boxShadow:hasMainFile?"0 4px 20px rgba(16,185,129,0.3)":"none"}}>
           {loading?"Reading files...":"Continue →"}
         </button>
@@ -394,15 +360,12 @@ function UploadScreen({onDone}) {
   );
 }
 
-// ─── SCREEN 2: Categorise ─────────────────────────────────────────────────────
 function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [pct, setPct] = useState(5);
   const [message, setMessage] = useState("Matching merchants...");
   const [done, setDone] = useState(false);
   const [categorised, setCategorised] = useState([]);
-  const baseCats = multipleAccounts
-    ? [...DEFAULT_CATEGORIES.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
-    : DEFAULT_CATEGORIES;
+  const baseCats = multipleAccounts ? [...DEFAULT_CATEGORIES.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY] : DEFAULT_CATEGORIES;
   const [categories, setCategories] = useState(baseCats);
   const [newCat, setNewCat] = useState("");
   const [editingCat, setEditingCat] = useState(null);
@@ -412,15 +375,9 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   useEffect(()=>{
     (async()=>{
       const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
-        if (update?.type==="lookup_done") {
-          setPct(30);
-          setMessage(`Matched ${update.known} transactions — asking Claude about ${update.unknown} more...`);
-        } else if (update?.type==="progress") {
-          setPct(update.pct);
-          setMessage(`Claude is reading batch ${update.batchNum} of ${update.totalBatches}...`);
-        } else if (update?.type==="done") {
-          setPct(100); setMessage("All done ✓");
-        }
+        if (update?.type==="lookup_done") { setPct(30); setMessage(`Matched ${update.known} transactions — asking Claude about ${update.unknown} more...`); }
+        else if (update?.type==="progress") { setPct(update.pct); setMessage(`Claude is reading batch ${update.batchNum} of ${update.totalBatches}...`); }
+        else if (update?.type==="done") { setPct(100); setMessage("All done ✓"); }
       });
       setCategorised(result);
       setDone(true);
@@ -493,7 +450,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   );
 }
 
-// ─── SCREEN 3: Drag & Drop Sort ───────────────────────────────────────────────
+// ─── SCREEN 3: Drag & Drop Sort ─────────────────────────────────────────────
 function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allItems = useMemo(()=>
     transactions
@@ -514,6 +471,19 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [bucketCounts, setBucketCounts] = useState({});
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
+  const touchStartX = useRef(null);
+  const touchStartY = useRef(null);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeTarget, setSwipeTarget] = useState(null);
+  const [mobileCatPage, setMobileCatPage] = useState(0);
+  const [windowWidth, setWindowWidth] = useState(typeof window!=="undefined"?window.innerWidth:1200);
+
+  useEffect(()=>{
+    const handler = ()=>setWindowWidth(window.innerWidth);
+    window.addEventListener("resize",handler);
+    return ()=>window.removeEventListener("resize",handler);
+  },[]);
+  const isMobileView = windowWidth < 768;
 
   const VISIBLE = 5;
   const unsorted = items.filter(i=>i.category==="Other Payments");
@@ -521,21 +491,21 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const skipped = items.filter(i=>i.category==="Skip");
   const visible = unsorted.slice(0, VISIBLE);
   const spendCats = categories.filter(c=>c!=="Salary"&&c!=="Other Payments");
+  const allBuckets = [...spendCats, "Skip"];
 
-  const CAT_COLORS = {
-    "Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b",
-    "Memberships":"#8b5cf6","Card Repayment":"#ec4899",
-  };
-  function catColor(cat,i) {
-    return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";
+  const CAT_COLORS = {"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
+  function catColor(cat,i) { return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1"; }
+
+  function assignItem(narrative, cat) {
+    if (cat !== "Skip") setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));
+    setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));
+    setSwipeOffset(0); setSwipeTarget(null);
   }
 
   function dropIntoCat(cat) {
     if (!dragItem) return;
-    if (cat !== "Skip") setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));
-    setItems(p=>p.map(x=>x.narrative===dragItem?{...x,category:cat}:x));
-    setDragItem(null);
-    setHoveredCat(null);
+    assignItem(dragItem, cat);
+    setDragItem(null); setHoveredCat(null);
   }
 
   function undoItem(narrative, fromCat) {
@@ -546,9 +516,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   function addCategory() {
     const t = newCat.trim();
     if (!t || categories.includes(t)) return;
-    setCategories(c=>[...c, t]);
-    setNewCat("");
-    setShowAddCat(false);
+    setCategories(c=>[...c, t]); setNewCat(""); setShowAddCat(false);
   }
 
   function removeCategory(cat) {
@@ -561,192 +529,267 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   function handleConfirm() {
     const map={};
     items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});
-    onDone(
-      transactions.map(t=>
-        t.category==="Other Payments"&&map[t.narrative]
-          ?{...t,category:map[t.narrative]}:t
-      ),
-      categories
-    );
+    onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t), categories);
   }
 
   const pct = allItems.length ? Math.round(((sorted.length+skipped.length)/allItems.length)*100) : 100;
 
   const txnCountByCat = useMemo(()=>{
     const counts = {};
-    transactions.forEach(t=>{
-      if(t.category && t.category!=="Other Payments") counts[t.category]=(counts[t.category]||0)+1;
-    });
+    transactions.forEach(t=>{ if(t.category && t.category!=="Other Payments") counts[t.category]=(counts[t.category]||0)+1; });
     return counts;
   },[transactions, items]);
+
+  const BUCKET_POSITIONS = [
+    {left:"33%", top:"6%"},
+    {left:"56%", top:"4%"},
+    {left:"20%", top:"38%"},
+    {left:"68%", top:"34%"},
+    {left:"28%", top:"68%"},
+    {left:"56%", top:"66%"},
+    {left:"70%", top:"58%"},
+    {left:"10%", top:"60%"},
+  ];
+
+  const SWIPE_THRESHOLD = 80;
+  const CATS_PER_PAGE = 4;
+  const totalPages = Math.ceil(allBuckets.length / CATS_PER_PAGE);
+  const visibleMobileCats = allBuckets.slice(mobileCatPage*CATS_PER_PAGE, (mobileCatPage+1)*CATS_PER_PAGE);
+
+  function onTouchStart(e) { touchStartX.current=e.touches[0].clientX; touchStartY.current=e.touches[0].clientY; }
+  function onTouchMove(e) {
+    if (touchStartX.current===null) return;
+    const dx=e.touches[0].clientX-touchStartX.current, dy=e.touches[0].clientY-touchStartY.current;
+    if (Math.abs(dy)>Math.abs(dx)+10) return;
+    e.preventDefault(); setSwipeOffset(dx);
+    if (dx>SWIPE_THRESHOLD&&visibleMobileCats[0]) setSwipeTarget(visibleMobileCats[0]);
+    else if (dx<-SWIPE_THRESHOLD&&visibleMobileCats[1]) setSwipeTarget(visibleMobileCats[1]);
+    else setSwipeTarget(null);
+  }
+  function onTouchEnd() {
+    if (touchStartX.current===null) return;
+    const topItem=unsorted[0];
+    if (topItem&&swipeTarget) assignItem(topItem.narrative,swipeTarget);
+    else { setSwipeOffset(0); setSwipeTarget(null); }
+    touchStartX.current=null; touchStartY.current=null;
+  }
+
+  function BucketTile({cat, index}) {
+    const isSkip=cat==="Skip";
+    const color=isSkip?"#4b5563":catColor(cat,spendCats.indexOf(cat));
+    const isHovered=hoveredCat===cat;
+    const newlySorted=bucketCounts[cat]||0;
+    const existingCount=txnCountByCat[cat]||0;
+    const totalCount=existingCount+newlySorted;
+    const isDefault=DEFAULT_CATEGORIES.includes(cat);
+    const pos=BUCKET_POSITIONS[index%BUCKET_POSITIONS.length];
+    return (
+      <div onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}} onDragLeave={()=>setHoveredCat(null)} onDrop={()=>dropIntoCat(cat)}
+        style={{position:"absolute",left:pos.left,top:pos.top,width:160,minHeight:110,border:`2px ${isHovered?"solid":"dashed"} ${color}`,borderRadius:16,padding:"16px 14px 12px",background:isHovered?`${color}22`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",gap:8,zIndex:isHovered?20:5,boxShadow:isHovered?`0 0 24px ${color}44`:"none"}}>
+        {!isDefault&&!isSkip&&(
+          <button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:5,right:8,fontSize:13,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
+        )}
+        <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
+          <div style={{fontSize:14,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.3}}>{isSkip?"Not sure":cat}</div>
+          {isSkip&&<div style={{fontSize:10,color:"#374151",textAlign:"center"}}>leave in Other</div>}
+          {isHovered&&<div style={{fontSize:10,color:"rgba(255,255,255,0.5)"}}>drop here</div>}
+        </div>
+        <div style={{width:"100%",borderTop:`1px solid ${color}44`,paddingTop:7,textAlign:"center",fontSize:11,color:totalCount>0?color:"#374151",fontWeight:700}}>
+          {totalCount>0?`${totalCount} transaction${totalCount>1?"s":""}`:isSkip&&skipped.length>0?`${skipped.length} transaction${skipped.length>1?"s":""}`:newlySorted>0?`${newlySorted} added`:"0 transactions"}
+        </div>
+      </div>
+    );
+  }
+
+  const DesktopSort = () => (
+    <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
+      <div style={{width:270,flexShrink:0,padding:"16px 14px",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",gap:6,overflowY:"auto"}}>
+        {(sorted.length>0||skipped.length>0) ? (
+          <>
+            <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:4}}>SORTED ✓</div>
+            {[...sorted,...skipped].map(item=>(
+              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1f1d35",flexShrink:0}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:item.category==="Skip"?"#4b5563":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
+                <div style={{flex:1,fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                <div style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{item.category==="Skip"?"?":item.category}</div>
+                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:10,color:"#4b5563",border:"none",background:"none",cursor:"pointer",padding:"1px 4px"}}>undo</button>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div style={{fontSize:12,color:"#2d2a6e",textAlign:"center",paddingTop:40}}>Sorted items will appear here</div>
+        )}
+      </div>
+
+      <div style={{flex:1,position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:16,left:16,zIndex:30,display:"flex",alignItems:"center",gap:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1}}>CATEGORIES</div>
+          {showAddCat ? (
+            <div style={{display:"flex",gap:6}}>
+              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Name..." style={{padding:"4px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:130}}/>
+              <button onClick={addCategory} style={{padding:"4px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>Add</button>
+              <button onClick={()=>setShowAddCat(false)} style={{padding:"4px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
+            </div>
+          ) : (
+            <button onClick={()=>setShowAddCat(true)} style={{padding:"4px 12px",background:"rgba(99,102,241,0.15)",border:"1px dashed #6366f1",borderRadius:7,color:"#6366f1",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
+          )}
+        </div>
+
+        {allBuckets.map((cat,i)=><BucketTile key={cat} cat={cat} index={i}/>)}
+
+        <div style={{position:"absolute",left:"50%",top:"50%",transform:"translate(-50%,-50%)",width:260,zIndex:15}}>
+          {unsorted.length===0 ? (
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontSize:36,marginBottom:10}}>🎉</div>
+              <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:16}}>All sorted!</div>
+              <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
+            </div>
+          ) : (
+            <>
+              <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,textAlign:"center",marginBottom:10}}>DRAG INTO A BUCKET →</div>
+              <div style={{position:"relative",height:110}}>
+                {visible.slice(1,4).map((item,idx)=>(
+                  <div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:14,height:100,transform:`translateY(${(idx+1)*5}px) scale(${1-(idx+1)*0.025})`,transformOrigin:"top center",zIndex:3-idx}}/>
+                ))}
+                {visible[0]&&(
+                  <div draggable onDragStart={()=>setDragItem(visible[0].narrative)} onDragEnd={()=>{setDragItem(null);setHoveredCat(null);}}
+                    style={{position:"absolute",top:0,left:0,right:0,background:dragItem===visible[0].narrative?"rgba(99,102,241,0.2)":"#1e1b38",border:`2px solid ${dragItem===visible[0].narrative?"#6366f1":"#4338ca"}`,borderRadius:14,padding:"14px 16px",cursor:"grab",userSelect:"none",zIndex:10,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:6}}>{visible[0].narrative}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:18,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(visible[0].total).toLocaleString()}</span>
+                      <span style={{fontSize:11,color:"#4b5563"}}>{visible[0].count} txn{visible[0].count>1?"s":""}</span>
+                      <span style={{fontSize:10,color:"#374151",marginLeft:"auto"}}>drag →</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{marginTop:8,display:"flex",flexDirection:"column",gap:4}}>
+                {visible.slice(1).map(item=>(
+                  <div key={item.narrative} draggable onDragStart={()=>setDragItem(item.narrative)} onDragEnd={()=>{setDragItem(null);setHoveredCat(null);}}
+                    style={{padding:"7px 12px",background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:9,cursor:"grab",userSelect:"none"}}>
+                    <div style={{fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                  </div>
+                ))}
+                {unsorted.length>VISIBLE&&<div style={{fontSize:11,color:"#374151",textAlign:"center",paddingTop:2}}>+{unsorted.length-VISIBLE} more</div>}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const MobileSort = () => {
+    const topItem=unsorted[0];
+    const swipeRight=visibleMobileCats[0], swipeLeft=visibleMobileCats[1];
+    const swipeRightColor=swipeRight==="Skip"?"#6b7280":catColor(swipeRight,spendCats.indexOf(swipeRight));
+    const swipeLeftColor=swipeLeft==="Skip"?"#6b7280":catColor(swipeLeft,spendCats.indexOf(swipeLeft));
+    const swipeProgress=Math.min(Math.abs(swipeOffset)/SWIPE_THRESHOLD,1);
+    const swipingRight=swipeOffset>20, swipingLeft=swipeOffset<-20;
+    return (
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
+          </div>
+          <span style={{fontSize:12,color:"#6366f1",fontWeight:700,flexShrink:0}}>{pct}% sorted</span>
+        </div>
+        {topItem&&(
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:swipingLeft?1:0.35,transition:"opacity 0.2s"}}>
+              <div style={{fontSize:20,color:swipeLeftColor}}>←</div>
+              <div style={{fontSize:10,fontWeight:700,color:swipeLeftColor,maxWidth:70,textAlign:"center"}}>{swipeLeft==="Skip"?"Not sure":swipeLeft||"—"}</div>
+            </div>
+            <div style={{fontSize:11,color:"#4b5563",fontWeight:600}}>swipe to sort</div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:swipingRight?1:0.35,transition:"opacity 0.2s"}}>
+              <div style={{fontSize:20,color:swipeRightColor}}>→</div>
+              <div style={{fontSize:10,fontWeight:700,color:swipeRightColor,maxWidth:70,textAlign:"center"}}>{swipeRight==="Skip"?"Not sure":swipeRight||"—"}</div>
+            </div>
+          </div>
+        )}
+        <div style={{position:"relative",height:150,flexShrink:0}}>
+          {unsorted.length===0?(
+            <div style={{textAlign:"center",padding:"30px 0"}}>
+              <div style={{fontSize:32,marginBottom:8}}>🎉</div>
+              <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:12}}>All sorted!</div>
+              <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
+            </div>
+          ):(
+            <>
+              {visible.slice(1,3).map((item,idx)=>(
+                <div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:16,padding:"16px",transform:`translateY(${(idx+1)*6}px) scale(${1-(idx+1)*0.03})`,transformOrigin:"top center",zIndex:1-idx}}/>
+              ))}
+              {topItem&&(
+                <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+                  style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${swipeTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${swipeOffset}px) rotate(${swipeOffset*0.03}deg)`,transition:swipeOffset===0?"transform 0.3s":"none",zIndex:10,touchAction:"pan-y",userSelect:"none"}}>
+                  {swipeTarget&&(
+                    <div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>
+                      {swipeTarget==="Skip"?"NOT SURE":swipeTarget.toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:8}}>{topItem.narrative}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(topItem.total).toLocaleString()}</span>
+                    <span style={{fontSize:12,color:"#4b5563"}}>{topItem.count} txn{topItem.count>1?"s":""}</span>
+                  </div>
+                  <div style={{fontSize:10,color:"#374151",marginTop:6}}>{unsorted.length} left</div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1}}>TAP TO ASSIGN</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+          {visibleMobileCats.map((cat)=>{
+            const isSkip=cat==="Skip";
+            const color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
+            const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
+            return (
+              <button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}}
+                style={{padding:"12px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
+                <span>{isSkip?"Not sure":cat}</span>
+                {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
+              </button>
+            );
+          })}
+        </div>
+        {totalPages>1&&(
+          <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center"}}>
+            <button onClick={()=>setMobileCatPage(p=>Math.max(0,p-1))} disabled={mobileCatPage===0} style={{fontSize:16,background:"none",border:"none",color:mobileCatPage===0?"#2d2a6e":"#6366f1",cursor:"pointer"}}>‹</button>
+            {Array.from({length:totalPages}).map((_,i)=>(<div key={i} onClick={()=>setMobileCatPage(i)} style={{width:6,height:6,borderRadius:"50%",background:i===mobileCatPage?"#6366f1":"#2d2a6e",cursor:"pointer"}}/>))}
+            <button onClick={()=>setMobileCatPage(p=>Math.min(totalPages-1,p+1))} disabled={mobileCatPage===totalPages-1} style={{fontSize:16,background:"none",border:"none",color:mobileCatPage===totalPages-1?"#2d2a6e":"#6366f1",cursor:"pointer"}}>›</button>
+          </div>
+        )}
+        {(sorted.length>0||skipped.length>0)&&(
+          <div style={{flex:1,overflowY:"auto"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:8}}>SORTED ✓</div>
+            {[...sorted,...skipped].slice(-6).map(item=>(
+              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1f1d35",marginBottom:4}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:item.category==="Skip"?"#4b5563":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
+                <div style={{flex:1,fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                <div style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{item.category==="Skip"?"?":item.category}</div>
+                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:10,color:"#4b5563",border:"none",background:"none",cursor:"pointer",padding:"1px 4px"}}>undo</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div style={{minHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <div style={{padding:"14px 24px",background:"#0f0e1a",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:16,flexShrink:0,flexWrap:"wrap"}}>
         <img src={logo} alt="Abound" style={{height:30}}/>
         <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>Sort transactions</span>
-        <span style={{fontSize:13,color:"#4b5563"}}>
-          {unsorted.length>0?`${unsorted.length} left · ${sorted.length+skipped.length} done`:"All sorted!"}
-        </span>
+        <span style={{fontSize:13,color:"#4b5563"}}>{unsorted.length>0?`${unsorted.length} left · ${sorted.length+skipped.length} done`:"All sorted!"}</span>
         <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden",maxWidth:200}}>
           <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
         </div>
         <span style={{fontSize:12,color:"#6366f1",fontWeight:700}}>{pct}%</span>
-        <button onClick={handleConfirm} style={{padding:"8px 18px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Done →</button>
+        <button onClick={handleConfirm} style={{padding:"8px 18px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",marginLeft:"auto"}}>Done →</button>
       </div>
-
-      <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
-        <div style={{width:300,flexShrink:0,padding:"20px 16px",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",gap:8,overflowY:"auto"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:4}}>DRAG INTO A BUCKET →</div>
-
-          {unsorted.length===0&&(
-            <div style={{textAlign:"center",padding:"40px 0"}}>
-              <div style={{fontSize:32,marginBottom:8}}>🎉</div>
-              <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:16}}>All sorted!</div>
-              <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
-            </div>
-          )}
-
-          {visible.map((item,idx)=>{
-            const isTop = idx===0;
-            return (
-              <div
-                key={item.narrative}
-                draggable={isTop}
-                onDragStart={()=>setDragItem(item.narrative)}
-                onDragEnd={()=>{setDragItem(null);setHoveredCat(null);}}
-                style={{
-                  background:isTop?(dragItem===item.narrative?"rgba(99,102,241,0.25)":"#1e1b38"):`rgba(20,18,42,${1-idx*0.12})`,
-                  border:`1px solid ${isTop?"#4338ca":"#2d2a6e"}`,
-                  borderRadius:12,padding:isTop?"16px":"10px 16px",
-                  cursor:isTop?"grab":"default",
-                  opacity:isTop?1:1-idx*0.18,
-                  transform:`translateY(${idx*-3}px) scale(${1-idx*0.015})`,
-                  transformOrigin:"top center",
-                  transition:"all 0.2s",userSelect:"none",flexShrink:0,
-                }}
-              >
-                <div style={{fontSize:12,fontWeight:600,color:isTop?"#c7d2fe":"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {item.narrative}
-                </div>
-                {isTop&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
-                    <span style={{fontSize:16,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(item.total).toLocaleString()}</span>
-                    <span style={{fontSize:11,color:"#4b5563"}}>{item.count} txn{item.count>1?"s":""}</span>
-                    <span style={{fontSize:10,color:"#4b5563",marginLeft:"auto"}}>drag →</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {unsorted.length>VISIBLE&&(
-            <div style={{fontSize:11,color:"#4b5563",textAlign:"center",paddingTop:4}}>+{unsorted.length-VISIBLE} more</div>
-          )}
-
-          {(sorted.length>0||skipped.length>0)&&(
-            <div style={{marginTop:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:8}}>SORTED ✓</div>
-              {[...sorted,...skipped].map(item=>(
-                <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1f1d35",marginBottom:4}}>
-                  <div style={{width:7,height:7,borderRadius:"50%",background:item.category==="Skip"?"#4b5563":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
-                  <div style={{flex:1,fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-                  <div style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{item.category==="Skip"?"?":item.category}</div>
-                  <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:10,color:"#4b5563",border:"none",background:"none",cursor:"pointer",padding:"1px 4px"}}>undo</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        <div style={{flex:1,padding:"20px 24px",overflowY:"auto"}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1}}>CATEGORIES</div>
-            <div style={{flex:1}}/>
-            {showAddCat?(
-              <div style={{display:"flex",gap:8}}>
-                <input
-                  autoFocus
-                  value={newCat}
-                  onChange={e=>setNewCat(e.target.value)}
-                  onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}}
-                  placeholder="Category name..."
-                  style={{padding:"6px 12px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:8,color:"#fff",fontSize:13,width:180}}
-                />
-                <button onClick={addCategory} style={{padding:"6px 14px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Add</button>
-                <button onClick={()=>setShowAddCat(false)} style={{padding:"6px 10px",background:"none",border:"1px solid #374151",borderRadius:8,color:"#6b7280",fontSize:13,cursor:"pointer"}}>×</button>
-              </div>
-            ):(
-              <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"none",border:"1px dashed #374151",borderRadius:8,color:"#6b7280",fontSize:12,fontWeight:600,cursor:"pointer"}}>+ Add category</button>
-            )}
-          </div>
-
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:14}}>
-            {spendCats.map((cat,i)=>{
-              const color = catColor(cat,i);
-              const isHovered = hoveredCat===cat;
-              const newlySorted = bucketCounts[cat]||0;
-              const existingCount = txnCountByCat[cat]||0;
-              const totalCount = existingCount + newlySorted;
-              const isDefault = DEFAULT_CATEGORIES.includes(cat);
-              return (
-                <div
-                  key={cat}
-                  onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}}
-                  onDragLeave={()=>setHoveredCat(null)}
-                  onDrop={()=>dropIntoCat(cat)}
-                  style={{
-                    border:`2px ${isHovered?"solid":"dashed"} ${color}`,
-                    borderRadius:14,padding:"16px 12px 12px",
-                    background:isHovered?`${color}22`:"rgba(255,255,255,0.02)",
-                    transition:"all 0.15s",cursor:"default",minHeight:110,
-                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",
-                    gap:8,position:"relative",
-                  }}
-                >
-                  {!isDefault&&(
-                    <button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:4,right:6,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
-                  )}
-                  <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                    <div style={{fontSize:13,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.3}}>{cat}</div>
-                    {isHovered&&<div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>drop here</div>}
-                  </div>
-                  <div style={{width:"100%",borderTop:`1px solid ${color}44`,paddingTop:8,textAlign:"center",fontSize:11,color:totalCount>0?color:"#374151",fontWeight:700}}>
-                    {totalCount>0?`${totalCount} transaction${totalCount>1?"s":""}`:newlySorted>0?`${newlySorted} added`:"0 transactions"}
-                  </div>
-                </div>
-              );
-            })}
-
-            {(()=>{
-              const isHovered = hoveredCat==="Skip";
-              const count = skipped.length;
-              return (
-                <div
-                  onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}}
-                  onDragLeave={()=>setHoveredCat(null)}
-                  onDrop={()=>dropIntoCat("Skip")}
-                  style={{
-                    border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,
-                    borderRadius:14,padding:"16px 12px 12px",
-                    background:isHovered?"rgba(107,114,128,0.15)":"rgba(255,255,255,0.01)",
-                    transition:"all 0.15s",cursor:"default",minHeight:110,
-                    display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",
-                  }}
-                >
-                  <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                    <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#4b5563",textAlign:"center"}}>Not sure</div>
-                    <div style={{fontSize:11,color:"#374151",textAlign:"center"}}>leave in Other</div>
-                  </div>
-                  <div style={{width:"100%",borderTop:"1px solid #2d2a6e",paddingTop:8,textAlign:"center",fontSize:11,color:count>0?"#6b7280":"#374151",fontWeight:700}}>
-                    {count>0?`${count} transaction${count>1?"s":""}`:count===0?"0 transactions":""}
-                  </div>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-      </div>
+      {isMobileView ? <MobileSort/> : <DesktopSort/>}
     </div>
   );
 }
@@ -764,9 +807,7 @@ function CashFlowScreen({transactions, categories}) {
     return list;
   },[transactions]);
 
-  const mostRecentDate = useMemo(()=>
-    transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0))
-  ,[transactions]);
+  const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
 
   const actualWeeks = useMemo(()=>{
     const lastMonday=getWeekMonday(mostRecentDate);
@@ -854,12 +895,8 @@ function CashFlowScreen({transactions, categories}) {
     const budget=budgets[key];
     return (
       <tr style={{opacity:hidden?0.35:1,borderBottom:"1px solid #f3f4f6",background:isIncome?"#f0fdf4":"#fff"}}>
-        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>
-          {account==="Main Account"?"Main":account.replace("Credit Card ","CC")}
-        </td>
-        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:isIncome?"#059669":"#111827"}}>
-          {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}{cat}
-        </td>
+        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card ","CC")}</td>
+        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:isIncome?"#059669":"#111827"}}>{isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}{cat}</td>
         {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":"#374151",false)}>{fmtMoney(v)}</td>)}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {forecasts.map((v,i)=>{const over=budget&&v>budget;return <td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
@@ -1006,7 +1043,6 @@ function CashFlowScreen({transactions, categories}) {
   );
 }
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("upload");
   const [rawTransactions, setRawTransactions] = useState([]);

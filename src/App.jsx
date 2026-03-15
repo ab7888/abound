@@ -6,7 +6,7 @@ const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Salary", "
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
-const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card 1", 2:"Credit Card 2", 3:"Credit Card 3" };
+const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card", 2:"Credit Card 2", 3:"Credit Card 3" };
 
 const MERCHANT_MAP = {
   Food: [
@@ -21,7 +21,7 @@ const MERCHANT_MAP = {
     "wetherspoon","wetherspoons","jd wetherspoon","pub","bar","cafe","restaurant",
     "wine","beer","spirits","majestic","oddbins","honest burgers","honest burger",
     "gousto","hellofresh","mindful chef","simply cook","pasta evangelists",
-    "eden","jimmys","patty","shake shack","five guys","byron","honest"
+    "eden","jimmys","patty","shake shack","byron","honest"
   ],
   Travel: [
     "tfl","transport for london","oyster","citymapper",
@@ -31,7 +31,7 @@ const MERCHANT_MAP = {
     "ryanair","easyjet","british airways","ba.com","lufthansa","klm","air france","wizz",
     "jet2","virgin atlantic","emirates","qatar","turkish airlines","norwegian",
     "heathrow express","gatwick express","stansted express","luton",
-    "enterprise","hertz","avis","budget","zipcar","enterprise car","sixt",
+    "enterprise","hertz","avis","zipcar","enterprise car","sixt",
     "parking","ncp","q-park","airparks","holiday extras",
     "booking.com","hotels.com","expedia","airbnb","hostelworld",
     "national express","megabus","flixbus","coach",
@@ -58,10 +58,10 @@ const MERCHANT_MAP = {
     "rent","landlord","letting","estate agent","rightmove","zoopla","openrent",
     "mortgage","nationwide","barclays mortgage","hsbc mortgage","santander mortgage",
     "ground rent","service charge","freeholder","leaseholder","management company",
-    "storage","big yellow","safestore","access storage","shurgard","thames water","severn trent","anglian water","yorkshire water","united utilities","southern water",
-"british gas","eon","e.on","edf","octopus","bulb","ovo","npower","scottish power","sse",
-"virgin media","bt ","sky ","talktalk","vodafone","o2 ","three ","ee ",
-"council tax","rates","water rates","tv licence","broadband"
+    "storage","big yellow","safestore","access storage","shurgard",
+    "thames water","severn trent","anglian water","yorkshire water","united utilities","southern water",
+    "british gas","eon","e.on","edf","octopus","bulb","ovo","npower","scottish power","sse",
+    "virgin media","talktalk","vodafone","council tax","rates","water rates","tv licence","broadband"
   ],
   Salary: [
     "salary","payroll","wages","pay","income","bacs","faster payment received",
@@ -94,45 +94,29 @@ function merchantLookup(narrative) {
 
 function parseDate(val) {
   if (!val) return null;
-
-  // Excel serial number
   if (typeof val === "number") {
-    const excelEpoch = new Date(1899, 11, 30);
-    const d = new Date(excelEpoch.getTime() + val * 86400000);
-    if (d.getFullYear() >= 2000) return d;
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    if (!isNaN(d) && d.getFullYear() >= 2000) return d;
     return null;
   }
-
   if (val instanceof Date) {
     if (!isNaN(val) && val.getFullYear() >= 2000) return val;
     return null;
   }
-
   const s = String(val).trim();
-
-  const mo = {
-    Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,
-    Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11
-  };
-
+  const mo = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
   const m1 = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/);
-  if (m1) return new Date(2000 + parseInt(m1[3]), mo[m1[2]], parseInt(m1[1]));
-
+  if (m1) return new Date(2000+parseInt(m1[3]), mo[m1[2]], parseInt(m1[1]));
   const m2 = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
   if (m2) return new Date(parseInt(m2[3]), mo[m2[2]], parseInt(m2[1]));
-
   const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (m3) return new Date(parseInt(m3[3]), parseInt(m3[2]) - 1, parseInt(m3[1]));
-
+  if (m3) return new Date(parseInt(m3[3]), parseInt(m3[2])-1, parseInt(m3[1]));
   const m4 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m4) return new Date(parseInt(m4[1]), parseInt(m4[2]) - 1, parseInt(m4[3]));
-
+  if (m4) return new Date(parseInt(m4[1]), parseInt(m4[2])-1, parseInt(m4[3]));
   const m5 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
-  if (m5) return new Date(2000 + parseInt(m5[3]), parseInt(m5[2]) - 1, parseInt(m5[1]));
-
+  if (m5) return new Date(2000+parseInt(m5[3]), parseInt(m5[2])-1, parseInt(m5[1]));
   const d = new Date(s);
   if (!isNaN(d) && d.getFullYear() >= 2000) return d;
-
   return null;
 }
 
@@ -142,7 +126,12 @@ function getWeekMonday(date) {
 }
 function getWeekSunday(mon) { const d=new Date(mon); d.setDate(d.getDate()+6); return d; }
 function fmt(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"2-digit"}); }
-function fmtMoney(v){if(v===0 || v===null || v===undefined) return "-";const n = Math.round(v);if(n < 0){return `(${Math.abs(n).toLocaleString()})`;}return n.toLocaleString();
+function fmtDate(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); }
+function fmtMoney(v) {
+  if (v===0||v===null||v===undefined) return "-";
+  const n = Math.round(v);
+  if (n < 0) return `(${Math.abs(n).toLocaleString()})`;
+  return n.toLocaleString();
 }
 function rollingAvg(vals) { const nz=vals.filter(v=>v>0); return nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0; }
 
@@ -150,121 +139,80 @@ function readExcelFile(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
     const ext = file.name.split('.').pop().toLowerCase();
-
     reader.onload = e => {
       try {
-        // Read workbook
-        const wb = ext === "csv"
-          ? XLSX.read(e.target.result, { type: "string" })
-          : XLSX.read(e.target.result, { type: "array" });
-
+        const wb = ext==="csv"
+          ? XLSX.read(e.target.result, {type:"string"})
+          : XLSX.read(new Uint8Array(e.target.result), {type:"array"});
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const allRows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: true });
+        const allRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:"", raw:true});
 
-        // Look for header row
-        let headerRowIndex = 0;
-        const headerKeywords = {
-          date: /date/i,
-          description: /(description|narrative|reference|details|merchant|payee)/i,
-          amount: /(amount|value|debit|credit|trans)/i
-        };
+        const dateRx = /^date$/i;
+        const descRx = /^(description|narrative|details|merchant|payee|reference)$/i;
+        const amtRx  = /^(amount|value|debit|credit|trans)$/i;
 
-        for (let i = 0; i < Math.min(allRows.length, 15); i++) {
-          const row = allRows[i];
-          const matches = {
-            date: row.some(c => headerKeywords.date.test(String(c))),
-            description: row.some(c => headerKeywords.description.test(String(c))),
-            amount: row.some(c => headerKeywords.amount.test(String(c)))
-          };
-          if (matches.date && matches.description && matches.amount) {
+        let headerRowIndex = -1;
+        let dateKey, descKey, amtKey;
+
+        for (let i = 0; i < Math.min(allRows.length, 20); i++) {
+          const row = allRows[i].map(c => String(c).trim());
+          const dIdx = row.findIndex(c => dateRx.test(c));
+          const nIdx = row.findIndex(c => descRx.test(c));
+          const aIdx = row.findIndex(c => amtRx.test(c));
+          // All three must be present for this to be the header row
+          if (dIdx !== -1 && nIdx !== -1 && aIdx !== -1) {
             headerRowIndex = i;
+            dateKey = row[dIdx];
+            descKey = row[nIdx];
+            amtKey  = row[aIdx];
             break;
           }
         }
 
-        const headerRow = allRows[headerRowIndex].map(h => String(h).trim());
-        let dateKey, descKey, amtKey;
-        headerRow.forEach((h,i) => {
-          if (!dateKey && headerKeywords.date.test(h)) dateKey = h;
-          if (!descKey && headerKeywords.description.test(h)) descKey = h;
-          if (!amtKey && headerKeywords.amount.test(h)) amtKey = h;
-        });
-
-        if (!dateKey || !descKey || !amtKey) {
-          console.warn("Could not find all required columns (Date/Description/Amount)");
+        if (headerRowIndex === -1) {
+          console.warn("Could not find header row with Date + Description + Amount");
           resolve([]);
           return;
         }
 
-        // Build objects
+        const headers = allRows[headerRowIndex].map(h => String(h).trim());
         const dataRows = allRows.slice(headerRowIndex + 1)
-          .filter(r => r.some(c => c !== "" && c !== null))
+          .filter(r => r.some(c => c !== "" && c !== null && c !== undefined))
           .map(r => {
-            return {
-              [dateKey]: r[headerRow.indexOf(dateKey)],
-              [descKey]: r[headerRow.indexOf(descKey)],
-              [amtKey]: r[headerRow.indexOf(amtKey)]
-            };
+            const obj = {};
+            headers.forEach((h, i) => { if (h) obj[h] = r[i] ?? ""; });
+            return obj;
           });
 
         resolve(dataRows);
-
-      } catch (err) {
+      } catch(err) {
         console.error("Error reading file:", err);
         resolve([]);
       }
     };
-
-    if (ext === "csv") reader.readAsText(file);
+    if (ext==="csv") reader.readAsText(file);
     else reader.readAsArrayBuffer(file);
   });
 }
 
 function normaliseRows(rows, accountLabel) {
   if (!rows.length) return [];
-
   const keys = Object.keys(rows[0]);
   const isMainAccount = accountLabel === "Main Account";
-
-  const dateKey = keys.find(k => /^date$/i.test(k.trim())) || keys.find(k => /date/i.test(k));
-  const narKey = keys.find(k => /^description$/i.test(k.trim())) || keys.find(k => /^narrative$/i.test(k.trim())) || keys.find(k => /desc|narr|merchant|payee|detail|ref/i.test(k));
-  const amtKey = keys.find(k => /^amount$/i.test(k.trim())) || keys.find(k => /^value$/i.test(k.trim())) || keys.find(k => /^trans$/i.test(k.trim())) || keys.find(k => /amount|value|trans|spend|debit/i.test(k) && !/balance|date|extended|statement/i.test(k));
-  const balKey = keys.find(k => /^balance$/i.test(k.trim()));
-
-  if (!dateKey || !narKey || !amtKey) {
-    console.error(`[${accountLabel}] Missing columns`);
-    return [];
-  }
-
-  return rows.map(row => {
+  const dateKey = keys.find(k=>/^date$/i.test(k.trim()))||keys.find(k=>/date/i.test(k));
+  const narKey = keys.find(k=>/^description$/i.test(k.trim()))||keys.find(k=>/^narrative$/i.test(k.trim()))||keys.find(k=>/desc|narr|merchant|payee|detail|ref/i.test(k));
+  const amtKey = keys.find(k=>/^amount$/i.test(k.trim()))||keys.find(k=>/^value$/i.test(k.trim()))||keys.find(k=>/^trans$/i.test(k.trim()))||keys.find(k=>/amount|value|trans|spend|debit/i.test(k)&&!/balance|date|extended|statement/i.test(k));
+  const balKey = keys.find(k=>/^balance$/i.test(k.trim()));
+  if (!dateKey||!narKey||!amtKey) { console.error(`[${accountLabel}] Missing columns`); return []; }
+  return rows.map(row=>{
     const date = parseDate(row[dateKey]);
-    const rawAmt = Number(String(row[amtKey]).replace(/[£,]/g,"")) || 0;
+    const rawAmt = Number(String(row[amtKey]).replace(/[£,]/g,""))||0;
     const amount = Math.abs(rawAmt);
-    const narrative = String(row[narKey] || "").replace(/\r\n|\r|\n/g," ").trim();
-    const balance = balKey ? (Number(String(row[balKey]).replace(/[£,]/g,"")) || null) : null;
-
-    if (!date || !narrative || rawAmt === 0) return null;
-
-    let isIncome = false;
-    let spendAmt = amount;
-
-    if (isMainAccount) {
-  isIncome = rawAmt > 0;
-} else {
-  // Credit card: negative = repayment (treat as income), positive = spend
-  isIncome = rawAmt < 0;
-  spendAmt = Math.abs(rawAmt);
-}
-
-    return {
-      date,
-      narrative,
-      amount: spendAmt,
-      isIncome,
-      balance,
-      account: accountLabel,
-      category: null
-    };
+    const narrative = String(row[narKey]||"").replace(/\r\n|\r|\n/g," ").trim();
+    const balance = balKey?(Number(String(row[balKey]).replace(/[£,]/g,""))||null):null;
+    if (!date||!narrative||rawAmt===0) return null;
+    const isIncome = isMainAccount ? rawAmt>0 : rawAmt<0;
+    return {date, narrative, amount, isIncome, balance, account:accountLabel, category:null};
   }).filter(Boolean);
 }
 
@@ -273,23 +221,19 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
   const withLookup = transactions.map(t => {
-    if (t.isIncome && t.account === "Main Account") {
-  return {...t, category: "Salary"};
-}
-if (t.isIncome && t.account !== "Main Account") {
-  return {...t, category: "Card Repayment"};
-}
+    if (t.isIncome && t.account==="Main Account") return {...t, category:"Salary"};
+    if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
     const cat = merchantLookup(t.narrative);
-    return {...t, category: cat || null};
+    return {...t, category: cat||null};
   });
-  const known = withLookup.filter(t => t.category !== null);
-  const unknown = withLookup.filter(t => t.category === null);
+  const known = withLookup.filter(t=>t.category!==null);
+  const unknown = withLookup.filter(t=>t.category===null);
   onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
-  if (unknown.length === 0) { onProgress({type:"done"}); return withLookup; }
+  if (unknown.length===0) { onProgress({type:"done"}); return withLookup; }
   const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
   if (!apiKey||!apiKey.startsWith("sk-")) {
     onProgress({type:"done"});
-    return withLookup.map(t=>({...t, category: t.category||"Other Payments"}));
+    return withLookup.map(t=>({...t, category:t.category||"Other Payments"}));
   }
   const cats = allCats.join(", ");
   const batchSize = 80;
@@ -300,31 +244,25 @@ if (t.isIncome && t.account !== "Main Account") {
     onProgress({type:"progress", batchNum, totalBatches, pct:30+Math.round((batchNum/totalBatches)*65)});
     const batch = unknown.slice(i, i+batchSize);
     const lines = batch.map((t,j)=>`${j}: ${t.narrative} | £${t.amount.toFixed(2)}`).join("\n");
-    console.log("Sending to Claude:", lines.slice(0, 500));
-    const prompt = `You are a UK personal finance assistant categorising bank transactions. You are expert at reading raw bank narrative strings which contain merchant names, location codes, currency info, and transaction type codes.
-
-Transaction type codes you may see: CD = card purchase, DD = direct debit, SO = standing order, POS = card purchase, FP/BACS = incoming payment, BGC = bank giro credit, ATM = cash withdrawal, CHG = charge/fee, INT = interest.
+    const prompt = `You are a UK personal finance assistant categorising bank transactions.
 
 Categories available: ${cats}
 
 Rules:
-- Identify the merchant or purpose in the narrative (ignore dates, amounts, currency codes, location codes, reference numbers)
-- TFL, Transport for London, TFL.GOV.UK, Oyster, Citymapper, Uber, Bolt, Ola, Trainline, National Rail, any airline, any train operator, parking, fuel/petrol station = "Travel"
-- Any supermarket, grocery store, restaurant, cafe, pub, takeaway, food delivery service = "Food"
-- Albert Heijn, Jumbo, Tesco, Sainsbury, Waitrose, Lidl, Aldi, Carrefour, Rewe, Edeka, Mercadona = "Food"
-- Netflix, Spotify, Apple, Amazon Prime, Disney+, any gym, any streaming service, any recurring subscription = "Memberships"
-- Direct debits to energy/water/broadband/phone/council tax providers = "Rent"
-- Rent payments, mortgage payments = "Rent"
-- Salary, wages, payroll, income credits, BACS credits = "Salary"
+- TFL, Transport for London, TFL.GOV.UK, Oyster, Citymapper, Uber, Bolt, Trainline, National Rail, any airline, parking = "Travel"
+- Any supermarket, grocery, restaurant, cafe, pub, takeaway, food delivery = "Food"
+- Netflix, Spotify, Apple, Amazon Prime, Disney+, any gym, streaming, subscription = "Memberships"
+- Energy, water, broadband, phone, council tax DDs = "Rent"
+- Rent payments, mortgage = "Rent"
+- Salary, wages, payroll, BACS credits = "Salary"
 - ATM or cash withdrawals = "Other Payments"
-- Standing orders or direct debits with no identifiable merchant = "Other Payments"
-${multipleAccounts ? `- Payments referencing credit card names or account repayments = "${INTERCOMPANY_CATEGORY}"` : ""}
-- When unsure, pick the most likely category based on the merchant name alone
+${multipleAccounts ? `- Credit card repayments = "${INTERCOMPANY_CATEGORY}"` : ""}
+- When unsure, pick the most likely category
 
-Transactions to categorise (index: full narrative | amount):
+Transactions (index: narrative | amount):
 ${lines}
 
-Respond ONLY with a JSON array of ${batch.length} category strings in order. No explanation, no markdown, just the array.`;
+Respond ONLY with a JSON array of ${batch.length} category strings. No explanation, no markdown.`;
     try {
       const controller = new AbortController();
       const timer = setTimeout(()=>controller.abort(), 13000);
@@ -338,7 +276,7 @@ Respond ONLY with a JSON array of ${batch.length} category strings in order. No 
       const data = await res.json();
       const text = data.content?.[0]?.text||"[]";
       const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
-      claudeResults.push(...batch.map((t,j)=>({...t, category: allCats.includes(parsed[j])?parsed[j]:"Other Payments"})));
+      claudeResults.push(...batch.map((t,j)=>({...t, category:allCats.includes(parsed[j])?parsed[j]:"Other Payments"})));
     } catch(err) {
       console.error("Claude batch failed:", err.message);
       claudeResults.push(...batch.map(t=>({...t,category:"Other Payments"})));
@@ -347,8 +285,8 @@ Respond ONLY with a JSON array of ${batch.length} category strings in order. No 
   onProgress({type:"done"});
   const claudeMap = new Map(claudeResults.map(t=>[t.narrative+t.date+t.amount, t.category]));
   return withLookup.map(t=>{
-    if (t.category !== null) return t;
-    return {...t, category: claudeMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
+    if (t.category!==null) return t;
+    return {...t, category:claudeMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
   });
 }
 
@@ -382,267 +320,169 @@ function LoadingScreen({pct, message, done}) {
   );
 }
 
-function UploadScreen({ onDone }) {
-  const [accounts, setAccounts] = useState([{ id: 1, file: null, name: "" }]);
+function UploadScreen({onDone}) {
+  const [accounts, setAccounts] = useState([{id:1,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
-
-  const addCard = () =>
-    setAccounts(a => [...a, { id: Date.now(), file: null, name: "" }]);
-
-  const removeAccount = id =>
-    setAccounts(a => a.filter(acc => acc.id !== id));
-
-  const handleFile = async (id, file) => {
-    setAccounts(a =>
-      a.map(acc => (acc.id === id ? { ...acc, file, name: file.name } : acc))
-    );
-  };
-
-  const handleContinue = async () => {
+  const hasMainFile = !!accounts[0].file;
+  function addCard() { setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]); }
+  function removeAccount(id) { setAccounts(a=>a.filter(x=>x.id!==id)); }
+  async function handleFile(id,file) { setAccounts(a=>a.map(x=>x.id===id?{...x,file,name:file.name}:x)); }
+  async function handleContinue() {
     setLoading(true);
     const allRows = [];
-    let mainAssigned = false;
-
+    let ccIndex = 1;
     for (const acc of accounts) {
       if (!acc.file) continue;
       const rows = await readExcelFile(acc.file);
-      const ccIndex = accounts.filter(a => a.file).indexOf(acc);
-const label = !mainAssigned ? "Main Account" : ccIndex === 1 ? "Credit Card" : `Credit Card ${ccIndex}`;
-      mainAssigned = true;
+      const isFirst = acc.id===accounts[0].id;
+      let label;
+      if (isFirst) label = "Main Account";
+      else if (ccIndex===1) { label="Credit Card"; ccIndex++; }
+      else { label=`Credit Card ${ccIndex}`; ccIndex++; }
       allRows.push(...normaliseRows(rows, label));
     }
-
     setLoading(false);
-    onDone(allRows, accounts.length > 1);
-  };
-
-  const DropZone = ({ account, index }) => {
+    onDone(allRows, accounts.length>1);
+  }
+  function DropZone({account, index}) {
     const [dragging, setDragging] = useState(false);
     const loaded = !!account.file;
-
-    const onDrop = e => {
-      e.preventDefault();
-      setDragging(false);
-      const file = e.dataTransfer?.files?.[0] || e.target.files?.[0];
-      if (file) handleFile(account.id, file);
-    };
-
-    const labelText = index === 0 ? "Main Account" : `Credit Card ${index}`;
-
+    function onDrop(e) {
+      e.preventDefault(); setDragging(false);
+      const file = e.dataTransfer?.files?.[0]||e.target.files?.[0];
+      if (file) handleFile(account.id,file);
+    }
+    const labelText = index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
     return (
-      <label
-        onDragOver={e => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        style={{
-          display: "block",
-          border: loaded ? `2px solid ${PURPLE}` : `2px dashed ${dragging ? PURPLE : "#374151"}`,
-          borderRadius: 12,
-          padding: "22px 20px",
-          cursor: "pointer",
-          background: loaded ? "rgba(99,102,241,0.08)" : dragging ? "rgba(99,102,241,0.04)" : "rgba(255,255,255,0.03)",
-          transition: "all 0.2s"
-        }}
-      >
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={onDrop} style={{ display: "none" }} />
-        <div style={{ textAlign: "center" }}>
-          <div style={{ fontSize: 24, marginBottom: 8 }}>{loaded ? "✅" : "📂"}</div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: loaded ? "#a5b4fc" : "#e5e7eb" }}>
-            {loaded ? account.name : `Drop ${labelText} statement here`}
-          </div>
-          <div style={{ fontSize: 11, color: "#6b7280", marginTop: 4 }}>
-            {loaded ? "Ready to go" : "Excel or CSV · drag & drop or click"}
-          </div>
+      <label onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}
+        style={{display:"block",border:loaded?`2px solid ${PURPLE}`:`2px dashed ${dragging?PURPLE:"#374151"}`,borderRadius:12,padding:"22px 20px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.08)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.03)",transition:"all 0.2s",marginBottom:12}}>
+        <input type="file" accept=".xlsx,.xls,.csv" onChange={onDrop} style={{display:"none"}}/>
+        <div style={{textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:8}}>{loaded?"✅":"📂"}</div>
+          <div style={{fontSize:13,fontWeight:700,color:loaded?"#a5b4fc":"#e5e7eb"}}>{loaded?account.name:`Drop ${labelText} statement here`}</div>
+          <div style={{fontSize:11,color:"#6b7280",marginTop:4}}>{loaded?"Ready to go":"Excel or CSV · drag & drop or click"}</div>
         </div>
       </label>
     );
-  };
-
-  const hasMainFile = !!accounts[0].file;
-
+  }
   return (
-    <div style={{ minHeight: "100vh", background: "#0f0e1a", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 24px" }}>
-      <div style={{ width: "100%", maxWidth: 480 }}>
-        {accounts.map((acc, i) => (
-          <DropZone key={acc.id} account={acc} index={i} />
+    <div style={{minHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px"}}>
+      <div style={{width:"100%",maxWidth:480}}>
+        <div style={{textAlign:"center",marginBottom:44}}>
+          <img src={logo} alt="Abound" style={{height:72,marginBottom:16}}/>
+          <div style={{fontSize:15,color:"#6b7280"}}>Drop in your statements and we'll do the rest.</div>
+        </div>
+        {accounts.map((acc,i)=>(
+          <div key={acc.id} style={{position:"relative"}}>
+            {i>0&&<button onClick={()=>removeAccount(acc.id)} style={{position:"absolute",top:8,right:8,zIndex:10,fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer"}}>×</button>}
+            <DropZone account={acc} index={i}/>
+          </div>
         ))}
-        <button onClick={addCard} style={{ marginTop: 12, width: "100%", padding: "11px", border: "1.5px dashed #374151", borderRadius: 10, background: "none", color: "#6b7280", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-          + Add a credit card
-        </button>
-        <button
-          onClick={handleContinue}
-          disabled={!hasMainFile || loading}
-          style={{
-            marginTop: 12,
-            width: "100%",
-            padding: "14px",
-            background: hasMainFile ? "linear-gradient(135deg,#10b981,#059669)" : "#1f1d35",
-            color: hasMainFile ? "#fff" : "#374151",
-            border: "none",
-            borderRadius: 12,
-            fontSize: 15,
-            fontWeight: 800,
-            cursor: hasMainFile ? "pointer" : "not-allowed",
-            transition: "all 0.3s",
-            boxShadow: hasMainFile ? "0 4px 20px rgba(16,185,129,0.3)" : "none"
-          }}
-        >
-          {loading ? "Reading files..." : "Continue →"}
+        <button onClick={addCard} style={{marginTop:4,width:"100%",padding:"11px",border:"1.5px dashed #374151",borderRadius:10,background:"none",color:"#6b7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Add a credit card</button>
+        <button onClick={handleContinue} disabled={!hasMainFile||loading} style={{marginTop:12,width:"100%",padding:"14px",background:hasMainFile?"linear-gradient(135deg,#10b981,#059669)":"#1f1d35",color:hasMainFile?"#fff":"#374151",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:hasMainFile?"pointer":"not-allowed",transition:"all 0.3s",boxShadow:hasMainFile?"0 4px 20px rgba(16,185,129,0.3)":"none"}}>
+          {loading?"Reading files...":"Continue →"}
         </button>
       </div>
     </div>
   );
 }
 
-function CategoriseScreen({ transactions, multipleAccounts, onDone }) {
+function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [pct, setPct] = useState(5);
   const [message, setMessage] = useState("Matching merchants...");
   const [done, setDone] = useState(false);
   const [categorised, setCategorised] = useState([]);
-  const baseCats = multipleAccounts ? [...DEFAULT_CATEGORIES.filter(c => c !== INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY] : DEFAULT_CATEGORIES;
+  const baseCats = multipleAccounts?[...DEFAULT_CATEGORIES.filter(c=>c!==INTERCOMPANY_CATEGORY),INTERCOMPANY_CATEGORY]:DEFAULT_CATEGORIES;
   const [categories, setCategories] = useState(baseCats);
   const [newCat, setNewCat] = useState("");
   const [editingCat, setEditingCat] = useState(null);
   const [editVal, setEditVal] = useState("");
   const [step, setStep] = useState("loading");
-
-  useEffect(() => {
-    (async () => {
-      const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update => {
-        if (update?.type === "lookup_done") {
-          setPct(30);
-          setMessage(`Matched ${update.known} transactions — asking Claude about ${update.unknown} more...`);
-        } else if (update?.type === "progress") {
-          setPct(update.pct);
-          setMessage(`Claude is reading batch ${update.batchNum} of ${update.totalBatches}...`);
-        } else if (update?.type === "done") {
-          setPct(100);
-          setMessage("All done ✓");
-        }
+  useEffect(()=>{
+    (async()=>{
+      const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
+        if (update?.type==="lookup_done") { setPct(30); setMessage(`Matched ${update.known} transactions — asking Claude about ${update.unknown} more...`); }
+        else if (update?.type==="progress") { setPct(update.pct); setMessage(`Claude is reading batch ${update.batchNum} of ${update.totalBatches}...`); }
+        else if (update?.type==="done") { setPct(100); setMessage("All done ✓"); }
       });
-      setCategorised(result);
-      setDone(true);
-      setTimeout(() => setStep("review"), 1200);
+      setCategorised(result); setDone(true); setTimeout(()=>setStep("review"),1200);
     })();
-  }, [transactions, multipleAccounts]);
-
-  const summary = useMemo(() => {
-    const totals = {};
-    categories.forEach(c => { totals[c] = 0; });
-    const now = new Date();
-    const cutoff = new Date(now);
-    cutoff.setDate(now.getDate() - 30);
-    const recent = categorised.filter(t => t.date >= cutoff);
-    const use = recent.length > 20 ? recent : categorised;
-    use.forEach(t => { totals[t.category] = (totals[t.category] || 0) + t.amount; });
+  },[]);
+  const summary = useMemo(()=>{
+    const totals={};
+    categories.forEach(c=>{totals[c]=0;});
+    const now=new Date(), cutoff=new Date(now); cutoff.setDate(now.getDate()-30);
+    const recent=categorised.filter(t=>t.date>=cutoff);
+    const use=recent.length>20?recent:categorised;
+    use.forEach(t=>{totals[t.category]=(totals[t.category]||0)+t.amount;});
     return totals;
-  }, [categorised, categories]);
-
-  const addCategory = () => {
-    const trimmed = newCat.trim();
-    if (!trimmed || categories.includes(trimmed)) return;
-    setCategories(c => [...c, trimmed]);
-    setNewCat("");
-  };
-
-  const removeCategory = cat => {
-    if (baseCats.includes(cat)) return;
-    setCategories(c => c.filter(x => x !== cat));
-    setCategorised(t => t.map(tx => tx.category === cat ? { ...tx, category: "Other Payments" } : tx));
-  };
-
-  const saveRename = () => {
-    if (!editVal.trim()) return;
-    const old = editingCat;
-    setCategories(c => c.map(x => x === old ? editVal : x));
-    setCategorised(t => t.map(tx => tx.category === old ? { ...tx, category: editVal } : tx));
-    setEditingCat(null);
-  };
-
-  if (step === "loading") return <LoadingScreen pct={pct} message={message} done={done} />;
-
+  },[categorised,categories]);
+  function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");}
+  function removeCategory(cat){if(baseCats.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setCategorised(t=>t.map(tx=>tx.category===cat?{...tx,category:"Other Payments"}:tx));}
+  function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
+  if (step==="loading") return <LoadingScreen pct={pct} message={message} done={done}/>;
   return (
-    <div style={{ maxWidth: 680, margin: "40px auto", padding: "0 24px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 28 }}>
-        <img src={logo} alt="Abound" style={{ height: 44 }} />
+    <div style={{maxWidth:680,margin:"40px auto",padding:"0 24px"}}>
+      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:28}}>
+        <img src={logo} alt="Abound" style={{height:44}}/>
         <div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#111827" }}>Your spending breakdown</div>
-          <div style={{ fontSize: 13, color: "#6b7280" }}>{categorised.length} transactions categorised · tweak anything below</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#111827"}}>Your spending breakdown</div>
+          <div style={{fontSize:13,color:"#6b7280"}}>{categorised.length} transactions categorised · tweak anything below</div>
         </div>
       </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 28 }}>
-        {categories.map((cat, i) => (
-          <div key={cat} style={{ background: "#fff", borderRadius: 12, padding: "14px 16px", border: "1px solid #e5e7eb", borderLeft: `4px solid ${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}` }}>
-            <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, marginBottom: 4 }}>{cat}</div>
-            <div style={{ fontSize: 20, fontWeight: 800, color: summary[cat] === 0 ? "#d1d5db" : "#111827" }}>
-              {summary[cat] === 0 ? "£0" : `£${Math.round(summary[cat]).toLocaleString()}`}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginBottom:28}}>
+        {categories.map((cat,i)=>{
+          const total=summary[cat]||0;
+          return (
+            <div key={cat} style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #e5e7eb",borderLeft:`4px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}`}}>
+              <div style={{fontSize:11,color:"#6b7280",fontWeight:600,marginBottom:4}}>{cat}</div>
+              <div style={{fontSize:20,fontWeight:800,color:total===0?"#d1d5db":"#111827"}}>{total===0?"£0":`£${Math.round(total).toLocaleString()}`}</div>
+              <div style={{fontSize:10,color:"#9ca3af",marginTop:2}}>last 30 days</div>
             </div>
-            <div style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }}>last 30 days</div>
-          </div>
-        ))}
+          );
+        })}
       </div>
-
-      <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflow: "hidden", marginBottom: 20 }}>
-        <div style={{ padding: "12px 16px", borderBottom: "1px solid #f3f4f6", fontSize: 11, fontWeight: 700, color: "#9ca3af", letterSpacing: 1 }}>CATEGORIES</div>
-        {categories.map((cat, i) => (
-          <div key={cat} style={{ display: "flex", alignItems: "center", padding: "10px 16px", borderBottom: "1px solid #f3f4f6", gap: 10 }}>
-            <span style={{ width: 10, height: 10, borderRadius: "50%", background: CATEGORY_COLORS[i % CATEGORY_COLORS.length], flexShrink: 0 }} />
-            {editingCat === cat ? (
-              <input
-                autoFocus
-                value={editVal}
-                onChange={e => setEditVal(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") saveRename(); if (e.key === "Escape") setEditingCat(null); }}
-                style={{ flex: 1, fontSize: 13, border: `1px solid ${PURPLE}`, borderRadius: 6, padding: "3px 8px" }}
-              />
-            ) : (
-              <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{cat}</span>
-            )}
-            {editingCat === cat ? (
-              <button onClick={saveRename} style={{ fontSize: 11, color: PURPLE, border: "none", background: "none", cursor: "pointer", fontWeight: 700 }}>Save</button>
-            ) : (
-              <button onClick={() => { setEditingCat(cat); setEditVal(cat); }} style={{ fontSize: 11, color: "#9ca3af", border: "none", background: "none", cursor: "pointer" }}>rename</button>
-            )}
-            <button
-              onClick={() => removeCategory(cat)}
-              style={{ fontSize: 18, color: baseCats.includes(cat) ? "#e5e7eb" : "#9ca3af", border: "none", background: "none", cursor: baseCats.includes(cat) ? "not-allowed" : "pointer" }}
-            >−</button>
+      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:20}}>
+        <div style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",fontSize:11,fontWeight:700,color:"#9ca3af",letterSpacing:1}}>CATEGORIES</div>
+        {categories.map((cat,i)=>(
+          <div key={cat} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:`1px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}22`,borderLeft:`3px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}`,gap:10}}>
+            <span style={{width:10,height:10,borderRadius:"50%",background:CATEGORY_COLORS[i%CATEGORY_COLORS.length],flexShrink:0}}/>
+            {editingCat===cat
+              ?<input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveRename();if(e.key==="Escape")setEditingCat(null);}} style={{flex:1,fontSize:13,border:`1px solid ${PURPLE}`,borderRadius:6,padding:"3px 8px"}}/>
+              :<span style={{flex:1,fontSize:13,fontWeight:600}}>{cat}</span>
+            }
+            {editingCat===cat
+              ?<button onClick={saveRename} style={{fontSize:11,color:PURPLE,border:"none",background:"none",cursor:"pointer",fontWeight:700}}>Save</button>
+              :<button onClick={()=>{setEditingCat(cat);setEditVal(cat);}} style={{fontSize:11,color:"#9ca3af",border:"none",background:"none",cursor:"pointer"}}>rename</button>
+            }
+            <button onClick={()=>removeCategory(cat)} style={{fontSize:18,color:baseCats.includes(cat)?"#e5e7eb":"#9ca3af",border:"none",background:"none",cursor:baseCats.includes(cat)?"not-allowed":"pointer"}}>−</button>
           </div>
         ))}
-        <div style={{ display: "flex", gap: 8, padding: "10px 16px" }}>
-          <input
-            value={newCat}
-            onChange={e => setNewCat(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && addCategory()}
-            placeholder="Add a custom category..."
-            style={{ flex: 1, fontSize: 13, border: "1px solid #e5e7eb", borderRadius: 8, padding: "7px 12px" }}
-          />
-          <button onClick={addCategory} style={{ padding: "7px 16px", background: PURPLE, color: "#fff", border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+</button>
+        <div style={{display:"flex",gap:8,padding:"10px 16px"}}>
+          <input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCategory()} placeholder="Add a custom category..." style={{flex:1,fontSize:13,border:"1px solid #e5e7eb",borderRadius:8,padding:"7px 12px"}}/>
+          <button onClick={addCategory} style={{padding:"7px 16px",background:PURPLE,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>+</button>
         </div>
       </div>
-
-      <button onClick={() => onDone(categorised, categories)} style={{ width: "100%", padding: "14px", background: PURPLE, color: "#fff", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-        Sort remaining transactions →
-      </button>
+      <div style={{position:"sticky",bottom:0,background:"linear-gradient(to top, #f8fafc 80%, transparent)",paddingTop:16,paddingBottom:16}}>
+        <button onClick={()=>onDone(categorised,categories)} style={{width:"100%",padding:"14px",background:PURPLE,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.4)"}}>
+          Sort remaining transactions →
+        </button>
+      </div>
     </div>
   );
 }
 
-// ─── SCREEN 3: Drag & Drop Sort ─────────────────────────────────────────────
+// ─── SCREEN 3: Sort ───────────────────────────────────────────────────────────
 function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allItems = useMemo(()=>
-    transactions
-      .filter(t=>t.category==="Other Payments")
+    transactions.filter(t=>t.category==="Other Payments")
       .reduce((acc,t)=>{
         const ex=acc.find(x=>x.narrative===t.narrative);
         if(ex){ex.total+=t.amount;ex.count+=1;}
         else acc.push({narrative:t.narrative,total:t.amount,count:1,category:"Other Payments"});
         return acc;
-      },[])
-      .sort((a,b)=>b.total-a.total)
+      },[]).sort((a,b)=>b.total-a.total)
   ,[]);
-
   const [items, setItems] = useState(allItems);
   const [categories, setCategories] = useState(initialCategories);
   const [hoveredCat, setHoveredCat] = useState(null);
@@ -650,7 +490,6 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
   const dragRef = useRef(null);
-
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -662,199 +501,165 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
     window.addEventListener("resize",handler);
     return ()=>window.removeEventListener("resize",handler);
   },[]);
-  const isMobileView = windowWidth < 768;
-
-  const VISIBLE = 5;
-  const unsorted = items.filter(i=>i.category==="Other Payments");
-  const sorted   = items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
-  const skipped  = items.filter(i=>i.category==="Skip");
-  const visible  = unsorted.slice(0, VISIBLE);
-  const spendCats = categories.filter(c=>c!=="Salary"&&c!=="Other Payments");
-  const allBuckets = [...spendCats, "Skip"];
-
-  const CAT_COLORS = {"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
-  function catColor(cat,i){ return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1"; }
-
-  function assignItem(narrative, cat) {
-    if (cat!=="Skip") setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));
+  const isMobileView = windowWidth<768;
+  const VISIBLE=5;
+  const unsorted=items.filter(i=>i.category==="Other Payments");
+  const sorted=items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
+  const skipped=items.filter(i=>i.category==="Skip");
+  const visible=unsorted.slice(0,VISIBLE);
+  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Other Payments");
+  const allBuckets=[...spendCats,"Skip"];
+  const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
+  function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
+  function assignItem(narrative,cat){
+    if(cat!=="Skip") setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));
     setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));
-    setSwipeOffset(0); setSwipeTarget(null);
+    setSwipeOffset(0);setSwipeTarget(null);
   }
-
-  function dropIntoCat(cat) {
-    const narrative = dragRef.current;
-    if (!narrative) return;
-    assignItem(narrative, cat);
-    dragRef.current = null;
-    setHoveredCat(null);
-  }
-
-  function undoItem(narrative, fromCat) {
-    if (fromCat!=="Skip") setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));
+  function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
+  function undoItem(narrative,fromCat){
+    if(fromCat!=="Skip") setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));
     setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));
   }
-
-  function addCategory() {
-    const t=newCat.trim(); if(!t||categories.includes(t)) return;
-    setCategories(c=>[...c,t]); setNewCat(""); setShowAddCat(false);
-  }
-
-  function removeCategory(cat) {
-    if(DEFAULT_CATEGORIES.includes(cat)) return;
+  function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
+  function removeCategory(cat){
+    if(DEFAULT_CATEGORIES.includes(cat))return;
     setCategories(c=>c.filter(x=>x!==cat));
     setItems(p=>p.map(x=>x.category===cat?{...x,category:"Other Payments"}:x));
     setBucketCounts(p=>{const n={...p};delete n[cat];return n;});
   }
-
-  function handleConfirm() {
+  function handleConfirm(){
     const map={};
     items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});
-    onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t), categories);
+    onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t),categories);
   }
-
-  const pct = allItems.length ? Math.round(((sorted.length+skipped.length)/allItems.length)*100) : 100;
-
-  const txnCountByCat = useMemo(()=>{
+  const pct=allItems.length?Math.round(((sorted.length+skipped.length)/allItems.length)*100):100;
+  const txnCountByCat=useMemo(()=>{
     const counts={};
     transactions.forEach(t=>{if(t.category&&t.category!=="Other Payments") counts[t.category]=(counts[t.category]||0)+1;});
     return counts;
   },[transactions,items]);
-
-  const SWIPE_THRESHOLD = 80;
-  const CATS_PER_PAGE = 4;
-  const totalPages = Math.ceil(allBuckets.length/CATS_PER_PAGE);
-  const visibleMobileCats = allBuckets.slice(mobileCatPage*CATS_PER_PAGE,(mobileCatPage+1)*CATS_PER_PAGE);
-
+  const SWIPE_THRESHOLD=80,CATS_PER_PAGE=4;
+  const totalPages=Math.ceil(allBuckets.length/CATS_PER_PAGE);
+  const visibleMobileCats=allBuckets.slice(mobileCatPage*CATS_PER_PAGE,(mobileCatPage+1)*CATS_PER_PAGE);
   function onTouchStart(e){touchStartX.current=e.touches[0].clientX;touchStartY.current=e.touches[0].clientY;}
   function onTouchMove(e){
-    if(touchStartX.current===null) return;
-    const dx=e.touches[0].clientX-touchStartX.current, dy=e.touches[0].clientY-touchStartY.current;
-    if(Math.abs(dy)>Math.abs(dx)+10) return;
-    e.preventDefault(); setSwipeOffset(dx);
-    if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0]) setSwipeTarget(visibleMobileCats[0]);
-    else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1]) setSwipeTarget(visibleMobileCats[1]);
+    if(touchStartX.current===null)return;
+    const dx=e.touches[0].clientX-touchStartX.current,dy=e.touches[0].clientY-touchStartY.current;
+    if(Math.abs(dy)>Math.abs(dx)+10)return;
+    e.preventDefault();setSwipeOffset(dx);
+    if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])setSwipeTarget(visibleMobileCats[0]);
+    else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])setSwipeTarget(visibleMobileCats[1]);
     else setSwipeTarget(null);
   }
   function onTouchEnd(){
-    if(touchStartX.current===null) return;
+    if(touchStartX.current===null)return;
     const topItem=unsorted[0];
-    if(topItem&&swipeTarget) assignItem(topItem.narrative,swipeTarget);
-    else {setSwipeOffset(0);setSwipeTarget(null);}
-    touchStartX.current=null; touchStartY.current=null;
+    if(topItem&&swipeTarget)assignItem(topItem.narrative,swipeTarget);
+    else{setSwipeOffset(0);setSwipeTarget(null);}
+    touchStartX.current=null;touchStartY.current=null;
   }
+  const CAT_EMOJI = {"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
+  function getBucketEmoji(cat) { return CAT_EMOJI[cat] || "📂"; }
 
-  const DesktopSort = () => (
+  const DesktopSort=()=>(
     <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
-      <div style={{width:300,flexShrink:0,padding:"20px 16px",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",gap:8,overflowY:"auto"}}>
-        <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:4}}>DRAG INTO A BUCKET →</div>
-
-        {unsorted.length===0&&(
-          <div style={{textAlign:"center",padding:"40px 0"}}>
-            <div style={{fontSize:32,marginBottom:8}}>🎉</div>
-            <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:16}}>All sorted!</div>
-            <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
-          </div>
-        )}
-
-        {visible.map((item,idx)=>{
-          const isTop=idx===0;
-          return (
-            <div key={item.narrative} draggable={isTop}
-              onDragStart={()=>{ dragRef.current=item.narrative; }}
-              onDragEnd={()=>{ dragRef.current=null; setHoveredCat(null); }}
-              style={{background:isTop?"#1e1b38":`rgba(20,18,42,${1-idx*0.12})`,border:`1px solid ${isTop?"#4338ca":"#2d2a6e"}`,borderRadius:12,padding:isTop?"16px":"10px 16px",cursor:isTop?"grab":"default",opacity:isTop?1:1-idx*0.18,transform:`translateY(${idx*-3}px) scale(${1-idx*0.015})`,transformOrigin:"top center",transition:"all 0.2s",userSelect:"none",flexShrink:0}}
-            >
-              <div style={{fontSize:12,fontWeight:600,color:isTop?"#c7d2fe":"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-              {isTop&&(
-                <div style={{display:"flex",alignItems:"center",gap:8,marginTop:6}}>
-                  <span style={{fontSize:16,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(item.total).toLocaleString()}</span>
-                  <span style={{fontSize:11,color:"#4b5563"}}>{item.count} txn{item.count>1?"s":""}</span>
-                  <span style={{fontSize:10,color:"#4b5563",marginLeft:"auto"}}>drag →</span>
-                </div>
-              )}
+      <div style={{width:280,flexShrink:0,background:"#0a0818",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{padding:"16px 16px 12px",borderBottom:"1px solid #1f1d35",flexShrink:0}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5,marginBottom:2}}>TO SORT</div>
+          <div style={{fontSize:22,fontWeight:800,color:"#fff"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
+        </div>
+        <div style={{flex:1,padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:6,overflowY:"auto"}}>
+          {unsorted.length===0&&(
+            <div style={{textAlign:"center",padding:"60px 20px"}}>
+              <div style={{fontSize:40,marginBottom:12}}>🎉</div>
+              <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:8}}>All sorted!</div>
+              <div style={{fontSize:12,color:"#4b5563",marginBottom:20}}>Great work — your cash flow is ready.</div>
+              <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
             </div>
-          );
-        })}
-
-        {unsorted.length>VISIBLE&&<div style={{fontSize:11,color:"#4b5563",textAlign:"center",paddingTop:4}}>+{unsorted.length-VISIBLE} more</div>}
-
+          )}
+          {visible.map((item,idx)=>{
+            const isTop=idx===0;
+            return (
+              <div key={item.narrative} draggable={isTop}
+                onDragStart={()=>{dragRef.current=item.narrative;}}
+                onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
+                style={{background:isTop?"linear-gradient(135deg,#1e1b38,#2d2a52)":"rgba(20,18,42,0.6)",border:`1px solid ${isTop?"#4338ca":"#1f1d35"}`,borderRadius:12,padding:isTop?"14px 14px 12px":"8px 14px",cursor:isTop?"grab":"default",opacity:isTop?1:0.5-(idx*0.08),transform:`scale(${1-idx*0.01})`,transformOrigin:"top center",userSelect:"none",flexShrink:0,boxShadow:isTop?"0 4px 20px rgba(0,0,0,0.4)":"none",transition:"opacity 0.2s"}}>
+                {isTop&&<div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:1,marginBottom:6}}>DRAG TO SORT ↗</div>}
+                <div style={{fontSize:isTop?13:11,fontWeight:isTop?600:400,color:isTop?"#e0e7ff":"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                {isTop&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #2d2a6e"}}>
+                    <span style={{fontSize:18,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(item.total).toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#4b5563"}}>{item.count} occurrence{item.count>1?"s":""}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {unsorted.length>VISIBLE&&<div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:"#374151"}}>+{unsorted.length-VISIBLE} more to sort</div>}
+        </div>
         {(sorted.length>0||skipped.length>0)&&(
-          <div style={{marginTop:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:8}}>SORTED ✓</div>
-            {[...sorted,...skipped].map(item=>(
-              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1f1d35",marginBottom:4}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:item.category==="Skip"?"#4b5563":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
-                <div style={{flex:1,fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-                <div style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{item.category==="Skip"?"?":item.category}</div>
-                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:10,color:"#4b5563",border:"none",background:"none",cursor:"pointer",padding:"1px 4px"}}>undo</button>
+          <div style={{borderTop:"1px solid #1f1d35",padding:"10px 12px",maxHeight:200,overflowY:"auto",flexShrink:0}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:6}}>SORTED ✓</div>
+            {[...sorted,...skipped].slice(-8).map(item=>(
+              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:"1px solid #1a1830"}}>
+                <div style={{width:6,height:6,borderRadius:"50%",background:item.category==="Skip"?"#374151":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
+                <div style={{flex:1,fontSize:10,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:9,color:"#374151",border:"none",background:"none",cursor:"pointer",padding:"1px 4px",flexShrink:0}}>undo</button>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      <div style={{flex:1,padding:"20px 24px",overflowY:"auto"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1}}>CATEGORIES</div>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+        <div style={{padding:"14px 20px 12px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+          <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5}}>DROP INTO A CATEGORY</div>
           <div style={{flex:1}}/>
           {showAddCat?(
-            <div style={{display:"flex",gap:8}}>
-              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}}
-                placeholder="Category name..."
-                style={{padding:"6px 12px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:8,color:"#fff",fontSize:13,width:180}}/>
-              <button onClick={addCategory} style={{padding:"6px 14px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Add</button>
-              <button onClick={()=>setShowAddCat(false)} style={{padding:"6px 10px",background:"none",border:"1px solid #374151",borderRadius:8,color:"#6b7280",fontSize:13,cursor:"pointer"}}>×</button>
+            <div style={{display:"flex",gap:6}}>
+              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>
+              <button onClick={addCategory} style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>Add</button>
+              <button onClick={()=>setShowAddCat(false)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
             </div>
           ):(
-            <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.15)",border:"1px dashed #6366f1",borderRadius:8,color:"#6366f1",fontSize:12,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
+            <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
           )}
         </div>
-
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(150px,1fr))",gap:14}}>
+        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14,alignContent:"start"}}>
           {spendCats.map((cat,i)=>{
-            const color=catColor(cat,i);
-            const isHovered=hoveredCat===cat;
-            const newlySorted=bucketCounts[cat]||0;
-            const totalCount=(txnCountByCat[cat]||0)+newlySorted;
+            const color=catColor(cat,i),isHovered=hoveredCat===cat;
+            const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             const isDefault=DEFAULT_CATEGORIES.includes(cat);
             return (
               <div key={cat}
                 onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}}
                 onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}}
                 onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
-                style={{border:`2px ${isHovered?"solid":"dashed"} ${color}`,borderRadius:14,padding:"16px 12px 12px",background:isHovered?`${color}22`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",minHeight:110,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",gap:8,position:"relative"}}
-              >
-                {!isDefault&&(
-                  <button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:4,right:6,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
-                )}
-                <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                  <div style={{fontSize:13,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.3}}>{cat}</div>
-                  {isHovered&&<div style={{fontSize:11,color:"rgba(255,255,255,0.6)"}}>drop here</div>}
+                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}66`}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.015)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",position:"relative",boxShadow:isHovered?`0 0 30px ${color}33`:"none"}}>
+                {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:8,right:10,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
+                  <div style={{fontSize:28,lineHeight:1}}>{getBucketEmoji(cat)}</div>
+                  <div style={{fontSize:15,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center"}}>{cat}</div>
+                  {isHovered&&<div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>drop here</div>}
                 </div>
-                <div style={{width:"100%",borderTop:`1px solid ${color}44`,paddingTop:8,textAlign:"center",fontSize:11,color:totalCount>0?color:"#374151",fontWeight:700}}>
-                  {totalCount>0?`${totalCount} transaction${totalCount>1?"s":""}`:newlySorted>0?`${newlySorted} added`:"0 transactions"}
+                <div style={{width:"100%",borderTop:`1px solid ${color}33`,paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:totalCount>0?color:"#2d2a6e"}}>
+                  {totalCount>0?`${totalCount} transaction${totalCount>1?"s":""}`:isHovered?"drop here →":"empty"}
                 </div>
               </div>
             );
           })}
-
           {(()=>{
-            const isHovered=hoveredCat==="Skip";
-            const count=skipped.length;
+            const isHovered=hoveredCat==="Skip",count=skipped.length;
             return (
-              <div
-                onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}}
-                onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}}
-                onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
-                style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:14,padding:"16px 12px 12px",background:isHovered?"rgba(107,114,128,0.15)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:110,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}
-              >
-                <div style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                  <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#4b5563",textAlign:"center"}}>Not sure</div>
-                  <div style={{fontSize:11,color:"#374151",textAlign:"center"}}>leave in Other</div>
+              <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
+                style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
+                  <div style={{fontSize:28,lineHeight:1,opacity:isHovered?1:0.4}}>🤷</div>
+                  <div style={{fontSize:15,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center"}}>Not sure</div>
+                  <div style={{fontSize:11,color:"#2d2a6e",textAlign:"center"}}>stays in Other Payments</div>
                 </div>
-                <div style={{width:"100%",borderTop:"1px solid #2d2a6e",paddingTop:8,textAlign:"center",fontSize:11,color:count>0?"#6b7280":"#374151",fontWeight:700}}>
-                  {count>0?`${count} transaction${count>1?"s":""}`:count===0?"0 transactions":""}
+                <div style={{width:"100%",borderTop:"1px solid #1f1d35",paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:count>0?"#6b7280":"#2d2a6e"}}>
+                  {count>0?`${count} transaction${count>1?"s":""}`:isHovered?"drop here →":"empty"}
                 </div>
               </div>
             );
@@ -864,13 +669,13 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
     </div>
   );
 
-  const MobileSort = () => {
+  const MobileSort=()=>{
     const topItem=unsorted[0];
-    const swipeRight=visibleMobileCats[0], swipeLeft=visibleMobileCats[1];
+    const swipeRight=visibleMobileCats[0],swipeLeft=visibleMobileCats[1];
     const swipeRightColor=swipeRight==="Skip"?"#6b7280":catColor(swipeRight,spendCats.indexOf(swipeRight));
     const swipeLeftColor=swipeLeft==="Skip"?"#6b7280":catColor(swipeLeft,spendCats.indexOf(swipeLeft));
     const swipeProgress=Math.min(Math.abs(swipeOffset)/SWIPE_THRESHOLD,1);
-    const swipingRight=swipeOffset>20, swipingLeft=swipeOffset<-20;
+    const swipingRight=swipeOffset>20,swipingLeft=swipeOffset<-20;
     return (
       <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -879,19 +684,6 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
           </div>
           <span style={{fontSize:12,color:"#6366f1",fontWeight:700,flexShrink:0}}>{pct}% sorted</span>
         </div>
-        {topItem&&(
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:swipingLeft?1:0.35,transition:"opacity 0.2s"}}>
-              <div style={{fontSize:20,color:swipeLeftColor}}>←</div>
-              <div style={{fontSize:10,fontWeight:700,color:swipeLeftColor,maxWidth:70,textAlign:"center"}}>{swipeLeft==="Skip"?"Not sure":swipeLeft||"—"}</div>
-            </div>
-            <div style={{fontSize:11,color:"#4b5563",fontWeight:600}}>swipe to sort</div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3,opacity:swipingRight?1:0.35,transition:"opacity 0.2s"}}>
-              <div style={{fontSize:20,color:swipeRightColor}}>→</div>
-              <div style={{fontSize:10,fontWeight:700,color:swipeRightColor,maxWidth:70,textAlign:"center"}}>{swipeRight==="Skip"?"Not sure":swipeRight||"—"}</div>
-            </div>
-          </div>
-        )}
         <div style={{position:"relative",height:150,flexShrink:0}}>
           {unsorted.length===0?(
             <div style={{textAlign:"center",padding:"30px 0"}}>
@@ -907,11 +699,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
               {topItem&&(
                 <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
                   style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${swipeTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${swipeOffset}px) rotate(${swipeOffset*0.03}deg)`,transition:swipeOffset===0?"transform 0.3s":"none",zIndex:10,touchAction:"pan-y",userSelect:"none"}}>
-                  {swipeTarget&&(
-                    <div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>
-                      {swipeTarget==="Skip"?"NOT SURE":swipeTarget.toUpperCase()}
-                    </div>
-                  )}
+                  {swipeTarget&&(<div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>{swipeTarget==="Skip"?"NOT SURE":swipeTarget.toUpperCase()}</div>)}
                   <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:8}}>{topItem.narrative}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(topItem.total).toLocaleString()}</span>
@@ -923,11 +711,9 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             </>
           )}
         </div>
-        <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1}}>TAP TO ASSIGN</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {visibleMobileCats.map((cat)=>{
-            const isSkip=cat==="Skip";
-            const color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
+          {visibleMobileCats.map(cat=>{
+            const isSkip=cat==="Skip",color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
             const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             return (
               <button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}}
@@ -945,72 +731,182 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             <button onClick={()=>setMobileCatPage(p=>Math.min(totalPages-1,p+1))} disabled={mobileCatPage===totalPages-1} style={{fontSize:16,background:"none",border:"none",color:mobileCatPage===totalPages-1?"#2d2a6e":"#6366f1",cursor:"pointer"}}>›</button>
           </div>
         )}
-        {(sorted.length>0||skipped.length>0)&&(
-          <div style={{flex:1,overflowY:"auto"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:8}}>SORTED ✓</div>
-            {[...sorted,...skipped].slice(-6).map(item=>(
-              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #1f1d35",marginBottom:4}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:item.category==="Skip"?"#4b5563":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
-                <div style={{flex:1,fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-                <div style={{fontSize:10,color:"#4b5563",flexShrink:0}}>{item.category==="Skip"?"?":item.category}</div>
-                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:10,color:"#4b5563",border:"none",background:"none",cursor:"pointer",padding:"1px 4px"}}>undo</button>
-              </div>
-            ))}
-          </div>
-        )}
       </div>
     );
   };
 
   return (
     <div style={{minHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif"}}>
-      <div style={{padding:"14px 24px",background:"#0f0e1a",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:16,flexShrink:0,flexWrap:"wrap"}}>
-        <img src={logo} alt="Abound" style={{height:30}}/>
-        <span style={{fontSize:15,fontWeight:800,color:"#fff"}}>Sort transactions</span>
-        <span style={{fontSize:13,color:"#4b5563"}}>{unsorted.length>0?`${unsorted.length} left · ${sorted.length+skipped.length} done`:"All sorted!"}</span>
-        <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden",maxWidth:200}}>
-          <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
+      <div style={{padding:"0 24px",background:"#0a0818",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:16,flexShrink:0,height:54}}>
+        <img src={logo} alt="Abound" style={{height:28}}/>
+        <div style={{width:1,height:24,background:"#1f1d35"}}/>
+        <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Sort transactions</span>
+        <div style={{flex:1,display:"flex",alignItems:"center",gap:10,maxWidth:320}}>
+          <div style={{flex:1,height:5,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",borderRadius:999,transition:"width 0.5s ease"}}/>
+          </div>
+          <span style={{fontSize:12,color:pct===100?"#10b981":"#6366f1",fontWeight:700,minWidth:32}}>{pct}%</span>
         </div>
-        <span style={{fontSize:12,color:"#6366f1",fontWeight:700}}>{pct}%</span>
-        <button onClick={handleConfirm} style={{padding:"8px 18px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",marginLeft:"auto"}}>Done →</button>
+        <span style={{fontSize:12,color:"#4b5563"}}>{unsorted.length>0?`${unsorted.length} left · ${sorted.length+skipped.length} sorted`:"✅ All sorted!"}</span>
+        <button onClick={handleConfirm} style={{padding:"7px 18px",background:pct===100?"linear-gradient(135deg,#10b981,#059669)":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",marginLeft:"auto",transition:"background 0.3s"}}>Done →</button>
       </div>
-      {isMobileView ? <MobileSort/> : <DesktopSort/>}
+      {isMobileView?<MobileSort/>:<DesktopSort/>}
     </div>
   );
 }
 
+// ─── SCREEN 4: Review Transactions ────────────────────────────────────────────
+function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
+  const [editCount, setEditCount] = useState(0);
+  const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
+  const [filterCat, setFilterCat] = useState("All");
+  const [filterAccount, setFilterAccount] = useState("All");
+  const [search, setSearch] = useState("");
+
+  const accounts = useMemo(()=>{
+    const seen=new Set(),list=[];
+    transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});
+    return list;
+  },[transactions]);
+
+  const sortedTxns = useMemo(()=>
+    [...transactions].sort((a,b)=>b.date-a.date)
+  ,[transactions]);
+
+  const filtered = useMemo(()=>
+    sortedTxns.filter(t=>{
+      if (filterCat!=="All"&&t.category!==filterCat) return false;
+      if (filterAccount!=="All"&&t.account!==filterAccount) return false;
+      if (search&&!t.narrative.toLowerCase().includes(search.toLowerCase())) return false;
+      return true;
+    })
+  ,[sortedTxns,filterCat,filterAccount,search]);
+
+  function changeCategory(txn, newCat) {
+    const updated = transactions.map(t=>
+      t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount
+        ?{...t,category:newCat}:t
+    );
+    onUpdate(updated);
+    setEditCount(c=>c+1);
+    if (editCount>=2) setShowUpdatedBanner(true);
+  }
+
+  const catColors = {};
+  categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
+
+  return (
+    <div style={{flex:1,overflow:"auto",background:"#f8fafc"}}>
+      {showUpdatedBanner&&(
+        <div style={{background:"linear-gradient(135deg,#10b981,#059669)",padding:"14px 24px",display:"flex",alignItems:"center",gap:16}}>
+          <span style={{fontSize:18}}>✅</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:"#fff",fontSize:14}}>Cash flow updated!</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>Your corrections have been applied — head back to see the updated numbers.</div>
+          </div>
+          <button onClick={onGoToCashFlow} style={{padding:"8px 18px",background:"#fff",color:"#059669",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
+          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer"}}>×</button>
+        </div>
+      )}
+      <div style={{padding:"20px 24px"}}>
+        <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,width:220,outline:"none"}}/>
+          <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
+            <option value="All">All accounts</option>
+            {accounts.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
+            <option value="All">All categories</option>
+            {categories.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <div style={{marginLeft:"auto",fontSize:13,color:"#6b7280"}}>
+            {filtered.length} transaction{filtered.length!==1?"s":""}
+            {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
+          </div>
+        </div>
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",background:"#1e1b4b",padding:"10px 16px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DATE</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DESCRIPTION</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,textAlign:"right"}}>AMOUNT</div>
+            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,paddingLeft:16}}>CATEGORY</div>
+          </div>
+          {filtered.map((t,i)=>(
+            <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center"}}
+              onMouseEnter={e=>e.currentTarget.style.background="#f0f7ff"}
+              onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
+              <div style={{fontSize:12,color:"#6b7280"}}>{fmtDate(t.date)}</div>
+              <div style={{fontSize:12,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
+                <span style={{fontSize:10,color:"#9ca3af",marginRight:6}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
+                {t.narrative}
+              </div>
+              <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right"}}>
+                {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
+              </div>
+              <div style={{paddingLeft:16}}>
+                <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
+                  style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",width:"100%",maxWidth:160}}>
+                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          ))}
+          {filtered.length===0&&<div style={{padding:"40px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No transactions match your filters.</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main shell with tabs ──────────────────────────────────────────────────────
+function MainScreen({transactions: initialTransactions, categories, onStartOver}) {
+  const [transactions, setTransactions] = useState(initialTransactions);
+  const [activeTab, setActiveTab] = useState("cashflow");
+  const [showReviewPrompt, setShowReviewPrompt] = useState(true);
+  return (
+    <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
+        <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
+        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?PURPLE:"#6b7280",cursor:"pointer"}}>
+          📊 Cash Flow
+        </button>
+        <button onClick={()=>{setActiveTab("review");setShowReviewPrompt(false);}} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?PURPLE:"#6b7280",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+          🔍 Review Transactions
+          {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
+        </button>
+        <button onClick={onStartOver} style={{marginLeft:"auto",fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
+      </div>
+      {activeTab==="cashflow"&&showReviewPrompt&&(
+        <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
+          <span style={{fontSize:20}}>🔍</span>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,color:"#fff",fontSize:13}}>Double-check your categories</div>
+            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>AI isn't perfect — a quick review makes your cash flow much more accurate.</div>
+          </div>
+          <button onClick={()=>{setActiveTab("review");setShowReviewPrompt(false);}} style={{padding:"8px 18px",background:"#fff",color:PURPLE,border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
+          <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
+        </div>
+      )}
+      {activeTab==="cashflow"&&<CashFlowScreen transactions={transactions} categories={categories}/>}
+      {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
+    </div>
+  );
+}
+
+// ─── Cash Flow Screen ─────────────────────────────────────────────────────────
 function CashFlowScreen({transactions, categories}) {
-   // ---- DEBUG START ----
-  console.log("---- DEBUG: Transactions ----");
-  console.table(transactions);   // Shows all transactions in a table
-  console.log("---- DEBUG: Accounts ----");
-  const accountsDebug = [];
-  const seenDebug = new Set();
-  transactions.forEach(t => {
-    if (!seenDebug.has(t.account)) {
-      seenDebug.add(t.account);
-      accountsDebug.push(t.account);
-    }
-  });
-  console.log(accountsDebug); // Shows all unique accounts
-  // ---- DEBUG END ----
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
   const [aiOpen, setAiOpen] = useState(true);
-  const accounts = useMemo(() => {
-  const seen = new Set();
-  const list = [];
-  transactions.forEach(t => {
-    if (!seen.has(t.account)) {
-      seen.add(t.account);
-      list.push(t.account);
-    }
-  });
-  // ensure "Main Account" comes first
-  list.sort((a, b) => a === "Main Account" ? -1 : b === "Main Account" ? 1 : 0);
-  return list;
-}, [transactions]);
+
+  const accounts = useMemo(()=>{
+    const seen=new Set(),list=[];
+    transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});
+    list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);
+    return list;
+  },[transactions]);
+
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
   const actualWeeks = useMemo(()=>{
     const lastMonday=getWeekMonday(mostRecentDate);
@@ -1025,8 +921,8 @@ function CashFlowScreen({transactions, categories}) {
     const weekly={};
     transactions.forEach(t=>{
       const key=getWeekMonday(t.date).toISOString().slice(0,10);
-      if(!weekly[key]) weekly[key]={};
-      if(!weekly[key][t.account]) weekly[key][t.account]={};
+      if(!weekly[key])weekly[key]={};
+      if(!weekly[key][t.account])weekly[key][t.account]={};
       const amt=t.category==="Salary"?t.amount:-t.amount;
       weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;
     });
@@ -1035,95 +931,82 @@ function CashFlowScreen({transactions, categories}) {
   const weekBalances = useMemo(()=>{
     const bal={};
     [...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{
-      if(t.balance===null) return;
+      if(t.balance===null)return;
       const key=getWeekMonday(t.date).toISOString().slice(0,10);
-      if(!bal[key]) bal[key]={};
+      if(!bal[key])bal[key]={};
       bal[key][t.account]=t.balance;
     });
     return bal;
   },[transactions]);
- const forecastData = useMemo(()=>{
-  const out={};
-
-  // Helper: find the most common day-of-month a category transacts
-  function getMonthlyDay(acc, cat) {
-    const days = [];
-    transactions.forEach(t => {
-      if (t.account===acc && t.category===cat) days.push(t.date.getDate());
-    });
-    if (!days.length) return null;
-    const freq = {};
-    days.forEach(d => freq[d]=(freq[d]||0)+1);
-    return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
-  }
-
-  // Helper: does a week (mon to sun) contain a given day-of-month?
-  function weekContainsDay(weekMon, weekSun, dayOfMonth) {
-    const d = new Date(weekMon);
-    while (d <= weekSun) {
-      if (d.getDate() === dayOfMonth) return true;
-      d.setDate(d.getDate()+1);
+  const forecastData = useMemo(()=>{
+    const out={};
+    function getMonthlyDay(acc,cat){
+      const days=[];
+      transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});
+      if(!days.length)return null;
+      const freq={};
+      days.forEach(d=>freq[d]=(freq[d]||0)+1);
+      return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
     }
-    return false;
-  }
-
-  const MONTHLY_CATS = ["Salary","Rent","Memberships","Card Repayment"];
-  const ROLLING_CATS = ["Food","Travel","Other Payments"];
-
-  accounts.forEach(acc=>{
-    out[acc]={};
-    categories.forEach(cat=>{
-      const actualVals = actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
-      const avg = rollingAvg(actualVals);
-
-      if (MONTHLY_CATS.includes(cat)) {
-        const dayOfMonth = getMonthlyDay(acc, cat);
-        if (!dayOfMonth || avg===0) {
-          out[acc][cat] = Array(forecastWeeks.length).fill(0);
+    function weekContainsDay(weekMon,weekSun,dayOfMonth){
+      const d=new Date(weekMon);
+      while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}
+      return false;
+    }
+    const MONTHLY_CATS=["Salary","Rent","Memberships","Card Repayment"];
+    const ROLLING_CATS=["Food","Travel","Other Payments"];
+    accounts.forEach(acc=>{
+      out[acc]={};
+      categories.forEach(cat=>{
+        const actualVals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
+        const avg=rollingAvg(actualVals);
+        if(MONTHLY_CATS.includes(cat)){
+          const dayOfMonth=getMonthlyDay(acc,cat);
+          if(!dayOfMonth||avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
+          else{out[acc][cat]=forecastWeeks.map(w=>weekContainsDay(w.date,w.sunday,dayOfMonth)?avg:0);}
+        } else if(ROLLING_CATS.includes(cat)){
+          const window=[...actualVals];
+          const result=[];
+          for(let i=0;i<forecastWeeks.length;i++){
+            const last6=window.slice(-6);
+            const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/6);
+            result.push(forecastVal);
+            window.push(forecastVal);
+          }
+          out[acc][cat]=result;
         } else {
-          out[acc][cat] = forecastWeeks.map(w =>
-            weekContainsDay(w.date, w.sunday, dayOfMonth) ? avg : 0
-          );
+          out[acc][cat]=Array(forecastWeeks.length).fill(avg);
         }
-      } else if (ROLLING_CATS.includes(cat)) {
-        // Sliding 6-week rolling avg — window moves right including prior forecast values
-        const window = [...actualVals]; // starts as 6 actual weeks
-        const result = [];
-        for (let i=0; i<forecastWeeks.length; i++) {
-          const last6 = window.slice(-6);
-const forecastVal = Math.round(last6.reduce((a,b)=>a+b,0) / 6);
-          result.push(forecastVal);
-          window.push(forecastVal); // include this forecast in next window
-        }
-        out[acc][cat] = result;
-      } else {
-        out[acc][cat] = Array(forecastWeeks.length).fill(avg);
-      }
+      });
     });
-  });
-  return out;
-},[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions]);
+    return out;
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions]);
+
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
+
   const insights=useMemo(()=>{
     const tips=[],totals={};
     categories.forEach(cat=>{totals[cat]=actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),0);});
-    const top=Object.entries(totals).filter(([c])=>c!=="Salary").sort((a,b)=>b[1]-a[1])[0];
-    if(top) tips.push({icon:"📊",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`});
+    const top=Object.entries(totals).filter(([c])=>c!=="Salary"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
+    if(top)tips.push({icon:"📊",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`});
     categories.forEach(cat=>{
-      if(cat==="Salary") return;
+      if(cat==="Salary"||cat==="Card Repayment")return;
       const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));
       const avg=rollingAvg(vals),last=vals[vals.length-1];
-      if(avg>0&&last>avg*1.8) tips.push({icon:"⚠️",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`});
+      if(avg>0&&last>avg*1.8)tips.push({icon:"⚠️",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`});
     });
-    if(tips.length<2) tips.push({icon:"✅",color:"#10b981",title:"Looks stable",body:"No major anomalies detected."});
+    if(tips.length<2)tips.push({icon:"✅",color:"#10b981",title:"Looks stable",body:"No major anomalies detected."});
     return tips.slice(0,4);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat]);
+
   const tdAmt=(color,isForecast,bold)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.03)":undefined,borderRight:"1px solid #f0f0f0",whiteSpace:"nowrap"});
   const tdTot=(isForecast)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:isForecast?PURPLE:"#111827",background:isForecast?"rgba(99,102,241,0.06)":"#f9fafb",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",whiteSpace:"nowrap"});
+
   function CatRow({cat,account}) {
     const isIncome=cat==="Salary";
+    const isRepayment=cat==="Card Repayment";
     const key=`${account}::${cat}`;
     const hidden=hiddenCats.has(key);
     const actuals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0));
@@ -1131,13 +1014,19 @@ const forecastVal = Math.round(last6.reduce((a,b)=>a+b,0) / 6);
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
     const budget=budgets[key];
+    const rowColor=isIncome?"#f0fdf4":isRepayment?"#faf5ff":"#fff";
+    const textColor=isIncome?"#059669":isRepayment?"#7c3aed":"#111827";
     return (
-      <tr style={{opacity:hidden?0.35:1,borderBottom:"1px solid #f3f4f6",background:isIncome?"#f0fdf4":"#fff"}}>
-        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{account === "Main Account" ? "Main" : account}</td>
-        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:isIncome?"#059669":"#111827"}}>{isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}{cat}</td>
-        {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":"#374151",false)}>{fmtMoney(v)}</td>)}
+      <tr style={{opacity:hidden?0.35:1,borderBottom:"1px solid #f3f4f6",background:rowColor}}>
+        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
+        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor}}>
+          {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
+          {isRepayment&&<span style={{fontSize:9,marginRight:4}}>↔</span>}
+          {cat}
+        </td>
+        {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false)}>{fmtMoney(v)}</td>)}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
-        {forecasts.map((v,i)=>{const over=budget&&v>budget;return <td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
+        {forecasts.map((v,i)=>{const over=budget&&v>budget;return <td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
         <td style={{padding:"4px 8px",textAlign:"center"}}>
           {editingBudget===key
@@ -1153,112 +1042,74 @@ const forecastVal = Math.round(last6.reduce((a,b)=>a+b,0) / 6);
       </tr>
     );
   }
-function AccountSection({ account, categories, actualWeeks, forecastWeeks, weeklyByAccountCat, forecastData, weekBalances, budgets, setBudgets, hiddenCats, setHiddenCats }) {
-  const isMainAcc = account === "Main Account";
-const incomeCats = isMainAcc ? categories.filter(c => c === "Salary") : [];
-const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repayment");
 
-  // Safe actuals and forecasts per category
-  const accActuals = actualWeeks.map(w => {
-    const weeklyData = weeklyByAccountCat[w.key]?.[account] || {};
-    return spendCatsLocal.reduce((sum, cat) => sum + Math.abs(weeklyData[cat] || 0), 0);
-  });
-  const accForecasts = forecastWeeks.map((_, i) => {
-    const forecastForAcc = forecastData[account] || {};
-    return spendCatsLocal.reduce((sum, cat) => sum + (forecastForAcc[cat]?.[i] || 0), 0);
-  });
-
-  const accIncome = actualWeeks.map(w => {
-    const weeklyData = weeklyByAccountCat[w.key]?.[account] || {};
-    return incomeCats.reduce((sum, cat) => sum + Math.abs(weeklyData[cat] || 0), 0);
-  });
-  const accIncomeForecasts = forecastWeeks.map((_, i) => {
-    const forecastForAcc = forecastData[account] || {};
-    return incomeCats.reduce((sum, cat) => sum + (forecastForAcc[cat]?.[i] || 0), 0);
-  });
-
-  // Compute running opening balance per week safely
-  const weeklyNetActual = actualWeeks.map((w, i) => accIncome[i] - accActuals[i]);
-  const weeklyNetForecast = forecastWeeks.map((_, i) => accIncomeForecasts[i] - accForecasts[i]);
-
-  const knownBalances = actualWeeks.map(w => weekBalances[w.key]?.[account] ?? null);
-  const runningBalances = Array(actualWeeks.length).fill(null);
-  const firstKnownIdx = knownBalances.findIndex(b => b !== null);
-  if (firstKnownIdx !== -1) {
-    runningBalances[firstKnownIdx] = knownBalances[firstKnownIdx];
-    for (let i = firstKnownIdx + 1; i < actualWeeks.length; i++) {
-      runningBalances[i] = runningBalances[i - 1] !== null ? runningBalances[i - 1] + weeklyNetActual[i - 1] : null;
+  function AccountSection({account}) {
+    const isMainAcc=account==="Main Account";
+    const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
+    const spendCatsLocal=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
+    const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+    const accIncome=actualWeeks.map(w=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
+    const accIncomeForecasts=forecastWeeks.map((_,i)=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+    const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
+    const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
+    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
+    const runningBalances=Array(actualWeeks.length).fill(null);
+    const firstKnownIdx=knownBalances.findIndex(b=>b!==null);
+    if(firstKnownIdx!==-1){
+      runningBalances[firstKnownIdx]=knownBalances[firstKnownIdx];
+      for(let i=firstKnownIdx+1;i<actualWeeks.length;i++) runningBalances[i]=runningBalances[i-1]!==null?runningBalances[i-1]+weeklyNetActual[i-1]:null;
+      for(let i=firstKnownIdx-1;i>=0;i--) runningBalances[i]=runningBalances[i+1]!==null?runningBalances[i+1]-weeklyNetActual[i]:null;
     }
-    for (let i = firstKnownIdx - 1; i >= 0; i--) {
-      runningBalances[i] = runningBalances[i + 1] !== null ? runningBalances[i + 1] - weeklyNetActual[i] : null;
+    const lastActualBal=runningBalances.filter(b=>b!==null).slice(-1)[0]??null;
+    const forecastBalances=Array(forecastWeeks.length).fill(null);
+    if(lastActualBal!==null){
+      forecastBalances[0]=lastActualBal+weeklyNetActual[actualWeeks.length-1];
+      for(let i=1;i<forecastWeeks.length;i++) forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];
     }
-  }
-
-  const lastActualBal = runningBalances.filter(b => b !== null).slice(-1)[0] ?? null;
-  const forecastBalances = Array(forecastWeeks.length).fill(null);
-  if (lastActualBal !== null) {
-    forecastBalances[0] = lastActualBal + weeklyNetActual[actualWeeks.length - 1];
-    for (let i = 1; i < forecastWeeks.length; i++) {
-      forecastBalances[i] = forecastBalances[i - 1] + weeklyNetForecast[i - 1];
-    }
+    const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
+    return (
+      <>
+        <tr style={{background:"#1e1b4b"}}>
+          <td colSpan={2} style={{padding:"7px 12px",fontSize:12,fontWeight:800,color:"#e0e7ff"}}>{account}</td>
+          {actualWeeks.map((_,i)=><td key={i} style={{background:"#1e1b4b",borderRight:"1px solid #2d2a6e"}}/>)}
+          <td style={{background:"#1e1b4b",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+          {forecastWeeks.map((_,i)=><td key={i} style={{background:"#312e81",borderRight:"1px solid #3730a3"}}/>)}
+          <td style={{background:"#312e81",borderLeft:"2px solid #3730a3"}}/><td style={{background:"#1e1b4b"}} colSpan={2}/>
+        </tr>
+        <tr style={{background:"#f8fafc",borderBottom:"1px solid #eef0f3"}}>
+          <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af"}}/>
+          <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151"}}>Opening Balance</td>
+          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          <td style={{borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",background:"#f9fafb"}}/>
+          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          <td style={{borderLeft:"2px solid #e5e7eb",background:"rgba(99,102,241,0.02)"}}/><td/><td/>
+        </tr>
+        {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        {spendCatsLocal.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
+        <tr style={{background:"#f3f4f6",borderBottom:"1px solid #e5e7eb"}}>
+          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151"}}>Total Spend</td>
+          {accActuals.map((v,i)=><td key={i} style={tdAmt("#111827",false,true)}>{fmtMoney(v)}</td>)}
+          <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
+          {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
+          <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
+          <td/><td/>
+        </tr>
+        <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
+          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151"}}>Net Movement</td>
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
+          <td/><td/>
+        </tr>
+      </>
+    );
   }
 
   return (
-    <>
-      {/* Account Header */}
-      <tr style={{ background: "#1e1b4b" }}>
-        <td colSpan={2} style={{ padding: "7px 12px", fontSize: 12, fontWeight: 800, color: "#e0e7ff" }}>{account}</td>
-        {actualWeeks.map((_, i) => <td key={i} style={{ background: "#1e1b4b", borderRight: "1px solid #2d2a6e" }} />)}
-        <td style={{ background: "#1e1b4b", borderLeft: "2px solid #2d2a6e", borderRight: "2px solid #2d2a6e" }} />
-        {forecastWeeks.map((_, i) => <td key={i} style={{ background: "#312e81", borderRight: "1px solid #3730a3" }} />)}
-        <td style={{ background: "#312e81", borderLeft: "2px solid #3730a3" }} />
-        <td style={{ background: "#1e1b4b" }} colSpan={2} />
-      </tr>
-
-      {/* Opening Balance */}
-      <tr style={{ background: "#f8fafc", borderBottom: "1px solid #eef0f3" }}>
-        <td style={{ padding: "5px 6px 5px 12px", fontSize: 10, color: "#9ca3af" }} />
-        <td style={{ padding: "5px 12px", fontSize: 11, fontWeight: 700, color: "#374151" }}>Opening Balance</td>
-        {runningBalances.map((bal, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 400, color: bal === null ? "#d1d5db" : bal >= 0 ? "#059669" : "#ef4444" }}>{bal !== null ? fmtMoney(bal) : "—"}</td>)}
-        <td style={{ borderLeft: "2px solid #e5e7eb", borderRight: "2px solid #e5e7eb", background: "#f9fafb" }} />
-        {forecastBalances.map((bal, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 400, color: bal === null ? "#d1d5db" : bal >= 0 ? "#059669" : "#ef4444", background: "rgba(99,102,241,0.03)" }}>{bal !== null ? fmtMoney(bal) : "—"}</td>)}
-        <td style={{ borderLeft: "2px solid #e5e7eb", background: "rgba(99,102,241,0.02)" }} /><td /><td />
-      </tr>
-
-      {/* Income Categories */}
-      {incomeCats.map(cat => <CatRow key={`${account}::${cat}`} cat={cat} account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />)}
-{spendCatsLocal.map(cat => <CatRow key={`${account}::${cat}`} cat={cat} account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />)}
-<CatRow key={`${account}::Card Repayment`} cat="Card Repayment" account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />
-
-      {/* Total Spend */}
-      <tr style={{ background: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>
-        <td /><td style={{ padding: "6px 12px", fontSize: 11, fontWeight: 800, color: "#374151" }}>Total Spend</td>
-        {accActuals.map((v, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: "#111827" }}>{fmtMoney(v)}</td>)}
-        <td style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: "#111827", borderLeft: "2px solid #e5e7eb", borderRight: "2px solid #e5e7eb" }}>{fmtMoney(accActuals.reduce((a, b) => a + b, 0))}</td>
-        {accForecasts.map((v, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: PURPLE, background: "rgba(99,102,241,0.06)" }}>{fmtMoney(v)}</td>)}
-        <td style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: PURPLE, borderLeft: "2px solid #e5e7eb", borderRight: "2px solid #e5e7eb" }}>{fmtMoney(accForecasts.reduce((a, b) => a + b, 0))}</td>
-        <td /><td />
-      </tr>
-
-      {/* Net Movement */}
-      <tr style={{ background: "#fff", borderTop: "2px solid #000", borderBottom: "2px solid #000", fontWeight: 700 }}>
-        <td /><td style={{ padding: "6px 12px", fontSize: 11, fontWeight: 800, color: "#374151" }}>Net Movement</td>
-        {weeklyNetActual.map((v, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: v >= 0 ? "#059669" : "#ef4444" }}>{v === 0 ? "-" : v > 0 ? `£${Math.round(v).toLocaleString()}` : `(£${Math.round(Math.abs(v)).toLocaleString()})`}</td>)}
-        <td style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: weeklyNetActual.reduce((a, b) => a + b, 0) >= 0 ? "#059669" : "#ef4444" }}>
-          {weeklyNetActual.reduce((a, b) => a + b, 0) >= 0 ? `£${Math.round(weeklyNetActual.reduce((a, b) => a + b, 0)).toLocaleString()}` : `(£${Math.round(Math.abs(weeklyNetActual.reduce((a, b) => a + b, 0))).toLocaleString()})`}
-        </td>
-        {weeklyNetForecast.map((v, i) => <td key={i} style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: v >= 0 ? "#059669" : "#ef4444" }}>{v === 0 ? "-" : v > 0 ? `£${Math.round(v).toLocaleString()}` : `(£${Math.round(Math.abs(v)).toLocaleString()})`}</td>)}
-        <td style={{ padding: "5px 10px", textAlign: "right", fontSize: 12, fontWeight: 700, color: weeklyNetForecast.reduce((a, b) => a + b, 0) >= 0 ? "#059669" : "#ef4444" }}>
-          {weeklyNetForecast.reduce((a, b) => a + b, 0) >= 0 ? `£${Math.round(weeklyNetForecast.reduce((a, b) => a + b, 0)).toLocaleString()}` : `(£${Math.round(Math.abs(weeklyNetForecast.reduce((a, b) => a + b, 0))).toLocaleString()})`}
-          <tr style={{ height: 8 }}><td colSpan={20} /></tr>
-        </td>
-        <td /><td />
-      </tr>
-    </>
-  );
-}
-  return (
-    <div style={{display:"flex",height:"calc(100vh - 57px)"}}>
+    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
       <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
         <div style={{display:"flex",gap:12,marginBottom:20}}>
           {[
@@ -1309,21 +1160,7 @@ const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repa
               </tr>
             </thead>
             <tbody>
-              {accounts.map(acc => (  <AccountSection
-    key={acc}
-    account={acc}
-    categories={categories}
-    actualWeeks={actualWeeks}
-    forecastWeeks={forecastWeeks}
-    weeklyByAccountCat={weeklyByAccountCat}
-    forecastData={forecastData}
-    weekBalances={weekBalances}
-    budgets={budgets}
-    setBudgets={setBudgets}
-    hiddenCats={hiddenCats}
-    setHiddenCats={setHiddenCats}
-  />
-))}
+              {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
               <tr style={{background:"#111827",borderTop:"2px solid #374151"}}>
                 <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#fff"}}>TOTAL SPEND</td>
                 {totalActualByWeek.map((v,i)=><td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:"#f3f4f6",borderRight:"1px solid #374151"}}>{fmtMoney(v)}</td>)}
@@ -1361,6 +1198,7 @@ const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repa
   );
 }
 
+// ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("upload");
   const [rawTransactions, setRawTransactions] = useState([]);
@@ -1370,16 +1208,10 @@ export default function App() {
   const [finalCategories, setFinalCategories] = useState([]);
   return (
     <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh"}}>
-      {screen==="cashflow"&&(
-        <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",alignItems:"center",height:57}}>
-          <img src={logo} alt="Abound" style={{height:36}}/>
-          <button onClick={()=>setScreen("upload")} style={{marginLeft:24,fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
-        </div>
-      )}
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
-      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={(txns,cats)=>{setSortedTransactions(txns);setFinalCategories(cats);setScreen("cashflow");}}/>}
-      {screen==="cashflow"&&<CashFlowScreen transactions={sortedTransactions} categories={finalCategories}/>}
+      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={(txns,cats)=>{setSortedTransactions(txns);setFinalCategories(cats);setScreen("main");}}/>}
+      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={()=>setScreen("upload")}/>}
     </div>
   );
 }

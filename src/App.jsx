@@ -243,19 +243,18 @@ function normaliseRows(rows, accountLabel) {
     const narrative = String(row[narKey] || "").replace(/\r\n|\r|\n/g," ").trim();
     const balance = balKey ? (Number(String(row[balKey]).replace(/[£,]/g,"")) || null) : null;
 
-    if (!date || !narrative || amount === 0) return null;
+    if (!date || !narrative || rawAmt === 0) return null;
 
     let isIncome = false;
     let spendAmt = amount;
 
     if (isMainAccount) {
-      // Main account: positive = income, negative = spend
-      isIncome = rawAmt > 0;
-    } else {
-      // Credit card: positive = expenditure, negative = repayment
-      if (rawAmt < 0) spendAmt = Math.abs(rawAmt) * -1; // negative = repayment
-      else spendAmt = amount; // positive = expenditure
-    }
+  isIncome = rawAmt > 0;
+} else {
+  // Credit card: negative = repayment (treat as income), positive = spend
+  isIncome = rawAmt < 0;
+  spendAmt = Math.abs(rawAmt);
+}
 
     return {
       date,
@@ -274,7 +273,12 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
   const withLookup = transactions.map(t => {
-    if (t.isIncome) return {...t, category:"Salary"};
+    if (t.isIncome && t.account === "Main Account") {
+  return {...t, category: "Salary"};
+}
+if (t.isIncome && t.account !== "Main Account") {
+  return {...t, category: "Card Repayment"};
+}
     const cat = merchantLookup(t.narrative);
     return {...t, category: cat || null};
   });
@@ -402,7 +406,8 @@ function UploadScreen({ onDone }) {
     for (const acc of accounts) {
       if (!acc.file) continue;
       const rows = await readExcelFile(acc.file);
-      const label = !mainAssigned ? "Main Account" : `Credit Card ${acc.id}`;
+      const ccIndex = accounts.filter(a => a.file).indexOf(acc);
+const label = !mainAssigned ? "Main Account" : ccIndex === 1 ? "Credit Card" : `Credit Card ${ccIndex}`;
       mainAssigned = true;
       allRows.push(...normaliseRows(rows, label));
     }
@@ -1037,12 +1042,68 @@ function CashFlowScreen({transactions, categories}) {
     });
     return bal;
   },[transactions]);
-  const forecastData = useMemo(()=>{
-    const out={};
-    accounts.forEach(acc=>{out[acc]={};categories.forEach(cat=>{const vals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));out[acc][cat]=Array(6).fill(rollingAvg(vals));});});
-    return out;
-  },[accounts,categories,actualWeeks,weeklyByAccountCat]);
-  const spendCats=categories.filter(c=>c!=="Salary");
+ const forecastData = useMemo(()=>{
+  const out={};
+
+  // Helper: find the most common day-of-month a category transacts
+  function getMonthlyDay(acc, cat) {
+    const days = [];
+    transactions.forEach(t => {
+      if (t.account===acc && t.category===cat) days.push(t.date.getDate());
+    });
+    if (!days.length) return null;
+    const freq = {};
+    days.forEach(d => freq[d]=(freq[d]||0)+1);
+    return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
+  }
+
+  // Helper: does a week (mon to sun) contain a given day-of-month?
+  function weekContainsDay(weekMon, weekSun, dayOfMonth) {
+    const d = new Date(weekMon);
+    while (d <= weekSun) {
+      if (d.getDate() === dayOfMonth) return true;
+      d.setDate(d.getDate()+1);
+    }
+    return false;
+  }
+
+  const MONTHLY_CATS = ["Salary","Rent","Memberships","Card Repayment"];
+  const ROLLING_CATS = ["Food","Travel","Other Payments"];
+
+  accounts.forEach(acc=>{
+    out[acc]={};
+    categories.forEach(cat=>{
+      const actualVals = actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
+      const avg = rollingAvg(actualVals);
+
+      if (MONTHLY_CATS.includes(cat)) {
+        const dayOfMonth = getMonthlyDay(acc, cat);
+        if (!dayOfMonth || avg===0) {
+          out[acc][cat] = Array(forecastWeeks.length).fill(0);
+        } else {
+          out[acc][cat] = forecastWeeks.map(w =>
+            weekContainsDay(w.date, w.sunday, dayOfMonth) ? avg : 0
+          );
+        }
+      } else if (ROLLING_CATS.includes(cat)) {
+        // Sliding 6-week rolling avg — window moves right including prior forecast values
+        const window = [...actualVals]; // starts as 6 actual weeks
+        const result = [];
+        for (let i=0; i<forecastWeeks.length; i++) {
+          const last6 = window.slice(-6);
+const forecastVal = Math.round(last6.reduce((a,b)=>a+b,0) / 6);
+          result.push(forecastVal);
+          window.push(forecastVal); // include this forecast in next window
+        }
+        out[acc][cat] = result;
+      } else {
+        out[acc][cat] = Array(forecastWeeks.length).fill(avg);
+      }
+    });
+  });
+  return out;
+},[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions]);
+  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
   const insights=useMemo(()=>{
@@ -1093,8 +1154,9 @@ function CashFlowScreen({transactions, categories}) {
     );
   }
 function AccountSection({ account, categories, actualWeeks, forecastWeeks, weeklyByAccountCat, forecastData, weekBalances, budgets, setBudgets, hiddenCats, setHiddenCats }) {
-  const incomeCats = categories.filter(c => c === "Salary");
-  const spendCatsLocal = categories.filter(c => c !== "Salary");
+  const isMainAcc = account === "Main Account";
+const incomeCats = isMainAcc ? categories.filter(c => c === "Salary") : [];
+const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repayment");
 
   // Safe actuals and forecasts per category
   const accActuals = actualWeeks.map(w => {
@@ -1165,9 +1227,8 @@ function AccountSection({ account, categories, actualWeeks, forecastWeeks, weekl
 
       {/* Income Categories */}
       {incomeCats.map(cat => <CatRow key={`${account}::${cat}`} cat={cat} account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />)}
-
-      {/* Spend Categories */}
-      {spendCatsLocal.map(cat => <CatRow key={`${account}::${cat}`} cat={cat} account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />)}
+{spendCatsLocal.map(cat => <CatRow key={`${account}::${cat}`} cat={cat} account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />)}
+<CatRow key={`${account}::Card Repayment`} cat="Card Repayment" account={account} budgets={budgets} setBudgets={setBudgets} hiddenCats={hiddenCats} />
 
       {/* Total Spend */}
       <tr style={{ background: "#f3f4f6", borderBottom: "1px solid #e5e7eb" }}>

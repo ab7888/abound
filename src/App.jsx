@@ -985,6 +985,54 @@ function CashFlowScreen({transactions, categories}) {
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
+  const combinedClosingBalances = useMemo(() => {
+  const getAccountData = (acc) => {
+    const isMainAcc = acc === "Main Account";
+    const incomeCats = isMainAcc ? ["Salary"] : [];
+    const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repayment");
+
+    const actualsPerWeek = actualWeeks.map(w => spendCatsLocal.reduce((s,c) => s + Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0), 0));
+    const incomePerWeek  = actualWeeks.map(w => incomeCats.reduce((s,c)  => s + Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0), 0));
+    const netActual      = actualWeeks.map((_,i) => incomePerWeek[i] - actualsPerWeek[i]);
+
+    const knownBals = actualWeeks.map(w => weekBalances[w.key]?.[acc] ?? null);
+    const runningBals = Array(actualWeeks.length).fill(null);
+    const firstKnown = knownBals.findIndex(b => b !== null);
+    if (firstKnown !== -1) {
+      runningBals[firstKnown] = knownBals[firstKnown];
+      for (let i = firstKnown + 1; i < actualWeeks.length; i++)
+        runningBals[i] = runningBals[i-1] !== null ? runningBals[i-1] + netActual[i-1] : null;
+      for (let i = firstKnown - 1; i >= 0; i--)
+        runningBals[i] = runningBals[i+1] !== null ? runningBals[i+1] - netActual[i] : null;
+    }
+
+    const lastActualBal = runningBals.filter(b => b !== null).slice(-1)[0] ?? null;
+    const fActualsPerWeek  = forecastWeeks.map((_,i) => spendCatsLocal.reduce((s,c) => s + (forecastData[acc]?.[c]?.[i]||0), 0));
+    const fIncomePerWeek   = forecastWeeks.map((_,i) => incomeCats.reduce((s,c)  => s + (forecastData[acc]?.[c]?.[i]||0), 0));
+    const netForecast      = forecastWeeks.map((_,i) => fIncomePerWeek[i] - fActualsPerWeek[i]);
+
+    const forecastBals = Array(forecastWeeks.length).fill(null);
+    if (lastActualBal !== null) {
+      forecastBals[0] = lastActualBal + netActual[actualWeeks.length - 1];
+      for (let i = 1; i < forecastWeeks.length; i++)
+        forecastBals[i] = forecastBals[i-1] + netForecast[i-1];
+    }
+
+    const actualClosing   = runningBals.map((ob, i) => ob !== null ? ob + netActual[i] : null);
+    const forecastClosing = forecastBals.map((ob, i) => ob !== null ? ob + netForecast[i] : null);
+    return { actualClosing, forecastClosing };
+  };
+
+  const actual = actualWeeks.map((_, wi) => {
+    const vals = accounts.map(acc => getAccountData(acc).actualClosing[wi]);
+    return vals.every(v => v === null) ? null : vals.reduce((s, v) => s + (v||0), 0);
+  });
+  const forecast = forecastWeeks.map((_, wi) => {
+    const vals = accounts.map(acc => getAccountData(acc).forecastClosing[wi]);
+    return vals.every(v => v === null) ? null : vals.reduce((s, v) => s + (v||0), 0);
+  });
+  return { actual, forecast };
+}, [accounts, categories, actualWeeks, forecastWeeks, weeklyByAccountCat, weekBalances, forecastData]);
 
   const insights=useMemo(()=>{
     const tips=[],totals={};
@@ -1162,13 +1210,24 @@ function CashFlowScreen({transactions, categories}) {
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
               <tr style={{background:"#111827",borderTop:"2px solid #374151"}}>
-                <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#fff"}}>TOTAL SPEND</td>
-                {totalActualByWeek.map((v,i)=><td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:"#f3f4f6",borderRight:"1px solid #374151"}}>{fmtMoney(v)}</td>)}
-                <td style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:"#fff",background:"#0f0e1a",borderLeft:"2px solid #374151",borderRight:"2px solid #374151"}}>{fmtMoney(totalActualByWeek.reduce((a,b)=>a+b,0))}</td>
-                {totalForecastByWeek.map((v,i)=><td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:"#a5b4fc",background:"rgba(99,102,241,0.15)",borderRight:"1px solid #374151"}}>{fmtMoney(v)}</td>)}
-                <td style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:"#a5b4fc",background:"rgba(99,102,241,0.2)",borderLeft:"2px solid #374151"}}>{fmtMoney(totalForecastByWeek.reduce((a,b)=>a+b,0))}</td>
-                <td style={{background:"#111827"}} colSpan={2}/>
-              </tr>
+  <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#fff"}}>CLOSING BALANCE</td>
+  {combinedClosingBalances.actual.map((v,i)=>(
+    <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,
+      color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #374151"}}>
+      {v===null?"—":fmtMoney(v)}
+    </td>
+  ))}
+  <td style={{padding:"7px 10px",background:"#0f0e1a",borderLeft:"2px solid #374151",borderRight:"2px solid #374151"}}/>
+  {combinedClosingBalances.forecast.map((v,i)=>(
+    <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,
+      color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",
+      background:"rgba(99,102,241,0.2)",borderRight:"1px solid #374151"}}>
+      {v===null?"—":fmtMoney(v)}
+    </td>
+  ))}
+  <td style={{background:"rgba(99,102,241,0.2)",borderLeft:"2px solid #374151"}}/>
+  <td style={{background:"#111827"}} colSpan={2}/>
+</tr>
             </tbody>
           </table>
         </div>

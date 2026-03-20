@@ -1289,10 +1289,8 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
   const [tourVisible, setTourVisible] = useState(false);
   const [tooltip, setTooltip] = useState(null); // {text, x, y}
 
-const tourShownRef = useRef(false);
-  useEffect(()=>{
-    if(tourShownRef.current) return;
-    tourShownRef.current = true;
+useEffect(()=>{
+    if(localStorage.getItem("abound_tour_seen")) return;
     const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
     return()=>clearTimeout(t);
   },[]);

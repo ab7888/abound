@@ -1316,17 +1316,13 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
   ];
 
-  const highlightRect = useRef(null);
-  useEffect(()=>{
-    if(!tourVisible||!currentStep?.highlight)return;
+  const getHighlightRect = () => {
+    if(!tourVisible||!currentStep?.highlight) return null;
     const el = document.querySelector(`[data-tour="${currentStep.highlight}"]`);
-    if(el){
-      const r = el.getBoundingClientRect();
-      highlightRect.current = {top:r.top-6, left:r.left-6, width:r.width+12, height:r.height+12};
-    } else {
-      highlightRect.current = null;
-    }
-  },[tourStep,tourVisible]);
+    if(!el) return null;
+    const r = el.getBoundingClientRect();
+    return {top:r.top-6, left:r.left-6, width:r.width+12, height:r.height+12};
+  };
 
   function advanceTour(){
     if(tourStep===0){setTourStep(1);return;}
@@ -1549,7 +1545,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
 
       {/* Tour spotlight overlay */}
       {tourVisible&&currentStep&&(()=>{
-        const hr=highlightRect.current;
+        const hr=getHighlightRect();
         return(
           <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
             {/* SVG overlay with cutout hole for highlighted element */}

@@ -960,15 +960,58 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
     </div>
   );
 
-  const MobileSort=()=>{
+const MobileSort=()=>{
     const topItem=unsorted[0];
+    const cardRef=useRef(null);
+    const txStartX=useRef(null);
+    const txStartY=useRef(null);
+    const activeTargetRef=useRef(null);
+    const [localOffset,setLocalOffset]=useState(0);
+    const [localTarget,setLocalTarget]=useState(null);
+
+    // Reset card when top item changes
+    useEffect(()=>{
+      setLocalOffset(0);setLocalTarget(null);
+      activeTargetRef.current=null;txStartX.current=null;txStartY.current=null;
+    },[topItem?.narrative]);
+
+    // Non-passive touch listeners — the only way e.preventDefault() works in React
+    useEffect(()=>{
+      const el=cardRef.current;
+      if(!el||!topItem)return;
+      function onTS(e){txStartX.current=e.touches[0].clientX;txStartY.current=e.touches[0].clientY;}
+      function onTM(e){
+        if(txStartX.current===null)return;
+        const dx=e.touches[0].clientX-txStartX.current;
+        const dy=e.touches[0].clientY-txStartY.current;
+        if(Math.abs(dx)>Math.abs(dy)+8){
+          e.preventDefault(); // works because listener is non-passive
+          setLocalOffset(dx);
+          let t=null;
+          if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])t=visibleMobileCats[0];
+          else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])t=visibleMobileCats[1];
+          activeTargetRef.current=t;
+          setLocalTarget(t);
+        }
+      }
+      function onTE(){
+        if(activeTargetRef.current)assignItem(topItem.narrative,activeTargetRef.current);
+        setLocalOffset(0);setLocalTarget(null);
+        activeTargetRef.current=null;txStartX.current=null;txStartY.current=null;
+      }
+      el.addEventListener('touchstart',onTS,{passive:true});
+      el.addEventListener('touchmove',onTM,{passive:false});
+      el.addEventListener('touchend',onTE,{passive:true});
+      return()=>{el.removeEventListener('touchstart',onTS);el.removeEventListener('touchmove',onTM);el.removeEventListener('touchend',onTE);};
+    },[topItem?.narrative,visibleMobileCats[0],visibleMobileCats[1]]);
+
     const swipeRight=visibleMobileCats[0],swipeLeft=visibleMobileCats[1];
     const swipeRightColor=swipeRight==="Skip"?"#6b7280":catColor(swipeRight,spendCats.indexOf(swipeRight));
     const swipeLeftColor=swipeLeft==="Skip"?"#6b7280":catColor(swipeLeft,spendCats.indexOf(swipeLeft));
-    const swipeProgress=Math.min(Math.abs(swipeOffset)/SWIPE_THRESHOLD,1);
-    const swipingRight=swipeOffset>20,swipingLeft=swipeOffset<-20;
+    const swipeProgress=Math.min(Math.abs(localOffset)/SWIPE_THRESHOLD,1);
+    const swipingRight=localOffset>20,swipingLeft=localOffset<-20;
     return(
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden",touchAction:"none",userSelect:"none"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
@@ -986,15 +1029,15 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             <>
               {visible.slice(1,3).map((item,idx)=>(<div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:16,padding:"16px",transform:`translateY(${(idx+1)*6}px) scale(${1-(idx+1)*0.03})`,transformOrigin:"top center",zIndex:1-idx}}/>))}
               {topItem&&(
-                <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
-                  style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${swipeTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${swipeOffset}px) rotate(${swipeOffset*0.03}deg)`,transition:swipeOffset===0?"transform 0.3s":"none",zIndex:10,touchAction:"none",userSelect:"none"}}>
-                  {swipeTarget&&(<div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>{swipeTarget==="Skip"?"NOT SURE":swipeTarget.toUpperCase()}</div>)}
+                <div ref={cardRef}
+                  style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${localTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${localOffset}px) rotate(${localOffset*0.03}deg)`,transition:localOffset===0?"transform 0.3s":"none",zIndex:10,userSelect:"none"}}>
+                  {localTarget&&(<div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>{localTarget==="Skip"?"NOT SURE":localTarget.toUpperCase()}</div>)}
                   <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:8}}>{topItem.narrative}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(topItem.total).toLocaleString()}</span>
                     <span style={{fontSize:12,color:"#4b5563"}}>{topItem.count} txn{topItem.count>1?"s":""}</span>
                   </div>
-                  <div style={{fontSize:10,color:"#374151",marginTop:6}}>{unsorted.length} left</div>
+                  <div style={{fontSize:10,color:"#4b5563",marginTop:6}}>{unsorted.length} left · swipe or tap below</div>
                 </div>
               )}
             </>
@@ -1004,7 +1047,8 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
           {visibleMobileCats.map(cat=>{
             const isSkip=cat==="Skip",color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
             const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
-            return(<button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}} style={{padding:"12px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
+            return(<button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}} style={{padding:"14px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center",WebkitTapHighlightColor:"transparent"}}>
+              <span style={{fontSize:20}}>{getBucketEmoji(cat)}</span>
               <span>{isSkip?"Not sure":cat}</span>
               {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
             </button>);
@@ -1012,15 +1056,15 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
         </div>
         {totalPages>1&&(
           <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center"}}>
-            <button onClick={()=>setMobileCatPage(p=>Math.max(0,p-1))} disabled={mobileCatPage===0} style={{fontSize:16,background:"none",border:"none",color:mobileCatPage===0?"#2d2a6e":"#6366f1",cursor:"pointer"}}>‹</button>
-            {Array.from({length:totalPages}).map((_,i)=>(<div key={i} onClick={()=>setMobileCatPage(i)} style={{width:6,height:6,borderRadius:"50%",background:i===mobileCatPage?"#6366f1":"#2d2a6e",cursor:"pointer"}}/>))}
-            <button onClick={()=>setMobileCatPage(p=>Math.min(totalPages-1,p+1))} disabled={mobileCatPage===totalPages-1} style={{fontSize:16,background:"none",border:"none",color:mobileCatPage===totalPages-1?"#2d2a6e":"#6366f1",cursor:"pointer"}}>›</button>
+            <button onClick={()=>setMobileCatPage(p=>Math.max(0,p-1))} disabled={mobileCatPage===0} style={{fontSize:20,padding:"4px 12px",background:"none",border:"none",color:mobileCatPage===0?"#2d2a6e":"#6366f1",cursor:"pointer"}}>‹</button>
+            {Array.from({length:totalPages}).map((_,i)=>(<div key={i} onClick={()=>setMobileCatPage(i)} style={{width:8,height:8,borderRadius:"50%",background:i===mobileCatPage?"#6366f1":"#2d2a6e",cursor:"pointer"}}/>))}
+            <button onClick={()=>setMobileCatPage(p=>Math.min(totalPages-1,p+1))} disabled={mobileCatPage===totalPages-1} style={{fontSize:20,padding:"4px 12px",background:"none",border:"none",color:mobileCatPage===totalPages-1?"#2d2a6e":"#6366f1",cursor:"pointer"}}>›</button>
           </div>
         )}
       </div>
     );
   };
-
+  
   return(
     <div style={{height:"100vh",maxHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>

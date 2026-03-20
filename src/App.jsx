@@ -1291,6 +1291,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
 
 useEffect(()=>{
     if(localStorage.getItem("abound_tour_seen")) return;
+    localStorage.setItem("abound_tour_seen","1");
     const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
     return()=>clearTimeout(t);
   },[]);

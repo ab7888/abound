@@ -2,12 +2,31 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import logo from "./logo.png";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Salary", "Other Payments"];
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
 const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card", 2:"Credit Card 2", 3:"Credit Card 3" };
 
+const GLOBAL_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  *, *::before, *::after { box-sizing: border-box; }
+  body { -webkit-font-smoothing: antialiased; }
+  @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
+  @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes fadeIn { from{opacity:0} to{opacity:1} }
+  @keyframes heroText { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes scanline { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes glow { 0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.3)} 50%{box-shadow:0 0 28px rgba(99,102,241,0.7)} }
+  @keyframes slideInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-4px);opacity:1} }
+  @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }
+`;
+
+// ─── Merchant data ────────────────────────────────────────────────────────────
 const MERCHANT_MAP = {
   Food: [
     "tesco","sainsbury","waitrose","lidl","aldi","asda","morrisons","marks","m&s","co-op","coop",
@@ -83,6 +102,7 @@ const INTERCOMPANY_PATTERNS = [
   "capital one","aqua","vanquis","newday","fluid","aquis"
 ];
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 function merchantLookup(narrative) {
   const n = narrative.toLowerCase().trim();
   if (INTERCOMPANY_PATTERNS.some(p => n.includes(p))) return INTERCOMPANY_CATEGORY;
@@ -135,6 +155,7 @@ function fmtMoney(v) {
 }
 function rollingAvg(vals) { const nz=vals.filter(v=>v>0); return nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0; }
 
+// ─── File Reading ─────────────────────────────────────────────────────────────
 function readExcelFile(file) {
   return new Promise(resolve => {
     const reader = new FileReader();
@@ -146,49 +167,29 @@ function readExcelFile(file) {
           : XLSX.read(new Uint8Array(e.target.result), {type:"array"});
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const allRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:"", raw:true});
-
         const dateRx = /^date$/i;
         const descRx = /^(description|narrative|details|merchant|payee|reference)$/i;
         const amtRx  = /^(amount|value|debit|credit|trans)$/i;
-
         let headerRowIndex = -1;
         let dateKey, descKey, amtKey;
-
         for (let i = 0; i < Math.min(allRows.length, 20); i++) {
           const row = allRows[i].map(c => String(c).trim());
           const dIdx = row.findIndex(c => dateRx.test(c));
           const nIdx = row.findIndex(c => descRx.test(c));
           const aIdx = row.findIndex(c => amtRx.test(c));
-          // All three must be present for this to be the header row
           if (dIdx !== -1 && nIdx !== -1 && aIdx !== -1) {
             headerRowIndex = i;
-            dateKey = row[dIdx];
-            descKey = row[nIdx];
-            amtKey  = row[aIdx];
+            dateKey = row[dIdx]; descKey = row[nIdx]; amtKey = row[aIdx];
             break;
           }
         }
-
-        if (headerRowIndex === -1) {
-          console.warn("Could not find header row with Date + Description + Amount");
-          resolve([]);
-          return;
-        }
-
+        if (headerRowIndex === -1) { resolve([]); return; }
         const headers = allRows[headerRowIndex].map(h => String(h).trim());
         const dataRows = allRows.slice(headerRowIndex + 1)
           .filter(r => r.some(c => c !== "" && c !== null && c !== undefined))
-          .map(r => {
-            const obj = {};
-            headers.forEach((h, i) => { if (h) obj[h] = r[i] ?? ""; });
-            return obj;
-          });
-
+          .map(r => { const obj = {}; headers.forEach((h, i) => { if (h) obj[h] = r[i] ?? ""; }); return obj; });
         resolve(dataRows);
-      } catch(err) {
-        console.error("Error reading file:", err);
-        resolve([]);
-      }
+      } catch(err) { console.error("Error reading file:", err); resolve([]); }
     };
     if (ext==="csv") reader.readAsText(file);
     else reader.readAsArrayBuffer(file);
@@ -216,6 +217,7 @@ function normaliseRows(rows, accountLabel) {
   }).filter(Boolean);
 }
 
+// ─── AI Categorisation ────────────────────────────────────────────────────────
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
@@ -290,96 +292,209 @@ Respond ONLY with a JSON array of ${batch.length} category strings. No explanati
   });
 }
 
-function LoadingScreen({pct, message, done}) {
+// ─── SCREEN 0: Hero ───────────────────────────────────────────────────────────
+function HeroScreen({onEnter}) {
+  const [phase, setPhase] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  useEffect(()=>{
+    const t1=setTimeout(()=>setPhase(1),500);
+    const t2=setTimeout(()=>setPhase(2),1200);
+    return ()=>{clearTimeout(t1);clearTimeout(t2);};
+  },[]);
+  function handleEnter(){setLeaving(true);setTimeout(onEnter,500);}
+  const features=[
+    {dot:"#10b981",text:"No bank logins. Ever."},
+    {dot:"#6366f1",text:"Upload your statement. See 6 weeks ahead."},
+    {dot:"#f59e0b",text:"Built for people who want to actually understand their money."},
+  ];
   return (
-    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#0f0e1a",padding:40}}>
-      <img src={logo} alt="Abound" style={{height:64,marginBottom:40}}/>
-      {done?(
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:48,marginBottom:16}}>✅</div>
-          <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:8}}>All categorised.</div>
-          <div style={{fontSize:14,color:"#6b7280"}}>Review your spending breakdown...</div>
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden",opacity:leaving?0:1,transition:"opacity 0.5s ease"}}>
+      <style>{GLOBAL_CSS}</style>
+      {/* Background radial + grid */}
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 60%)",pointerEvents:"none"}}/>
+      <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.03) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
+      <div style={{position:"relative",zIndex:1,maxWidth:540,width:"100%",textAlign:"center"}}>
+        <div style={{marginBottom:48,animation:"fadeIn 0.6s ease both"}}>
+          <img src={logo} alt="Abound" style={{height:44,opacity:0.95}}/>
         </div>
-      ):(
-        <div style={{width:"100%",maxWidth:420,textAlign:"center"}}>
-          <div style={{fontSize:18,fontWeight:700,color:"#fff",marginBottom:8}}>{message||"Analysing your transactions..."}</div>
-          <div style={{fontSize:13,color:"#4b5563",marginBottom:32}}>Smart lookup first, then Claude handles the rest</div>
-          <div style={{height:6,background:"#1f1d35",borderRadius:999,overflow:"hidden",marginBottom:12}}>
-            <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",borderRadius:999,transition:"width 0.6s ease"}}/>
-          </div>
-          <div style={{fontSize:12,color:"#6366f1",fontWeight:700}}>{pct}%</div>
-          <div style={{marginTop:40,display:"flex",gap:6,justifyContent:"center"}}>
-            {[0,1,2].map(i=>(
-              <div key={i} style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",opacity:0.3+(i*0.25),animation:`pulse 1.4s ease-in-out ${i*0.2}s infinite`}}/>
-            ))}
-          </div>
+        <h1 style={{fontSize:"clamp(36px,6vw,56px)",fontWeight:800,lineHeight:1.1,color:"#fff",marginBottom:24,letterSpacing:"-0.03em",animation:"heroText 0.9s cubic-bezier(0.16,1,0.3,1) 0.1s both"}}>
+          Your money,<br/>
+          <span style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6,#06b6d4)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",backgroundClip:"text"}}>finally clear.</span>
+        </h1>
+        <div style={{display:"flex",flexDirection:"column",gap:12,alignItems:"center",marginBottom:48}}>
+          {features.map((f,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,opacity:phase>=1?1:0,transform:phase>=1?"translateY(0)":"translateY(8px)",transition:`all 0.5s cubic-bezier(0.16,1,0.3,1) ${i*150}ms`}}>
+              <div style={{width:6,height:6,borderRadius:"50%",background:f.dot,flexShrink:0,boxShadow:`0 0 8px ${f.dot}`}}/>
+              <span style={{fontSize:15,color:"#a1a1aa",fontWeight:500}}>{f.text}</span>
+            </div>
+          ))}
         </div>
-      )}
-      <style>{`@keyframes pulse{0%,100%{transform:scale(1);opacity:0.3}50%{transform:scale(1.4);opacity:1}}`}</style>
+        <div style={{opacity:phase>=2?1:0,transform:phase>=2?"translateY(0)":"translateY(8px)",transition:"all 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s"}}>
+          <button onClick={handleEnter}
+            style={{padding:"14px 40px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)",transition:"all 0.2s",animation:"glow 3s ease-in-out 2s infinite"}}
+            onMouseEnter={e=>{e.target.style.transform="translateY(-2px)";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.6),0 12px 40px rgba(99,102,241,0.4)";}}
+            onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)";}}>
+            Get started →
+          </button>
+          <div style={{marginTop:14,fontSize:11,color:"#3f3f46",letterSpacing:"0.08em"}}>FREE · NO ACCOUNT REQUIRED</div>
+        </div>
+      </div>
     </div>
   );
 }
 
+// ─── Session Complete ─────────────────────────────────────────────────────────
+function SessionCompleteScreen({txnCount, onRestart}) {
+  const [visible, setVisible] = useState(false);
+  useEffect(()=>{
+    setVisible(true);
+    const t = setTimeout(onRestart, 3800);
+    return ()=>clearTimeout(t);
+  },[]);
+  return (
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{textAlign:"center",opacity:visible?1:0,transform:visible?"translateY(0)":"translateY(20px)",transition:"all 0.8s cubic-bezier(0.16,1,0.3,1)"}}>
+        <div style={{fontSize:11,letterSpacing:"0.15em",color:"#3f3f46",marginBottom:32,fontWeight:600,textTransform:"uppercase"}}>Session complete</div>
+        <div style={{fontSize:15,color:"#a1a1aa",marginBottom:8,fontVariantNumeric:"tabular-nums"}}>{txnCount} transactions analysed</div>
+        <div style={{fontSize:15,color:"#a1a1aa",marginBottom:8}}>6 weeks of history mapped</div>
+        <div style={{fontSize:15,color:"#a1a1aa",marginBottom:48}}>12 weeks forecast ahead</div>
+        <div style={{fontSize:13,color:"#3f3f46"}}>See you next time.</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Loading Screen ───────────────────────────────────────────────────────────
+function LoadingScreen({pct, message, done, logLines=[]}) {
+  return (
+    <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#08070f",padding:40}}>
+      <style>{GLOBAL_CSS}</style>
+      <img src={logo} alt="Abound" style={{height:40,marginBottom:48,opacity:0.9}}/>
+      {done?(
+        <div style={{textAlign:"center",animation:"fadeUp 0.6s ease both"}}>
+          <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(16,185,129,0.12)",border:"2px solid #10b981",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,margin:"0 auto 16px",color:"#10b981"}}>✓</div>
+          <div style={{fontSize:17,fontWeight:700,color:"#fff",marginBottom:6}}>All categorised.</div>
+          <div style={{fontSize:13,color:"#4b5563"}}>Loading your breakdown...</div>
+        </div>
+      ):(
+        <div style={{width:"100%",maxWidth:420}}>
+          {/* Terminal log */}
+          <div style={{background:"#0d0c1a",border:"1px solid #1f1d35",borderRadius:12,padding:"18px 22px",marginBottom:20,minHeight:100,fontFamily:"'Menlo','Monaco','Consolas',monospace"}}>
+            {logLines.length===0
+              ? <div style={{fontSize:12,color:"#374151"}}>Initialising...</div>
+              : logLines.map((line,i)=>(
+                  <div key={i} style={{fontSize:12,lineHeight:1.9,display:"flex",alignItems:"center",gap:10,animation:`scanline 0.3s ease ${i*80}ms both`}}>
+                    <span style={{color:line.done?"#10b981":line.active?"#6366f1":"#374151",flexShrink:0,fontSize:11}}>{line.done?"✓":line.active?"⟳":"·"}</span>
+                    <span style={{color:line.done?"#71717a":line.active?"#e0e7ff":"#3f3f46"}}>{line.text}</span>
+                  </div>
+                ))
+            }
+          </div>
+          {/* Progress bar */}
+          <div style={{height:2,background:"#1f1d35",borderRadius:999,overflow:"hidden",marginBottom:10}}>
+            <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",transition:"width 0.8s cubic-bezier(0.16,1,0.3,1)"}}/>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:"#374151"}}>{message}</span>
+            <span style={{fontSize:11,color:"#6366f1",fontWeight:700,fontVariantNumeric:"tabular-nums"}}>{pct}%</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Upload Screen ────────────────────────────────────────────────────────────
 function UploadScreen({onDone}) {
   const [accounts, setAccounts] = useState([{id:1,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
+  const [showPrivacy, setShowPrivacy] = useState(true);
   const hasMainFile = !!accounts[0].file;
-  function addCard() { setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]); }
-  function removeAccount(id) { setAccounts(a=>a.filter(x=>x.id!==id)); }
-  async function handleFile(id,file) { setAccounts(a=>a.map(x=>x.id===id?{...x,file,name:file.name}:x)); }
-  async function handleContinue() {
+  useEffect(()=>{const t=setTimeout(()=>setShowPrivacy(false),3200);return()=>clearTimeout(t);},[]);
+  function addCard(){setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]);}
+  function removeAccount(id){setAccounts(a=>a.filter(x=>x.id!==id));}
+  async function handleFile(id,file){setAccounts(a=>a.map(x=>x.id===id?{...x,file,name:file.name}:x));}
+  async function handleContinue(){
     setLoading(true);
-    const allRows = [];
-    let ccIndex = 1;
-    for (const acc of accounts) {
-      if (!acc.file) continue;
-      const rows = await readExcelFile(acc.file);
-      const isFirst = acc.id===accounts[0].id;
+    const allRows=[];let ccIndex=1;
+    for(const acc of accounts){
+      if(!acc.file)continue;
+      const rows=await readExcelFile(acc.file);
+      const isFirst=acc.id===accounts[0].id;
       let label;
-      if (isFirst) label = "Main Account";
-      else if (ccIndex===1) { label="Credit Card"; ccIndex++; }
-      else { label=`Credit Card ${ccIndex}`; ccIndex++; }
-      allRows.push(...normaliseRows(rows, label));
+      if(isFirst)label="Main Account";
+      else if(ccIndex===1){label="Credit Card";ccIndex++;}
+      else{label=`Credit Card ${ccIndex}`;ccIndex++;}
+      allRows.push(...normaliseRows(rows,label));
     }
     setLoading(false);
-    onDone(allRows, accounts.length>1);
+    onDone(allRows,accounts.length>1);
   }
-  function DropZone({account, index}) {
-    const [dragging, setDragging] = useState(false);
-    const loaded = !!account.file;
-    function onDrop(e) {
-      e.preventDefault(); setDragging(false);
-      const file = e.dataTransfer?.files?.[0]||e.target.files?.[0];
-      if (file) handleFile(account.id,file);
-    }
-    const labelText = index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
-    return (
+  function DropZone({account,index}){
+    const [dragging,setDragging]=useState(false);
+    const loaded=!!account.file;
+    function onDrop(e){e.preventDefault();setDragging(false);const file=e.dataTransfer?.files?.[0]||e.target.files?.[0];if(file)handleFile(account.id,file);}
+    const labelText=index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
+    return(
       <label onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}
-        style={{display:"block",border:loaded?`2px solid ${PURPLE}`:`2px dashed ${dragging?PURPLE:"#374151"}`,borderRadius:12,padding:"22px 20px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.08)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.03)",transition:"all 0.2s",marginBottom:12}}>
+        style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none"}}>
         <input type="file" accept=".xlsx,.xls,.csv" onChange={onDrop} style={{display:"none"}}/>
-        <div style={{textAlign:"center"}}>
-          <div style={{fontSize:24,marginBottom:8}}>{loaded?"✅":"📂"}</div>
-          <div style={{fontSize:13,fontWeight:700,color:loaded?"#a5b4fc":"#e5e7eb"}}>{loaded?account.name:`Drop ${labelText} statement here`}</div>
-          <div style={{fontSize:11,color:"#6b7280",marginTop:4}}>{loaded?"Ready to go":"Excel or CSV · drag & drop or click"}</div>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
+            {loaded?"✓":"📄"}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:13,fontWeight:600,color:loaded?"#a5b4fc":"#71717a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{loaded?account.name:`Drop ${labelText} statement here`}</div>
+            <div style={{fontSize:11,color:"#3f3f46",marginTop:2}}>{loaded?"Ready · Excel or CSV":"Excel or CSV · drag & drop or click"}</div>
+          </div>
+          {loaded&&<div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",flexShrink:0,boxShadow:"0 0 6px #10b981"}}/>}
         </div>
       </label>
     );
   }
-  return (
-    <div style={{minHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px"}}>
-      <div style={{width:"100%",maxWidth:480}}>
-        <div style={{textAlign:"center",marginBottom:44}}>
-          <img src={logo} alt="Abound" style={{height:72,marginBottom:16}}/>
-          <div style={{fontSize:15,color:"#6b7280"}}>Drop in your statements and we'll do the rest.</div>
+  return(
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
+      {/* Privacy pulse */}
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,display:"flex",justifyContent:"center",padding:"10px",background:"rgba(16,185,129,0.07)",borderBottom:"1px solid rgba(16,185,129,0.12)",opacity:showPrivacy?1:0,transform:showPrivacy?"translateY(0)":"translateY(-100%)",transition:"all 0.5s ease"}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#10b981",marginRight:8,boxShadow:"0 0 6px #10b981",flexShrink:0,alignSelf:"center"}}/>
+        <span style={{fontSize:12,color:"#6ee7b7",fontWeight:500}}>Your statement never leaves your device.</span>
+      </div>
+      <div style={{width:"100%",maxWidth:420,position:"relative",zIndex:1,animation:"fadeUp 0.6s ease both"}}>
+        {/* Step indicator */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:32}}>
+          {[["Upload",true],["Categorise",false],["Review",false]].map(([label,active],i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center"}}>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:9,color:active?"#6366f1":"#3f3f46"}}>{active?"●":"○"}</span>
+                <span style={{fontSize:10,fontWeight:active?700:400,color:active?"#6366f1":"#3f3f46",letterSpacing:"0.06em"}}>{label.toUpperCase()}</span>
+              </div>
+              {i<2&&<div style={{width:28,height:1,background:"#1f1d35",margin:"0 8px"}}/>}
+            </div>
+          ))}
+        </div>
+        <div style={{marginBottom:24}}>
+          <h2 style={{fontSize:21,fontWeight:800,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Upload your statements</h2>
+          <p style={{fontSize:13,color:"#52525b",margin:0}}>Drop in your bank exports. We'll handle the rest.</p>
         </div>
         {accounts.map((acc,i)=>(
           <div key={acc.id} style={{position:"relative"}}>
-            {i>0&&<button onClick={()=>removeAccount(acc.id)} style={{position:"absolute",top:8,right:8,zIndex:10,fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer"}}>×</button>}
+            {i>0&&<button onClick={()=>removeAccount(acc.id)} style={{position:"absolute",top:12,right:12,zIndex:10,fontSize:14,color:"#52525b",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
             <DropZone account={acc} index={i}/>
           </div>
         ))}
-        <button onClick={addCard} style={{marginTop:4,width:"100%",padding:"11px",border:"1.5px dashed #374151",borderRadius:10,background:"none",color:"#6b7280",fontSize:13,fontWeight:600,cursor:"pointer"}}>+ Add a credit card</button>
-        <button onClick={handleContinue} disabled={!hasMainFile||loading} style={{marginTop:12,width:"100%",padding:"14px",background:hasMainFile?"linear-gradient(135deg,#10b981,#059669)":"#1f1d35",color:hasMainFile?"#fff":"#374151",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:hasMainFile?"pointer":"not-allowed",transition:"all 0.3s",boxShadow:hasMainFile?"0 4px 20px rgba(16,185,129,0.3)":"none"}}>
+        <button onClick={addCard}
+          style={{width:"100%",padding:"10px",border:"1px dashed #2d2a6e",borderRadius:10,background:"none",color:"#52525b",fontSize:12,fontWeight:500,cursor:"pointer",marginBottom:10,transition:"all 0.2s"}}
+          onMouseEnter={e=>{e.target.style.borderColor="#4338ca";e.target.style.color="#818cf8";}}
+          onMouseLeave={e=>{e.target.style.borderColor="#2d2a6e";e.target.style.color="#52525b";}}>
+          + Add a credit card
+        </button>
+        <button onClick={handleContinue} disabled={!hasMainFile||loading}
+          style={{width:"100%",padding:"13px",background:hasMainFile?"linear-gradient(135deg,#6366f1,#4f46e5)":"#151322",color:hasMainFile?"#fff":"#3f3f46",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:hasMainFile?"pointer":"not-allowed",transition:"all 0.3s",boxShadow:hasMainFile?"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)":"none",letterSpacing:"-0.01em"}}
+          onMouseEnter={e=>{if(hasMainFile){e.target.style.transform="translateY(-1px)";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.6),0 12px 32px rgba(99,102,241,0.35)";}}}
+          onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow=hasMainFile?"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)":"none";}}>
           {loading?"Reading files...":"Continue →"}
         </button>
       </div>
@@ -387,6 +502,7 @@ function UploadScreen({onDone}) {
   );
 }
 
+// ─── Categorise Screen ────────────────────────────────────────────────────────
 function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [pct, setPct] = useState(5);
   const [message, setMessage] = useState("Matching merchants...");
@@ -398,12 +514,23 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [editingCat, setEditingCat] = useState(null);
   const [editVal, setEditVal] = useState("");
   const [step, setStep] = useState("loading");
+  const [logLines, setLogLines] = useState([{text:"Starting merchant lookup...",done:false,active:true}]);
   useEffect(()=>{
     (async()=>{
       const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
-        if (update?.type==="lookup_done") { setPct(30); setMessage(`Matched ${update.known} transactions — asking Claude about ${update.unknown} more...`); }
-        else if (update?.type==="progress") { setPct(update.pct); setMessage(`Claude is reading batch ${update.batchNum} of ${update.totalBatches}...`); }
-        else if (update?.type==="done") { setPct(100); setMessage("All done ✓"); }
+        if(update?.type==="lookup_done"){
+          setPct(30); setMessage(`Matched ${update.known} via lookup`);
+          setLogLines([
+            {text:`Matched ${update.known} transactions via merchant lookup`,done:true,active:false},
+            {text:`Sending ${update.unknown} to Claude for analysis...`,done:false,active:true},
+          ]);
+        } else if(update?.type==="progress"){
+          setPct(update.pct);
+          setLogLines(l=>[...l.slice(0,-1),{...l[l.length-1],done:true,active:false},{text:`Processing batch ${update.batchNum} of ${update.totalBatches}...`,done:false,active:true}]);
+        } else if(update?.type==="done"){
+          setPct(100);
+          setLogLines(l=>[...l.map(x=>({...x,done:true,active:false})),{text:"All categorised ✓",done:true,active:false}]);
+        }
       });
       setCategorised(result); setDone(true); setTimeout(()=>setStep("review"),1200);
     })();
@@ -411,7 +538,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const summary = useMemo(()=>{
     const totals={};
     categories.forEach(c=>{totals[c]=0;});
-    const now=new Date(), cutoff=new Date(now); cutoff.setDate(now.getDate()-30);
+    const now=new Date(),cutoff=new Date(now);cutoff.setDate(now.getDate()-30);
     const recent=categorised.filter(t=>t.date>=cutoff);
     const use=recent.length>20?recent:categorised;
     use.forEach(t=>{totals[t.category]=(totals[t.category]||0)+t.amount;});
@@ -420,9 +547,10 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");}
   function removeCategory(cat){if(baseCats.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setCategorised(t=>t.map(tx=>tx.category===cat?{...tx,category:"Other Payments"}:tx));}
   function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
-  if (step==="loading") return <LoadingScreen pct={pct} message={message} done={done}/>;
+  if(step==="loading") return <LoadingScreen pct={pct} message={message} done={done} logLines={logLines}/>;
   return (
     <div style={{maxWidth:680,margin:"40px auto",padding:"0 24px"}}>
+      <style>{GLOBAL_CSS}</style>
       <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:28}}>
         <img src={logo} alt="Abound" style={{height:44}}/>
         <div>
@@ -436,7 +564,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           return (
             <div key={cat} style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #e5e7eb",borderLeft:`4px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}`}}>
               <div style={{fontSize:11,color:"#6b7280",fontWeight:600,marginBottom:4}}>{cat}</div>
-              <div style={{fontSize:20,fontWeight:800,color:total===0?"#d1d5db":"#111827"}}>{total===0?"£0":`£${Math.round(total).toLocaleString()}`}</div>
+              <div style={{fontSize:20,fontWeight:800,color:total===0?"#d1d5db":"#111827",fontVariantNumeric:"tabular-nums"}}>{total===0?"£0":`£${Math.round(total).toLocaleString()}`}</div>
               <div style={{fontSize:10,color:"#9ca3af",marginTop:2}}>last 30 days</div>
             </div>
           );
@@ -463,7 +591,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           <button onClick={addCategory} style={{padding:"7px 16px",background:PURPLE,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>+</button>
         </div>
       </div>
-      <div style={{position:"sticky",bottom:0,background:"linear-gradient(to top, #f8fafc 80%, transparent)",paddingTop:16,paddingBottom:16}}>
+      <div style={{position:"sticky",bottom:0,background:"linear-gradient(to top,#f8fafc 80%,transparent)",paddingTop:16,paddingBottom:16}}>
         <button onClick={()=>onDone(categorised,categories)} style={{width:"100%",padding:"14px",background:PURPLE,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.4)"}}>
           Sort remaining transactions →
         </button>
@@ -472,16 +600,12 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   );
 }
 
-// ─── SCREEN 3: Sort ───────────────────────────────────────────────────────────
+// ─── Sort Screen ──────────────────────────────────────────────────────────────
 function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allItems = useMemo(()=>
     transactions.filter(t=>t.category==="Other Payments")
-      .reduce((acc,t)=>{
-        const ex=acc.find(x=>x.narrative===t.narrative);
-        if(ex){ex.total+=t.amount;ex.count+=1;}
-        else acc.push({narrative:t.narrative,total:t.amount,count:1,category:"Other Payments"});
-        return acc;
-      },[]).sort((a,b)=>b.total-a.total)
+      .reduce((acc,t)=>{const ex=acc.find(x=>x.narrative===t.narrative);if(ex){ex.total+=t.amount;ex.count+=1;}else acc.push({narrative:t.narrative,total:t.amount,count:1,category:"Other Payments"});return acc;},[])
+      .sort((a,b)=>b.total-a.total)
   ,[]);
   const [items, setItems] = useState(allItems);
   const [categories, setCategories] = useState(initialCategories);
@@ -496,11 +620,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [swipeTarget, setSwipeTarget] = useState(null);
   const [mobileCatPage, setMobileCatPage] = useState(0);
   const [windowWidth, setWindowWidth] = useState(typeof window!=="undefined"?window.innerWidth:1200);
-  useEffect(()=>{
-    const handler=()=>setWindowWidth(window.innerWidth);
-    window.addEventListener("resize",handler);
-    return ()=>window.removeEventListener("resize",handler);
-  },[]);
+  useEffect(()=>{const handler=()=>setWindowWidth(window.innerWidth);window.addEventListener("resize",handler);return()=>window.removeEventListener("resize",handler);},[]);
   const isMobileView = windowWidth<768;
   const VISIBLE=5;
   const unsorted=items.filter(i=>i.category==="Other Payments");
@@ -511,85 +631,49 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allBuckets=[...spendCats,"Skip"];
   const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
   function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
-  function assignItem(narrative,cat){
-    if(cat!=="Skip") setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));
-    setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));
-    setSwipeOffset(0);setSwipeTarget(null);
-  }
+  function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);}
   function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
-  function undoItem(narrative,fromCat){
-    if(fromCat!=="Skip") setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));
-    setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));
-  }
+  function undoItem(narrative,fromCat){if(fromCat!=="Skip")setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));}
   function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
-  function removeCategory(cat){
-    if(DEFAULT_CATEGORIES.includes(cat))return;
-    setCategories(c=>c.filter(x=>x!==cat));
-    setItems(p=>p.map(x=>x.category===cat?{...x,category:"Other Payments"}:x));
-    setBucketCounts(p=>{const n={...p};delete n[cat];return n;});
-  }
-  function handleConfirm(){
-    const map={};
-    items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});
-    onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t),categories);
-  }
+  function removeCategory(cat){if(DEFAULT_CATEGORIES.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setItems(p=>p.map(x=>x.category===cat?{...x,category:"Other Payments"}:x));setBucketCounts(p=>{const n={...p};delete n[cat];return n;});}
+  function handleConfirm(){const map={};items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t),categories);}
   const pct=allItems.length?Math.round(((sorted.length+skipped.length)/allItems.length)*100):100;
-  const txnCountByCat=useMemo(()=>{
-    const counts={};
-    transactions.forEach(t=>{if(t.category&&t.category!=="Other Payments") counts[t.category]=(counts[t.category]||0)+1;});
-    return counts;
-  },[transactions,items]);
+  const txnCountByCat=useMemo(()=>{const counts={};transactions.forEach(t=>{if(t.category&&t.category!=="Other Payments")counts[t.category]=(counts[t.category]||0)+1;});return counts;},[transactions,items]);
   const SWIPE_THRESHOLD=80,CATS_PER_PAGE=4;
   const totalPages=Math.ceil(allBuckets.length/CATS_PER_PAGE);
   const visibleMobileCats=allBuckets.slice(mobileCatPage*CATS_PER_PAGE,(mobileCatPage+1)*CATS_PER_PAGE);
   function onTouchStart(e){touchStartX.current=e.touches[0].clientX;touchStartY.current=e.touches[0].clientY;}
-  function onTouchMove(e){
-    if(touchStartX.current===null)return;
-    const dx=e.touches[0].clientX-touchStartX.current,dy=e.touches[0].clientY-touchStartY.current;
-    if(Math.abs(dy)>Math.abs(dx)+10)return;
-    e.preventDefault();setSwipeOffset(dx);
-    if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])setSwipeTarget(visibleMobileCats[0]);
-    else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])setSwipeTarget(visibleMobileCats[1]);
-    else setSwipeTarget(null);
-  }
-  function onTouchEnd(){
-    if(touchStartX.current===null)return;
-    const topItem=unsorted[0];
-    if(topItem&&swipeTarget)assignItem(topItem.narrative,swipeTarget);
-    else{setSwipeOffset(0);setSwipeTarget(null);}
-    touchStartX.current=null;touchStartY.current=null;
-  }
-  const CAT_EMOJI = {"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
-  function getBucketEmoji(cat) { return CAT_EMOJI[cat] || "📂"; }
+  function onTouchMove(e){if(touchStartX.current===null)return;const dx=e.touches[0].clientX-touchStartX.current,dy=e.touches[0].clientY-touchStartY.current;if(Math.abs(dy)>Math.abs(dx)+10)return;e.preventDefault();setSwipeOffset(dx);if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])setSwipeTarget(visibleMobileCats[0]);else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])setSwipeTarget(visibleMobileCats[1]);else setSwipeTarget(null);}
+  function onTouchEnd(){if(touchStartX.current===null)return;const topItem=unsorted[0];if(topItem&&swipeTarget)assignItem(topItem.narrative,swipeTarget);else{setSwipeOffset(0);setSwipeTarget(null);}touchStartX.current=null;touchStartY.current=null;}
+  const CAT_EMOJI={"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
+  function getBucketEmoji(cat){return CAT_EMOJI[cat]||"📂";}
 
   const DesktopSort=()=>(
     <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
       <div style={{width:280,flexShrink:0,background:"#0a0818",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",overflow:"hidden"}}>
         <div style={{padding:"16px 16px 12px",borderBottom:"1px solid #1f1d35",flexShrink:0}}>
           <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5,marginBottom:2}}>TO SORT</div>
-          <div style={{fontSize:22,fontWeight:800,color:"#fff"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
+          <div style={{fontSize:22,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
         </div>
         <div style={{flex:1,padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:6,overflowY:"auto"}}>
           {unsorted.length===0&&(
             <div style={{textAlign:"center",padding:"60px 20px"}}>
               <div style={{fontSize:40,marginBottom:12}}>🎉</div>
               <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:8}}>All sorted!</div>
-              <div style={{fontSize:12,color:"#4b5563",marginBottom:20}}>Great work — your cash flow is ready.</div>
+              <div style={{fontSize:12,color:"#4b5563",marginBottom:20}}>Your cash flow is ready.</div>
               <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
             </div>
           )}
           {visible.map((item,idx)=>{
             const isTop=idx===0;
-            return (
-              <div key={item.narrative} draggable={isTop}
-                onDragStart={()=>{dragRef.current=item.narrative;}}
-                onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
+            return(
+              <div key={item.narrative} draggable={isTop} onDragStart={()=>{dragRef.current=item.narrative;}} onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
                 style={{background:isTop?"linear-gradient(135deg,#1e1b38,#2d2a52)":"rgba(20,18,42,0.6)",border:`1px solid ${isTop?"#4338ca":"#1f1d35"}`,borderRadius:12,padding:isTop?"14px 14px 12px":"8px 14px",cursor:isTop?"grab":"default",opacity:isTop?1:0.5-(idx*0.08),transform:`scale(${1-idx*0.01})`,transformOrigin:"top center",userSelect:"none",flexShrink:0,boxShadow:isTop?"0 4px 20px rgba(0,0,0,0.4)":"none",transition:"opacity 0.2s"}}>
                 {isTop&&<div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:1,marginBottom:6}}>DRAG TO SORT ↗</div>}
                 <div style={{fontSize:isTop?13:11,fontWeight:isTop?600:400,color:isTop?"#e0e7ff":"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
                 {isTop&&(
                   <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #2d2a6e"}}>
-                    <span style={{fontSize:18,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(item.total).toLocaleString()}</span>
+                    <span style={{fontSize:18,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(item.total).toLocaleString()}</span>
                     <span style={{fontSize:11,color:"#4b5563"}}>{item.count} occurrence{item.count>1?"s":""}</span>
                   </div>
                 )}
@@ -630,12 +714,9 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             const color=catColor(cat,i),isHovered=hoveredCat===cat;
             const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             const isDefault=DEFAULT_CATEGORIES.includes(cat);
-            return (
-              <div key={cat}
-                onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}}
-                onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}}
-                onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
-                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}66`}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.015)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",position:"relative",boxShadow:isHovered?`0 0 30px ${color}33`:"none"}}>
+            return(
+              <div key={cat} onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
+                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}66`}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.015)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",position:"relative",boxShadow:isHovered?`0 0 28px ${color}33`:"none"}}>
                 {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:8,right:10,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
                   <div style={{fontSize:28,lineHeight:1}}>{getBucketEmoji(cat)}</div>
@@ -648,22 +729,19 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
               </div>
             );
           })}
-          {(()=>{
-            const isHovered=hoveredCat==="Skip",count=skipped.length;
-            return (
-              <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
-                style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}>
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
-                  <div style={{fontSize:28,lineHeight:1,opacity:isHovered?1:0.4}}>🤷</div>
-                  <div style={{fontSize:15,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center"}}>Not sure</div>
-                  <div style={{fontSize:11,color:"#2d2a6e",textAlign:"center"}}>stays in Other Payments</div>
-                </div>
-                <div style={{width:"100%",borderTop:"1px solid #1f1d35",paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:count>0?"#6b7280":"#2d2a6e"}}>
-                  {count>0?`${count} transaction${count>1?"s":""}`:isHovered?"drop here →":"empty"}
-                </div>
+          {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
+            <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
+              style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
+                <div style={{fontSize:28,lineHeight:1,opacity:isHovered?1:0.4}}>🤷</div>
+                <div style={{fontSize:15,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center"}}>Not sure</div>
+                <div style={{fontSize:11,color:"#2d2a6e",textAlign:"center"}}>stays in Other Payments</div>
               </div>
-            );
-          })()}
+              <div style={{width:"100%",borderTop:"1px solid #1f1d35",paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:count>0?"#6b7280":"#2d2a6e"}}>
+                {count>0?`${count} transaction${count>1?"s":""}`:isHovered?"drop here →":"empty"}
+              </div>
+            </div>
+          );})()}
         </div>
       </div>
     </div>
@@ -676,13 +754,13 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
     const swipeLeftColor=swipeLeft==="Skip"?"#6b7280":catColor(swipeLeft,spendCats.indexOf(swipeLeft));
     const swipeProgress=Math.min(Math.abs(swipeOffset)/SWIPE_THRESHOLD,1);
     const swipingRight=swipeOffset>20,swipingLeft=swipeOffset<-20;
-    return (
+    return(
       <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden"}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
           </div>
-          <span style={{fontSize:12,color:"#6366f1",fontWeight:700,flexShrink:0}}>{pct}% sorted</span>
+          <span style={{fontSize:12,color:"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{pct}% sorted</span>
         </div>
         <div style={{position:"relative",height:150,flexShrink:0}}>
           {unsorted.length===0?(
@@ -693,16 +771,14 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             </div>
           ):(
             <>
-              {visible.slice(1,3).map((item,idx)=>(
-                <div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:16,padding:"16px",transform:`translateY(${(idx+1)*6}px) scale(${1-(idx+1)*0.03})`,transformOrigin:"top center",zIndex:1-idx}}/>
-              ))}
+              {visible.slice(1,3).map((item,idx)=>(<div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:16,padding:"16px",transform:`translateY(${(idx+1)*6}px) scale(${1-(idx+1)*0.03})`,transformOrigin:"top center",zIndex:1-idx}}/>))}
               {topItem&&(
                 <div onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
                   style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${swipeTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${swipeOffset}px) rotate(${swipeOffset*0.03}deg)`,transition:swipeOffset===0?"transform 0.3s":"none",zIndex:10,touchAction:"pan-y",userSelect:"none"}}>
                   {swipeTarget&&(<div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>{swipeTarget==="Skip"?"NOT SURE":swipeTarget.toUpperCase()}</div>)}
                   <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:8}}>{topItem.narrative}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc"}}>£{Math.round(topItem.total).toLocaleString()}</span>
+                    <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(topItem.total).toLocaleString()}</span>
                     <span style={{fontSize:12,color:"#4b5563"}}>{topItem.count} txn{topItem.count>1?"s":""}</span>
                   </div>
                   <div style={{fontSize:10,color:"#374151",marginTop:6}}>{unsorted.length} left</div>
@@ -715,13 +791,10 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
           {visibleMobileCats.map(cat=>{
             const isSkip=cat==="Skip",color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
             const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
-            return (
-              <button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}}
-                style={{padding:"12px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
-                <span>{isSkip?"Not sure":cat}</span>
-                {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
-              </button>
-            );
+            return(<button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}} style={{padding:"12px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center"}}>
+              <span>{isSkip?"Not sure":cat}</span>
+              {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
+            </button>);
           })}
         </div>
         {totalPages>1&&(
@@ -735,17 +808,18 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
     );
   };
 
-  return (
+  return(
     <div style={{minHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <style>{GLOBAL_CSS}</style>
       <div style={{padding:"0 24px",background:"#0a0818",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:16,flexShrink:0,height:54}}>
         <img src={logo} alt="Abound" style={{height:28}}/>
         <div style={{width:1,height:24,background:"#1f1d35"}}/>
         <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Sort transactions</span>
         <div style={{flex:1,display:"flex",alignItems:"center",gap:10,maxWidth:320}}>
-          <div style={{flex:1,height:5,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+          <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",borderRadius:999,transition:"width 0.5s ease"}}/>
           </div>
-          <span style={{fontSize:12,color:pct===100?"#10b981":"#6366f1",fontWeight:700,minWidth:32}}>{pct}%</span>
+          <span style={{fontSize:12,color:pct===100?"#10b981":"#6366f1",fontWeight:700,minWidth:32,fontVariantNumeric:"tabular-nums"}}>{pct}%</span>
         </div>
         <span style={{fontSize:12,color:"#4b5563"}}>{unsorted.length>0?`${unsorted.length} left · ${sorted.length+skipped.length} sorted`:"✅ All sorted!"}</span>
         <button onClick={handleConfirm} style={{padding:"7px 18px",background:pct===100?"linear-gradient(135deg,#10b981,#059669)":"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",marginLeft:"auto",transition:"background 0.3s"}}>Done →</button>
@@ -755,48 +829,21 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   );
 }
 
-// ─── SCREEN 4: Review Transactions ────────────────────────────────────────────
+// ─── Review Screen ────────────────────────────────────────────────────────────
 function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
   const [editCount, setEditCount] = useState(0);
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
-
-  const accounts = useMemo(()=>{
-    const seen=new Set(),list=[];
-    transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});
-    return list;
-  },[transactions]);
-
-  const sortedTxns = useMemo(()=>
-    [...transactions].sort((a,b)=>b.date-a.date)
-  ,[transactions]);
-
-  const filtered = useMemo(()=>
-    sortedTxns.filter(t=>{
-      if (filterCat!=="All"&&t.category!==filterCat) return false;
-      if (filterAccount!=="All"&&t.account!==filterAccount) return false;
-      if (search&&!t.narrative.toLowerCase().includes(search.toLowerCase())) return false;
-      return true;
-    })
-  ,[sortedTxns,filterCat,filterAccount,search]);
-
-  function changeCategory(txn, newCat) {
-    const updated = transactions.map(t=>
-      t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount
-        ?{...t,category:newCat}:t
-    );
-    onUpdate(updated);
-    setEditCount(c=>c+1);
-    if (editCount>=2) setShowUpdatedBanner(true);
-  }
-
-  const catColors = {};
-  categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
-
-  return (
+  const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});return list;},[transactions]);
+  const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>b.date-a.date),[transactions]);
+  const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
+  function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(editCount>=2)setShowUpdatedBanner(true);}
+  const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
+  return(
     <div style={{flex:1,overflow:"auto",background:"#f8fafc"}}>
+      <style>{GLOBAL_CSS}</style>
       {showUpdatedBanner&&(
         <div style={{background:"linear-gradient(135deg,#10b981,#059669)",padding:"14px 24px",display:"flex",alignItems:"center",gap:16}}>
           <span style={{fontSize:18}}>✅</span>
@@ -832,7 +879,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
             <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,paddingLeft:16}}>CATEGORY</div>
           </div>
           {filtered.map((t,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center"}}
+            <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background 0.1s"}}
               onMouseEnter={e=>e.currentTarget.style.background="#f0f7ff"}
               onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
               <div style={{fontSize:12,color:"#6b7280"}}>{fmtDate(t.date)}</div>
@@ -840,7 +887,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
                 <span style={{fontSize:10,color:"#9ca3af",marginRight:6}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
                 {t.narrative}
               </div>
-              <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right"}}>
+              <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                 {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
               </div>
               <div style={{paddingLeft:16}}>
@@ -858,19 +905,21 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
   );
 }
 
-// ─── Main shell with tabs ──────────────────────────────────────────────────────
+// ─── Main Shell ───────────────────────────────────────────────────────────────
 function MainScreen({transactions: initialTransactions, categories, onStartOver}) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
-  return (
+  function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
+  return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <style>{GLOBAL_CSS}</style>
       <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
-        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?PURPLE:"#6b7280",cursor:"pointer"}}>
+        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s"}}>
           📊 Cash Flow
         </button>
-        <button onClick={()=>{setActiveTab("review");setShowReviewPrompt(false);}} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?PURPLE:"#6b7280",cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
           🔍 Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
         </button>
@@ -883,76 +932,74 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver}
             <div style={{fontWeight:700,color:"#fff",fontSize:13}}>Double-check your categories</div>
             <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>AI isn't perfect — a quick review makes your cash flow much more accurate.</div>
           </div>
-          <button onClick={()=>{setActiveTab("review");setShowReviewPrompt(false);}} style={{padding:"8px 18px",background:"#fff",color:PURPLE,border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
+          <button onClick={goToReview} style={{padding:"8px 18px",background:"#fff",color:PURPLE,border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<CashFlowScreen transactions={transactions} categories={categories}/>}
+      {activeTab==="cashflow"&&<CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview}/>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
     </div>
   );
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories}) {
+function CashFlowScreen({transactions, categories, onGoToReview}) {
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
   const [aiOpen, setAiOpen] = useState(true);
+  const [aiTyping, setAiTyping] = useState(true);
+  const [aiExpanded, setAiExpanded] = useState(null);
+  const [tourStep, setTourStep] = useState(null);
+  const [tourVisible, setTourVisible] = useState(false);
+  const [tooltip, setTooltip] = useState(null); // {text, x, y}
 
-  const accounts = useMemo(()=>{
-    const seen=new Set(),list=[];
-    transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});
-    list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);
-    return list;
-  },[transactions]);
+  useEffect(()=>{const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);return()=>clearTimeout(t);},[]);
+  useEffect(()=>{if(!aiOpen)return;setAiTyping(true);const t=setTimeout(()=>setAiTyping(false),1100);return()=>clearTimeout(t);},[aiOpen]);
 
+  const ROW_TOOLTIPS = {
+    "Opening Balance":"Your account balance at the start of each week, walked forward and backward from your actual balance data.",
+    "Salary":"Money in — wages, BACS credits, and transfers into your main account.",
+    "Food":"Groceries, restaurants, cafes, takeaways, and food delivery.",
+    "Travel":"TfL, trains, flights, Uber, Bolt, parking — anything transport.",
+    "Rent":"Rent, mortgage, and utilities like energy, broadband and water.",
+    "Memberships":"Subscriptions — streaming, gym, apps, and recurring services.",
+    "Other Payments":"Transactions that didn't fit a specific category.",
+    "Card Repayment":"Money moved to pay your credit card. Excluded from Total Spend — it's not new spending.",
+    "Total Spend":"Sum of all real spend, excluding Card Repayments.",
+    "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
+    "Closing Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
+  };
+
+  const TOUR_STEPS = [
+    {title:"Welcome to your Cash Flow",body:"Want a 60-second tour? We'll explain exactly what you're looking at.",cta:"Show me around",skip:"Skip",highlight:null},
+    {title:"Your actual spending",body:"The left columns show real transactions grouped by week. Each row is a spending category.",cta:"Next →",highlight:null},
+    {title:"Your forecast",body:"The purple columns predict your spending ahead, based on your real patterns — monthly bills on their usual date, rolling average for daily spend.",cta:"Next →",highlight:null},
+    {title:"Total Spend",body:"Card repayments are excluded — that money was already counted when you spent it. This is your honest real spend.",cta:"Next →",highlight:null},
+    {title:"Closing Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all accounts.",cta:"Next →",highlight:null},
+    {title:"Set a budget",body:"Click 'set' next to any category. Abound flags in red when your forecast is about to exceed it.",cta:"Next →",highlight:null},
+    {title:"Check your categories",body:"AI isn't perfect. Two minutes reviewing your categories makes your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true},
+  ];
+
+  function advanceTour(){
+    if(tourStep===0){setTourStep(1);return;}
+    if(tourStep>=TOUR_STEPS.length-1){setTourVisible(false);setTourStep(null);if(onGoToReview)onGoToReview();return;}
+    setTourStep(s=>s+1);
+  }
+  function closeTour(){setTourVisible(false);setTourStep(null);}
+  function reopenTour(){setTourStep(0);setTourVisible(true);}
+
+  const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
-  const actualWeeks = useMemo(()=>{
-    const lastMonday=getWeekMonday(mostRecentDate);
-    return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return {key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});
-  },[mostRecentDate]);
-  const forecastWeeks = useMemo(()=>{
-    if(!actualWeeks.length) return [];
-    const last=actualWeeks[actualWeeks.length-1].date;
-    return Array.from({length:6},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return {key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});
-  },[actualWeeks]);
-  const weeklyByAccountCat = useMemo(()=>{
-    const weekly={};
-    transactions.forEach(t=>{
-      const key=getWeekMonday(t.date).toISOString().slice(0,10);
-      if(!weekly[key])weekly[key]={};
-      if(!weekly[key][t.account])weekly[key][t.account]={};
-      const amt=t.category==="Salary"?t.amount:-t.amount;
-      weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;
-    });
-    return weekly;
-  },[transactions]);
-  const weekBalances = useMemo(()=>{
-    const bal={};
-    [...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{
-      if(t.balance===null)return;
-      const key=getWeekMonday(t.date).toISOString().slice(0,10);
-      if(!bal[key])bal[key]={};
-      bal[key][t.account]=t.balance;
-    });
-    return bal;
-  },[transactions]);
+  const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
+  const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:6},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
+  const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Salary"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
+  const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
+
   const forecastData = useMemo(()=>{
     const out={};
-    function getMonthlyDay(acc,cat){
-      const days=[];
-      transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});
-      if(!days.length)return null;
-      const freq={};
-      days.forEach(d=>freq[d]=(freq[d]||0)+1);
-      return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
-    }
-    function weekContainsDay(weekMon,weekSun,dayOfMonth){
-      const d=new Date(weekMon);
-      while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}
-      return false;
-    }
+    function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
+    function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
     const MONTHLY_CATS=["Salary","Rent","Memberships","Card Repayment"];
     const ROLLING_CATS=["Food","Travel","Other Payments"];
     accounts.forEach(acc=>{
@@ -965,18 +1012,10 @@ function CashFlowScreen({transactions, categories}) {
           if(!dayOfMonth||avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{out[acc][cat]=forecastWeeks.map(w=>weekContainsDay(w.date,w.sunday,dayOfMonth)?avg:0);}
         } else if(ROLLING_CATS.includes(cat)){
-          const window=[...actualVals];
-          const result=[];
-          for(let i=0;i<forecastWeeks.length;i++){
-            const last6=window.slice(-6);
-            const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/6);
-            result.push(forecastVal);
-            window.push(forecastVal);
-          }
+          const window=[...actualVals];const result=[];
+          for(let i=0;i<forecastWeeks.length;i++){const last6=window.slice(-6);const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/6);result.push(forecastVal);window.push(forecastVal);}
           out[acc][cat]=result;
-        } else {
-          out[acc][cat]=Array(forecastWeeks.length).fill(avg);
-        }
+        } else {out[acc][cat]=Array(forecastWeeks.length).fill(avg);}
       });
     });
     return out;
@@ -985,75 +1024,57 @@ function CashFlowScreen({transactions, categories}) {
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
-  const combinedClosingBalances = useMemo(() => {
-  const mainAcc = "Main Account";
-  const spendCatsLocal = categories.filter(c => c !== "Salary" && c !== "Card Repayment");
-  const ccAccounts = accounts.filter(a => a !== mainAcc);
 
-  // Main account actuals
-  const mainActuals = actualWeeks.map(w => spendCatsLocal.reduce((s,c) => s + Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0), 0));
-  const mainIncome  = actualWeeks.map(w => Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Salary"]||0));
-  const mainNet     = actualWeeks.map((_,i) => mainIncome[i] - mainActuals[i]);
+  const combinedClosingBalances = useMemo(()=>{
+    const mainAcc="Main Account";
+    const spendCatsLocal=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const ccAccounts=accounts.filter(a=>a!==mainAcc);
+    const mainActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
+    const mainIncome=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Salary"]||0));
+    const mainNet=actualWeeks.map((_,i)=>mainIncome[i]-mainActuals[i]);
+    const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>spendCatsLocal.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
+    const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
+    const runningBals=Array(actualWeeks.length).fill(null);
+    const firstKnown=knownBals.findIndex(b=>b!==null);
+    if(firstKnown!==-1){runningBals[firstKnown]=knownBals[firstKnown];for(let i=firstKnown+1;i<actualWeeks.length;i++)runningBals[i]=runningBals[i-1]!==null?runningBals[i-1]+mainNet[i-1]:null;for(let i=firstKnown-1;i>=0;i--)runningBals[i]=runningBals[i+1]!==null?runningBals[i+1]-mainNet[i]:null;}
+    const actualClosing=runningBals.map((ob,i)=>ob!==null?ob+mainNet[i]-ccActuals[i]:null);
+    const lastActualBal=runningBals.filter(b=>b!==null).slice(-1)[0]??null;
+    const mainFActuals=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
+    const mainFIncome=forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
+    const mainFNet=forecastWeeks.map((_,i)=>mainFIncome[i]-mainFActuals[i]);
+    const ccFActuals=forecastWeeks.map((_,i)=>ccAccounts.reduce((s,acc)=>spendCatsLocal.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
+    const forecastBals=Array(forecastWeeks.length).fill(null);
+    if(lastActualBal!==null){forecastBals[0]=lastActualBal+mainNet[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
+    const forecastClosing=forecastBals.map((ob,i)=>ob!==null?ob+mainFNet[i]-ccFActuals[i]:null);
+    return{actual:actualClosing,forecast:forecastClosing};
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData]);
 
-  // CC spend per week (all non-main accounts combined)
-  const ccActuals = actualWeeks.map(w =>
-    ccAccounts.reduce((s,acc) =>
-      spendCatsLocal.reduce((s2,c) => s2 + Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0), s), 0));
-
-  // Build running opening balance from Main Account's real balance data
-  const knownBals = actualWeeks.map(w => weekBalances[w.key]?.[mainAcc] ?? null);
-  const runningBals = Array(actualWeeks.length).fill(null);
-  const firstKnown = knownBals.findIndex(b => b !== null);
-  if (firstKnown !== -1) {
-    runningBals[firstKnown] = knownBals[firstKnown];
-    for (let i = firstKnown + 1; i < actualWeeks.length; i++)
-      runningBals[i] = runningBals[i-1] !== null ? runningBals[i-1] + mainNet[i-1] : null;
-    for (let i = firstKnown - 1; i >= 0; i--)
-      runningBals[i] = runningBals[i+1] !== null ? runningBals[i+1] - mainNet[i] : null;
-  }
-
-  // Closing = OB + main net movement - CC spend
-  const actualClosing = runningBals.map((ob,i) => ob !== null ? ob + mainNet[i] - ccActuals[i] : null);
-
-  // Forecast
-  const lastActualBal = runningBals.filter(b => b !== null).slice(-1)[0] ?? null;
-  const mainFActuals  = forecastWeeks.map((_,i) => spendCatsLocal.reduce((s,c) => s + (forecastData[mainAcc]?.[c]?.[i]||0), 0));
-  const mainFIncome   = forecastWeeks.map((_,i) => forecastData[mainAcc]?.["Salary"]?.[i]||0);
-  const mainFNet      = forecastWeeks.map((_,i) => mainFIncome[i] - mainFActuals[i]);
-  const ccFActuals    = forecastWeeks.map((_,i) =>
-    ccAccounts.reduce((s,acc) =>
-      spendCatsLocal.reduce((s2,c) => s2 + (forecastData[acc]?.[c]?.[i]||0), s), 0));
-
-  const forecastBals = Array(forecastWeeks.length).fill(null);
-  if (lastActualBal !== null) {
-    forecastBals[0] = lastActualBal + mainNet[actualWeeks.length-1];
-    for (let i = 1; i < forecastWeeks.length; i++)
-      forecastBals[i] = forecastBals[i-1] + mainFNet[i-1];
-  }
-
-  const forecastClosing = forecastBals.map((ob,i) => ob !== null ? ob + mainFNet[i] - ccFActuals[i] : null);
-
-  return { actual: actualClosing, forecast: forecastClosing };
-}, [accounts, categories, actualWeeks, forecastWeeks, weeklyByAccountCat, weekBalances, forecastData]);
   const insights=useMemo(()=>{
     const tips=[],totals={};
     categories.forEach(cat=>{totals[cat]=actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),0);});
     const top=Object.entries(totals).filter(([c])=>c!=="Salary"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
-    if(top)tips.push({icon:"📊",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`});
-    categories.forEach(cat=>{
-      if(cat==="Salary"||cat==="Card Repayment")return;
-      const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));
-      const avg=rollingAvg(vals),last=vals[vals.length-1];
-      if(avg>0&&last>avg*1.8)tips.push({icon:"⚠️",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`});
-    });
-    if(tips.length<2)tips.push({icon:"✅",color:"#10b981",title:"Looks stable",body:"No major anomalies detected."});
+    if(top)tips.push({icon:"📊",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`,detail:`Your highest spend category is ${top[0]} at £${Math.round(top[1]).toLocaleString()} total over the past 6 weeks. That's roughly £${Math.round(top[1]/6).toLocaleString()} per week on average.`});
+    categories.forEach(cat=>{if(cat==="Salary"||cat==="Card Repayment")return;const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));const avg=rollingAvg(vals),last=vals[vals.length-1];if(avg>0&&last>avg*1.8)tips.push({icon:"⚠️",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`,detail:`Your ${cat} spending last week (£${Math.round(last)}) was ${Math.round((last/avg-1)*100)}% above your 6-week average of £${Math.round(avg)}. Worth checking if there was a one-off purchase.`});});
+    if(tips.length<2)tips.push({icon:"✅",color:"#10b981",title:"Looks stable",body:"No major anomalies detected.",detail:"Your spending patterns look consistent week-on-week. No unusual spikes or sudden changes in any category."});
     return tips.slice(0,4);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat]);
 
-  const tdAmt=(color,isForecast,bold)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.03)":undefined,borderRight:"1px solid #f0f0f0",whiteSpace:"nowrap"});
-  const tdTot=(isForecast)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:isForecast?PURPLE:"#111827",background:isForecast?"rgba(99,102,241,0.06)":"#f9fafb",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",whiteSpace:"nowrap"});
+  const tdAmt=(color,isForecast,bold)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.03)":undefined,borderRight:"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+  const tdTot=(isForecast)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:isForecast?PURPLE:"#111827",background:isForecast?"rgba(99,102,241,0.06)":"#f9fafb",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
 
-  function CatRow({cat,account}) {
+  function LabelCell({label,account}){
+    const tip=ROW_TOOLTIPS[label];
+    return(
+      <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default"}}
+        onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+        onMouseLeave={()=>setTooltip(null)}>
+        {label}
+        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#9ca3af",verticalAlign:"super"}}>?</span>}
+      </td>
+    );
+  }
+
+  function CatRow({cat,account}){
     const isIncome=cat==="Salary";
     const isRepayment=cat==="Card Repayment";
     const key=`${account}::${cat}`;
@@ -1065,17 +1086,20 @@ function CashFlowScreen({transactions, categories}) {
     const budget=budgets[key];
     const rowColor=isIncome?"#f0fdf4":isRepayment?"#faf5ff":"#fff";
     const textColor=isIncome?"#059669":isRepayment?"#7c3aed":"#111827";
-    return (
-      <tr style={{opacity:hidden?0.35:1,borderBottom:"1px solid #f3f4f6",background:rowColor}}>
+    return(
+      <tr className="abound-row" style={{opacity:hidden?0.3:1,borderBottom:"1px solid #f3f4f6",background:rowColor,cursor:"default"}}>
         <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
-        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor}}>
+        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
+          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+          onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
           {isRepayment&&<span style={{fontSize:9,marginRight:4}}>↔</span>}
           {cat}
+          <span style={{marginLeft:4,fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span>
         </td>
         {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false)}>{fmtMoney(v)}</td>)}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
-        {forecasts.map((v,i)=>{const over=budget&&v>budget;return <td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
+        {forecasts.map((v,i)=>{const over=budget&&v>budget;return<td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
         <td style={{padding:"4px 8px",textAlign:"center"}}>
           {editingBudget===key
@@ -1092,7 +1116,7 @@ function CashFlowScreen({transactions, categories}) {
     );
   }
 
-  function AccountSection({account}) {
+  function AccountSection({account}){
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
     const spendCatsLocal=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
@@ -1105,19 +1129,12 @@ function CashFlowScreen({transactions, categories}) {
     const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
     const runningBalances=Array(actualWeeks.length).fill(null);
     const firstKnownIdx=knownBalances.findIndex(b=>b!==null);
-    if(firstKnownIdx!==-1){
-      runningBalances[firstKnownIdx]=knownBalances[firstKnownIdx];
-      for(let i=firstKnownIdx+1;i<actualWeeks.length;i++) runningBalances[i]=runningBalances[i-1]!==null?runningBalances[i-1]+weeklyNetActual[i-1]:null;
-      for(let i=firstKnownIdx-1;i>=0;i--) runningBalances[i]=runningBalances[i+1]!==null?runningBalances[i+1]-weeklyNetActual[i]:null;
-    }
+    if(firstKnownIdx!==-1){runningBalances[firstKnownIdx]=knownBalances[firstKnownIdx];for(let i=firstKnownIdx+1;i<actualWeeks.length;i++)runningBalances[i]=runningBalances[i-1]!==null?runningBalances[i-1]+weeklyNetActual[i-1]:null;for(let i=firstKnownIdx-1;i>=0;i--)runningBalances[i]=runningBalances[i+1]!==null?runningBalances[i+1]-weeklyNetActual[i]:null;}
     const lastActualBal=runningBalances.filter(b=>b!==null).slice(-1)[0]??null;
     const forecastBalances=Array(forecastWeeks.length).fill(null);
-    if(lastActualBal!==null){
-      forecastBalances[0]=lastActualBal+weeklyNetActual[actualWeeks.length-1];
-      for(let i=1;i<forecastWeeks.length;i++) forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];
-    }
+    if(lastActualBal!==null){forecastBalances[0]=lastActualBal+weeklyNetActual[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];}
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
-    return (
+    return(
       <>
         <tr style={{background:"#1e1b4b"}}>
           <td colSpan={2} style={{padding:"7px 12px",fontSize:12,fontWeight:800,color:"#e0e7ff"}}>{account}</td>
@@ -1126,30 +1143,38 @@ function CashFlowScreen({transactions, categories}) {
           {forecastWeeks.map((_,i)=><td key={i} style={{background:"#312e81",borderRight:"1px solid #3730a3"}}/>)}
           <td style={{background:"#312e81",borderLeft:"2px solid #3730a3"}}/><td style={{background:"#1e1b4b"}} colSpan={2}/>
         </tr>
-        <tr style={{background:"#f8fafc",borderBottom:"1px solid #eef0f3"}}>
+        <tr className="abound-row" style={{background:"#f8fafc",borderBottom:"1px solid #eef0f3"}}>
           <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af"}}/>
-          <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151"}}>Opening Balance</td>
-          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151",cursor:"help"}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Opening Balance"],x:r.left,y:r.bottom+6});}}
+            onMouseLeave={()=>setTooltip(null)}>
+            Opening Balance <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span>
+          </td>
+          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",background:"#f9fafb"}}/>
-          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:"2px solid #e5e7eb",background:"rgba(99,102,241,0.02)"}}/><td/><td/>
         </tr>
         {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {spendCatsLocal.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
-        <tr style={{background:"#f3f4f6",borderBottom:"1px solid #e5e7eb"}}>
-          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151"}}>Total Spend</td>
+        <tr className="abound-row" style={{background:"#f3f4f6",borderBottom:"1px solid #e5e7eb"}}>
+          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151",cursor:"help"}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
+            onMouseLeave={()=>setTooltip(null)}>Total Spend <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
           {accActuals.map((v,i)=><td key={i} style={tdAmt("#111827",false,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
           {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
-        <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
-          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151"}}>Net Movement</td>
-          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444"}}>{netFmt(v)}</td>)}
+        <tr className="abound-row" style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
+          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151",cursor:"help"}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
+            onMouseLeave={()=>setTooltip(null)}>Net Movement <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)"}}>{netFmt(v)}</td>)}
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
@@ -1157,8 +1182,55 @@ function CashFlowScreen({transactions, categories}) {
     );
   }
 
-  return (
-    <div style={{display:"flex",flex:1,overflow:"hidden"}}>
+  const currentStep = tourStep!==null ? TOUR_STEPS[tourStep] : null;
+
+  return(
+    <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative"}}>
+      <style>{GLOBAL_CSS}</style>
+
+      {/* Tooltip */}
+      {tooltip&&(
+        <div style={{position:"fixed",left:tooltip.x,top:tooltip.y,zIndex:9999,maxWidth:280,background:"#1e1b38",border:"1px solid #4338ca",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#c7d2fe",lineHeight:1.5,pointerEvents:"none",animation:"tooltipIn 0.15s ease both",boxShadow:"0 4px 20px rgba(0,0,0,0.4)"}}>
+          {tooltip.text}
+        </div>
+      )}
+
+      {/* Tour spotlight overlay */}
+      {tourVisible&&currentStep&&(
+        <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
+          <div style={{position:"absolute",inset:0,background:"rgba(8,7,15,0.55)",pointerEvents:"all"}} onClick={closeTour}/>
+          {/* Tour card */}
+          <div style={{position:"fixed",bottom:80,right:24,width:300,background:"#1e1b38",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"18px 20px",zIndex:1001,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.08em",marginBottom:4}}>{tourStep===0?"✨ WELCOME":`STEP ${tourStep} OF ${TOUR_STEPS.length-1}`}</div>
+                <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{currentStep.title}</div>
+              </div>
+              <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0}}>×</button>
+            </div>
+            <p style={{fontSize:12,color:"#a1a1aa",lineHeight:1.6,margin:"0 0 16px"}}>{currentStep.body}</p>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={advanceTour}
+                style={{flex:1,padding:"9px 14px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}
+                onMouseEnter={e=>e.target.style.background="#4f46e5"}
+                onMouseLeave={e=>e.target.style.background="#6366f1"}>
+                {currentStep.cta}
+              </button>
+              {currentStep.skip&&<button onClick={closeTour} style={{padding:"9px 12px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:8,fontSize:12,cursor:"pointer"}}>{currentStep.skip}</button>}
+            </div>
+            {/* Step dots */}
+            {tourStep>0&&(
+              <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:12}}>
+                {TOUR_STEPS.slice(1).map((_,i)=>(
+                  <div key={i} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s"}}/>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Main table area */}
       <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
         <div style={{display:"flex",gap:12,marginBottom:20}}>
           {[
@@ -1172,7 +1244,7 @@ function CashFlowScreen({transactions, categories}) {
                 <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6}}>{c.label}</div>
                 <span style={{fontSize:18}}>{c.icon}</span>
               </div>
-              <div style={{fontSize:22,fontWeight:800,color:c.color}}>{c.value}</div>
+              <div style={{fontSize:22,fontWeight:800,color:c.color,fontVariantNumeric:"tabular-nums"}}>{c.value}</div>
               <div style={{fontSize:11,color:"#9ca3af",marginTop:3}}>{c.sub}</div>
             </div>
           ))}
@@ -1210,57 +1282,84 @@ function CashFlowScreen({transactions, categories}) {
             </thead>
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
-              <tr style={{background:"#111827",borderTop:"2px solid #374151"}}>
-  <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#fff"}}>CLOSING BALANCE</td>
-  {combinedClosingBalances.actual.map((v,i)=>(
-    <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,
-      color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #374151"}}>
-      {v===null?"—":fmtMoney(v)}
-    </td>
-  ))}
-  <td style={{padding:"7px 10px",background:"#0f0e1a",borderLeft:"2px solid #374151",borderRight:"2px solid #374151"}}/>
-  {combinedClosingBalances.forecast.map((v,i)=>(
-    <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,
-      color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",
-      background:"rgba(99,102,241,0.2)",borderRight:"1px solid #374151"}}>
-      {v===null?"—":fmtMoney(v)}
-    </td>
-  ))}
-  <td style={{background:"rgba(99,102,241,0.2)",borderLeft:"2px solid #374151"}}/>
-  <td style={{background:"#111827"}} colSpan={2}/>
-</tr>
+              {/* Closing Balance row */}
+              <tr style={{background:"#111827",borderTop:"2px solid #6366f1"}}>
+                <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
+                  onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Closing Balance"],x:r.left,y:r.bottom+6});}}
+                  onMouseLeave={()=>setTooltip(null)}>
+                  CLOSING BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
+                </td>
+                {combinedClosingBalances.actual.map((v,i)=>(
+                  <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #374151",fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.06)":v!==null?"rgba(239,68,68,0.06)":undefined}}>
+                    {v===null?"—":fmtMoney(v)}
+                  </td>
+                ))}
+                <td style={{padding:"7px 10px",background:"#0f0e1a",borderLeft:"2px solid #374151",borderRight:"2px solid #374151"}}/>
+                {combinedClosingBalances.forecast.map((v,i)=>(
+                  <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.08)":"rgba(99,102,241,0.15)",borderRight:"1px solid #374151",fontVariantNumeric:"tabular-nums"}}>
+                    {v===null?"—":fmtMoney(v)}
+                  </td>
+                ))}
+                <td style={{background:"rgba(99,102,241,0.15)",borderLeft:"2px solid #374151"}}/>
+                <td style={{background:"#111827"}} colSpan={2}/>
+              </tr>
             </tbody>
           </table>
         </div>
       </div>
-      <div style={{width:aiOpen?280:42,flexShrink:0,background:"#fff",borderLeft:"1px solid #e5e7eb",transition:"width 0.3s",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"16px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #f3f4f6",color:PURPLE,fontWeight:700,fontSize:13,whiteSpace:"nowrap"}}>
-          <span style={{fontSize:16}}>🤖</span>
-          {aiOpen&&"AI Advisor"}
-          <span style={{marginLeft:"auto",fontSize:11}}>{aiOpen?"›":"‹"}</span>
+
+      {/* AI Advisor sidebar */}
+      <div style={{width:aiOpen?288:44,flexShrink:0,background:"#fff",borderLeft:"1px solid #e5e7eb",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+        {/* Gradient top border */}
+        <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,transparent)",pointerEvents:"none"}}/>
+        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #f3f4f6",color:PURPLE,fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
+          <span style={{fontSize:15}}>🤖</span>
+          {aiOpen&&<span style={{flex:1,textAlign:"left"}}>AI Advisor</span>}
+          <span style={{fontSize:10,color:"#9ca3af"}}>{aiOpen?"›":"‹"}</span>
         </button>
         {aiOpen&&(
-          <div style={{padding:14,display:"flex",flexDirection:"column",gap:12,overflow:"auto"}}>
-            <div style={{fontSize:11,color:"#9ca3af",fontWeight:600,letterSpacing:0.5}}>INSIGHTS</div>
-            {insights.map((ins,i)=>(
-              <div key={i} style={{background:"#fafafa",borderRadius:10,padding:"12px 14px",borderLeft:`3px solid ${ins.color}`}}>
-                <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:5}}>
-                  <span style={{fontSize:14}}>{ins.icon}</span>
-                  <span style={{fontSize:12,fontWeight:700}}>{ins.title}</span>
-                </div>
-                <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.5}}>{ins.body}</p>
+          <div style={{padding:14,display:"flex",flexDirection:"column",gap:10,overflow:"auto",flex:1}}>
+            <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,letterSpacing:0.8}}>INSIGHTS</div>
+            {aiTyping?(
+              <div style={{display:"flex",gap:5,padding:"12px 14px",background:"#fafafa",borderRadius:10,alignItems:"center"}}>
+                {[0,1,2].map(i=>(
+                  <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>
+                ))}
               </div>
-            ))}
+            ):(
+              insights.map((ins,i)=>(
+                <div key={i} style={{background:"#fafafa",borderRadius:10,borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"all 0.2s",animation:`fadeUp 0.4s ease ${i*120}ms both`}}>
+                  <div style={{padding:"11px 14px",cursor:"pointer",display:"flex",gap:7,alignItems:"center"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
+                    <span style={{fontSize:14}}>{ins.icon}</span>
+                    <span style={{fontSize:12,fontWeight:700,flex:1}}>{ins.title}</span>
+                    <span style={{fontSize:10,color:"#9ca3af"}}>{aiExpanded===i?"▲":"▼"}</span>
+                  </div>
+                  <div style={{padding:aiExpanded===i?"0 14px 12px":"0 14px",maxHeight:aiExpanded===i?200:40,overflow:"hidden",transition:"all 0.3s ease"}}>
+                    <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.6}}>{ins.body}</p>
+                    {aiExpanded===i&&ins.detail&&<p style={{fontSize:11,color:"#9ca3af",margin:"8px 0 0",lineHeight:1.6,borderTop:"1px solid #f3f4f6",paddingTop:8}}>{ins.detail}</p>}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>
+
+      {/* Tour reopen button */}
+      <button onClick={reopenTour}
+        title="Tour & tips"
+        style={{position:"fixed",bottom:24,right:24,width:40,height:40,borderRadius:"50%",background:"#6366f1",border:"none",color:"#fff",fontSize:16,cursor:"pointer",boxShadow:"0 4px 16px rgba(99,102,241,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s"}}
+        onMouseEnter={e=>{e.target.style.transform="scale(1.1)";e.target.style.boxShadow="0 6px 24px rgba(99,102,241,0.6)";}}
+        onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 4px 16px rgba(99,102,241,0.4)";}}>
+        ?
+      </button>
     </div>
   );
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen, setScreen] = useState("upload");
+  const [screen, setScreen] = useState("hero");
   const [rawTransactions, setRawTransactions] = useState([]);
   const [multipleAccounts, setMultipleAccounts] = useState(false);
   const [categorisedTransactions, setCategorisedTransactions] = useState([]);
@@ -1268,10 +1367,13 @@ export default function App() {
   const [finalCategories, setFinalCategories] = useState([]);
   return (
     <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#f8fafc",minHeight:"100vh"}}>
+      <style>{GLOBAL_CSS}</style>
+      {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")}/>}
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
       {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={(txns,cats)=>{setSortedTransactions(txns);setFinalCategories(cats);setScreen("main");}}/>}
-      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={()=>setScreen("upload")}/>}
+      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={()=>setScreen("session-complete")}/>}
+      {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
     </div>
   );
 }

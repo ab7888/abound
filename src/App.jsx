@@ -207,6 +207,88 @@ function readExcelFile(file) {
     else reader.readAsArrayBuffer(file);
   });
 }
+async function loadPdfJs() {
+  if (window.pdfjsLib) return window.pdfjsLib;
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => {
+      window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      resolve(window.pdfjsLib);
+    };
+    script.onerror = () => reject(new Error('Failed to load PDF.js'));
+    document.head.appendChild(script);
+  });
+}
+
+async function readPdfFile(file) {
+  const pdfjsLib = await loadPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  const allLines = [];
+
+  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+
+    // Group text items by approximate y-position (same line = within 4 units)
+    const items = textContent.items
+      .map(item => ({
+        text: item.str.trim(),
+        x: Math.round(item.transform[4]),
+        y: Math.round(item.transform[5] / 4) * 4,
+      }))
+      .filter(i => i.text.length > 0);
+
+    const lineMap = {};
+    items.forEach(item => {
+      if (!lineMap[item.y]) lineMap[item.y] = [];
+      lineMap[item.y].push(item);
+    });
+
+    // Sort top-to-bottom (higher y = higher on page in PDF coords)
+    const lines = Object.entries(lineMap)
+      .sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]))
+      .map(([, items]) =>
+        items.sort((a, b) => a.x - b.x).map(i => i.text).join(' ')
+      );
+
+    allLines.push(...lines);
+  }
+
+  // Parse lines into transaction rows
+  // Match common UK bank date formats: 01/02/2026, 01-Feb-26, 1 Feb 2026
+  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/;
+  const amountRx = /-?[\d,]+\.\d{2}/g;
+  const rows = [];
+
+  allLines.forEach(line => {
+    const dateMatch = line.match(dateRx);
+    if (!dateMatch) return;
+    const dateStr = dateMatch[0];
+    const amounts = line.match(amountRx);
+    if (!amounts || amounts.length === 0) return;
+
+    // Last amount = balance, second-to-last = transaction; if only one, it's the transaction
+    const txnAmt = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0];
+    const bal    = amounts.length >= 2 ? amounts[amounts.length - 1] : '';
+
+    // Description sits between the date and the first amount
+    const firstAmtIdx = line.indexOf(amounts[0]);
+    const description = line.slice(dateStr.length, firstAmtIdx).replace(/\s+/g, ' ').trim();
+    if (!description || description.length < 2) return;
+
+    rows.push({
+      Date:        dateStr,
+      Description: description,
+      Amount:      txnAmt.replace(/,/g, ''),
+      Balance:     bal.replace(/,/g, ''),
+    });
+  });
+
+  return rows;
+}
 
 function normaliseRows(rows, accountLabel) {
   if (!rows.length) return [];
@@ -432,7 +514,8 @@ function UploadScreen({onDone}) {
     const allRows=[];let ccIndex=1;
     for(const acc of accounts){
       if(!acc.file)continue;
-      const rows=await readExcelFile(acc.file);
+      const ext=acc.file.name.split('.').pop().toLowerCase();
+      const rows=ext==="pdf" ? await readPdfFile(acc.file) : await readExcelFile(acc.file);
       const isFirst=acc.id===accounts[0].id;
       let label;
       if(isFirst)label="Main Account";
@@ -451,14 +534,14 @@ function UploadScreen({onDone}) {
     return(
       <label onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}
         style={{display:"block",position:"relative",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none"}}>
-        <input type="file" accept=".xlsx,.xls,.csv" onChange={onDrop} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
+        <input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onDrop} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
             {loaded?"✓":"📄"}
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600,color:loaded?"#a5b4fc":"#71717a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{loaded?account.name:`Drop ${labelText} statement here`}</div>
-            <div style={{fontSize:11,color:"#3f3f46",marginTop:2}}>{loaded?"Ready · Excel or CSV":"Excel or CSV · drag & drop or click"}</div>
+            <div style={{fontSize:11,color:"#3f3f46",marginTop:2}}>{loaded?"Ready · Excel, CSV or PDF":"Excel, CSV or PDF · drag & drop or click"}</div>
           </div>
           {loaded&&<div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",flexShrink:0,boxShadow:"0 0 6px #10b981"}}/>}
         </div>

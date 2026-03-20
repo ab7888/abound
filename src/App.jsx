@@ -13,6 +13,8 @@ const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   *, *::before, *::after { box-sizing: border-box; }
   body { -webkit-font-smoothing: antialiased; }
+  html { -webkit-text-size-adjust: 100%; }
+  button, select, input { touch-action: manipulation; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
   @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
   @keyframes fadeIn { from{opacity:0} to{opacity:1} }
@@ -25,6 +27,16 @@ const GLOBAL_CSS = `
   @keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }
 `;
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(typeof window!=="undefined"?window.innerWidth<768:false);
+  useEffect(()=>{
+    const handler=()=>setIsMobile(window.innerWidth<768);
+    window.addEventListener("resize",handler);
+    return()=>window.removeEventListener("resize",handler);
+  },[]);
+  return isMobile;
+}
 
 // ─── Merchant data ────────────────────────────────────────────────────────────
 const MERCHANT_MAP = {
@@ -547,18 +559,19 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");}
   function removeCategory(cat){if(baseCats.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setCategorised(t=>t.map(tx=>tx.category===cat?{...tx,category:"Other Payments"}:tx));}
   function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
+ const isMobile=useIsMobile();
   if(step==="loading") return <LoadingScreen pct={pct} message={message} done={done} logLines={logLines}/>;
   return (
-    <div style={{maxWidth:680,margin:"40px auto",padding:"0 24px"}}>
+    <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"16px":"40px 24px"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:28}}>
-        <img src={logo} alt="Abound" style={{height:44}}/>
+        <img src={logo} alt="Abound" style={{height:isMobile?32:44}}/>
         <div>
-          <div style={{fontSize:22,fontWeight:800,color:"#111827"}}>Your spending breakdown</div>
+          <div style={{fontSize:isMobile?18:22,fontWeight:800,color:"#111827"}}>Your spending breakdown</div>
           <div style={{fontSize:13,color:"#6b7280"}}>{categorised.length} transactions categorised · tweak anything below</div>
         </div>
       </div>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginBottom:28}}>
+      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginBottom:28}}>
         {categories.map((cat,i)=>{
           const total=summary[cat]||0;
           return (
@@ -836,6 +849,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
+  const isMobile = useIsMobile();
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});return list;},[transactions]);
   const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>b.date-a.date),[transactions]);
   const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
@@ -855,9 +869,9 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
           <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer"}}>×</button>
         </div>
       )}
-      <div style={{padding:"20px 24px"}}>
-        <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,width:220,outline:"none"}}/>
+      <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
+        <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,width:isMobile?"100%":220,outline:"none"}}/>
           <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
             <option value="All">All accounts</option>
             {accounts.map(a=><option key={a} value={a}>{a}</option>)}
@@ -872,31 +886,49 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
           </div>
         </div>
         <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",background:"#1e1b4b",padding:"10px 16px"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DATE</div>
-            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DESCRIPTION</div>
-            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,textAlign:"right"}}>AMOUNT</div>
-            <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,paddingLeft:16}}>CATEGORY</div>
-          </div>
+          {!isMobile&&(
+            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",background:"#1e1b4b",padding:"10px 16px"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DATE</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DESCRIPTION</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,textAlign:"right"}}>AMOUNT</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,paddingLeft:16}}>CATEGORY</div>
+            </div>
+          )}
           {filtered.map((t,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background 0.1s"}}
-              onMouseEnter={e=>e.currentTarget.style.background="#f0f7ff"}
-              onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
-              <div style={{fontSize:12,color:"#6b7280"}}>{fmtDate(t.date)}</div>
-              <div style={{fontSize:12,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
-                <span style={{fontSize:10,color:"#9ca3af",marginRight:6}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
-                {t.narrative}
-              </div>
-              <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
-                {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
-              </div>
-              <div style={{paddingLeft:16}}>
+            isMobile ? (
+              <div key={i} style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                  <span style={{fontSize:11,color:"#9ca3af"}}>{fmtDate(t.date)} · {t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:t.isIncome?"#059669":"#111827",fontVariantNumeric:"tabular-nums"}}>
+                    {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
+                  </span>
+                </div>
+                <div style={{fontSize:13,color:"#111827",marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narrative}</div>
                 <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
-                  style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",width:"100%",maxWidth:160}}>
+                  style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",width:"100%"}}>
                   {categories.map(c=><option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-            </div>
+            ) : (
+              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background 0.1s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#f0f7ff"}
+                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
+                <div style={{fontSize:12,color:"#6b7280"}}>{fmtDate(t.date)}</div>
+                <div style={{fontSize:12,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
+                  <span style={{fontSize:10,color:"#9ca3af",marginRight:6}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
+                  {t.narrative}
+                </div>
+                <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                  {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
+                </div>
+                <div style={{paddingLeft:16}}>
+                  <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
+                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",width:"100%",maxWidth:160}}>
+                    {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+              </div>
+            )
           ))}
           {filtered.length===0&&<div style={{padding:"40px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No transactions match your filters.</div>}
         </div>
@@ -944,10 +976,11 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver}
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
 function CashFlowScreen({transactions, categories, onGoToReview}) {
+  const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
-  const [aiOpen, setAiOpen] = useState(true);
+  const [aiOpen, setAiOpen] = useState(typeof window!=="undefined"?window.innerWidth>=768:true);
   const [aiTyping, setAiTyping] = useState(true);
   const [aiExpanded, setAiExpanded] = useState(null);
   const [tourStep, setTourStep] = useState(null);
@@ -1059,8 +1092,8 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
     return tips.slice(0,4);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat]);
 
-  const tdAmt=(color,isForecast,bold)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.03)":undefined,borderRight:"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
-  const tdTot=(isForecast)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:isForecast?PURPLE:"#111827",background:isForecast?"rgba(99,102,241,0.06)":"#f9fafb",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:`1px solid ${isForecast?"#ebebf8":"#f0f0f0"}`,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+  const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#6366f1":"#111827",background:isForecast?"rgba(99,102,241,0.08)":"#f4f4f8",borderLeft:"2px solid #e0e0f0",borderRight:"2px solid #e0e0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
 
   function LabelCell({label,account}){
     const tip=ROW_TOOLTIPS[label];
@@ -1136,14 +1169,19 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
     return(
       <>
-        <tr style={{background:"#1e1b4b"}}>
-          <td colSpan={2} style={{padding:"7px 12px",fontSize:12,fontWeight:800,color:"#e0e7ff"}}>{account}</td>
-          {actualWeeks.map((_,i)=><td key={i} style={{background:"#1e1b4b",borderRight:"1px solid #2d2a6e"}}/>)}
-          <td style={{background:"#1e1b4b",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
-          {forecastWeeks.map((_,i)=><td key={i} style={{background:"#312e81",borderRight:"1px solid #3730a3"}}/>)}
-          <td style={{background:"#312e81",borderLeft:"2px solid #3730a3"}}/><td style={{background:"#1e1b4b"}} colSpan={2}/>
+        <tr style={{background:"linear-gradient(90deg,#1a1740,#1e1b4b 40%,#231f5a)"}}>
+          <td colSpan={2} style={{padding:"10px 16px",fontSize:11,fontWeight:800,color:"#c7d2fe",letterSpacing:"0.06em",textTransform:"uppercase"}}>
+            <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
+              <span style={{width:3,height:14,borderRadius:2,background:"#6366f1",display:"inline-block"}}/>
+              {account}
+            </span>
+          </td>
+          {actualWeeks.map((_,i)=><td key={i} style={{background:"transparent",borderRight:"1px solid #2d2a6e"}}/>)}
+          <td style={{borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+          {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.15)",borderRight:"1px solid #3730a3"}}/>)}
+          <td style={{background:"rgba(99,102,241,0.15)",borderLeft:"2px solid #3730a3"}}/><td colSpan={2}/>
         </tr>
-        <tr className="abound-row" style={{background:"#f8fafc",borderBottom:"1px solid #eef0f3"}}>
+        <tr className="abound-row" style={{background:"#fafafe",borderBottom:"1px solid #ececf8"}}>
           <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af"}}/>
           <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Opening Balance"],x:r.left,y:r.bottom+6});}}
@@ -1158,20 +1196,20 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
         {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {spendCatsLocal.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
-        <tr className="abound-row" style={{background:"#f3f4f6",borderBottom:"1px solid #e5e7eb"}}>
-          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151",cursor:"help"}}
+        <tr className="abound-row" style={{background:"#f0f0f8",borderBottom:"1px solid #ddddf0"}}>
+          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#374151",letterSpacing:"0.02em",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>Total Spend <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
+            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
           {accActuals.map((v,i)=><td key={i} style={tdAmt("#111827",false,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
           {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
-        <tr className="abound-row" style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
-          <td/><td style={{padding:"6px 12px",fontSize:11,fontWeight:800,color:"#374151",cursor:"help"}}
+        <tr className="abound-row" style={{background:"#f7f7fb",borderBottom:"2px solid #e2e2ef"}}>
+          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.02em",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>Net Movement <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
@@ -1231,29 +1269,26 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
       )}
 
       {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
-        <div style={{display:"flex",gap:12,marginBottom:20}}>
+      <div style={{flex:1,overflow:"auto",padding:isMobile?"12px 16px":"20px 24px"}}>
+        <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,gap:isMobile?8:12,marginBottom:16,overflowX:isMobile?"auto":undefined}}>
           {[
-            {label:"Transactions",value:transactions.length,sub:`${accounts.length} account${accounts.length>1?"s":""}`,icon:"🧾",color:PURPLE},
-            {label:"6-Wk Actual Spend",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"all accounts",icon:"📉",color:"#10b981"},
-            {label:"6-Wk Forecast",value:`£${Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"rolling avg",icon:"🔮",color:PURPLE},
-            {label:"Avg Weekly",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1)).toLocaleString()}`,sub:"last 6 weeks",icon:"📆",color:"#f59e0b"},
+            {label:"Transactions",value:transactions.length.toLocaleString(),sub:`${accounts.length} account${accounts.length>1?"s":""}`,color:PURPLE,accent:"#6366f1"},
+            {label:"6-Wk Actual",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"real spend",color:"#10b981",accent:"#10b981"},
+            {label:"6-Wk Forecast",value:`£${Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"predicted ahead",color:"#6366f1",accent:"#6366f1"},
+            {label:"Avg Weekly",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1)).toLocaleString()}`,sub:"last 6 weeks",color:"#f59e0b",accent:"#f59e0b"},
           ].map((c,i)=>(
-            <div key={i} style={{flex:1,background:"#fff",borderRadius:12,padding:"14px 18px",border:"1px solid #e5e7eb"}}>
-              <div style={{display:"flex",justifyContent:"space-between"}}>
-                <div style={{fontSize:11,fontWeight:600,color:"#9ca3af",marginBottom:6}}>{c.label}</div>
-                <span style={{fontSize:18}}>{c.icon}</span>
-              </div>
-              <div style={{fontSize:22,fontWeight:800,color:c.color,fontVariantNumeric:"tabular-nums"}}>{c.value}</div>
-              <div style={{fontSize:11,color:"#9ca3af",marginTop:3}}>{c.sub}</div>
+            <div key={i} style={{flex:1,background:"#fff",borderRadius:12,padding:"14px 18px",border:"1px solid #ebebf4",borderLeft:`3px solid ${c.accent}`,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:"0.07em",marginBottom:6,textTransform:"uppercase"}}>{c.label}</div>
+              <div style={{fontSize:24,fontWeight:800,color:c.color,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{c.value}</div>
+              <div style={{fontSize:11,color:"#b0b0c0",marginTop:4}}>{c.sub}</div>
             </div>
           ))}
         </div>
-        <div style={{background:"#fff",borderRadius:14,border:"1px solid #e5e7eb",overflow:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse"}}>
+        <div style={{background:"#fff",borderRadius:14,border:"1px solid #e5e7eb",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+          <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
               <tr style={{background:"#1e1b4b"}}>
-                <th colSpan={2} style={{padding:"10px 12px",textAlign:"left"}}>
+                 <th colSpan={2} style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b"}}>
                   <img src={logo} alt="" style={{height:22,verticalAlign:"middle",marginRight:8}}/>
                   <span style={{fontSize:13,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
@@ -1264,7 +1299,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
                 <th style={{background:"#1e1b4b"}} colSpan={2}/>
               </tr>
               <tr style={{background:"#f8fafc"}}>
-                <th colSpan={2} style={{padding:"5px 12px"}}/>
+                <th colSpan={2} style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#374151",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
                 {forecastWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:PURPLE,textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:"1px solid #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
@@ -1273,7 +1308,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
                 <th/>
               </tr>
               <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
-                <th colSpan={2} style={{padding:"2px 12px"}}/>
+                <th colSpan={2} style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
                 {forecastWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:"1px solid #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
@@ -1283,25 +1318,25 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
               {/* Closing Balance row */}
-              <tr style={{background:"#111827",borderTop:"2px solid #6366f1"}}>
-                <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
+              <tr style={{background:"linear-gradient(90deg,#0f0e1a,#111827 40%,#0f0e1a)"}}>
+                <td colSpan={2} style={{padding:"11px 16px",fontSize:12,fontWeight:800,color:"#6366f1",letterSpacing:"0.04em",cursor:"help"}}
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Closing Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
-                  CLOSING BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
+                  CLOSING BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super",marginLeft:2}}>?</span>
                 </td>
                 {combinedClosingBalances.actual.map((v,i)=>(
-                  <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #374151",fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.06)":v!==null?"rgba(239,68,68,0.06)":undefined}}>
+                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#374151":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1f1d35",fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.07)":v!==null?"rgba(239,68,68,0.07)":"transparent"}}>
                     {v===null?"—":fmtMoney(v)}
                   </td>
                 ))}
-                <td style={{padding:"7px 10px",background:"#0f0e1a",borderLeft:"2px solid #374151",borderRight:"2px solid #374151"}}/>
+                <td style={{padding:"9px 10px",background:"#080712",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
                 {combinedClosingBalances.forecast.map((v,i)=>(
-                  <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.08)":"rgba(99,102,241,0.15)",borderRight:"1px solid #374151",fontVariantNumeric:"tabular-nums"}}>
+                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.1)":"rgba(99,102,241,0.12)",borderRight:"1px solid #2d2a6e",fontVariantNumeric:"tabular-nums"}}>
                     {v===null?"—":fmtMoney(v)}
                   </td>
                 ))}
-                <td style={{background:"rgba(99,102,241,0.15)",borderLeft:"2px solid #374151"}}/>
-                <td style={{background:"#111827"}} colSpan={2}/>
+                <td style={{background:"rgba(99,102,241,0.12)",borderLeft:"2px solid #2d2a6e"}}/>
+                <td style={{background:"#0f0e1a"}} colSpan={2}/>
               </tr>
             </tbody>
           </table>
@@ -1348,7 +1383,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
       {/* Tour reopen button */}
       <button onClick={reopenTour}
         title="Tour & tips"
-        style={{position:"fixed",bottom:24,right:24,width:40,height:40,borderRadius:"50%",background:"#6366f1",border:"none",color:"#fff",fontSize:16,cursor:"pointer",boxShadow:"0 4px 16px rgba(99,102,241,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s"}}
+        style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?16:24,width:isMobile?36:40,height:isMobile?36:40,borderRadius:"50%",background:"#6366f1",border:"none",color:"#fff",fontSize:16,cursor:"pointer",boxShadow:"0 4px 16px rgba(99,102,241,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s"}}
         onMouseEnter={e=>{e.target.style.transform="scale(1.1)";e.target.style.boxShadow="0 6px 24px rgba(99,102,241,0.6)";}}
         onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 4px 16px rgba(99,102,241,0.4)";}}>
         ?

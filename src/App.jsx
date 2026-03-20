@@ -439,6 +439,32 @@ Respond ONLY with a JSON array of ${batch.length} category strings. No explanati
   });
 }
 
+// ─── Category Icons ───────────────────────────────────────────────────────────
+function CatIcon({cat, size=18, color="#6366f1"}) {
+  const s = {width:size, height:size, display:"block", flexShrink:0};
+  const p = {stroke:color, strokeWidth:1.5, strokeLinecap:"round", strokeLinejoin:"round", fill:"none"};
+  switch(cat) {
+    case "Food": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M7 2v5c0 1.7 1.3 3 3 3s3-1.3 3-3V2"/><line {...p} x1="10" y1="10" x2="10" y2="18"/><path {...p} d="M6 2v3M10 2v3M14 2v3"/></svg>;
+    case "Travel": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M2 14l4-9 4 4 3-5 5 10"/><circle {...p} cx="15" cy="5" r="1" fill={color}/></svg>;
+    case "Rent": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path {...p} d="M8 18v-6h4v6"/></svg>;
+    case "Memberships": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><circle {...p} cx="6" cy="13" r="1" fill={color}/><path {...p} d="M10 13h4"/></svg>;
+    case "Salary": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M10 2v16M6 5.5C6 4.1 7.8 3 10 3s4 1.1 4 2.5S12.2 8 10 8s-4 1.1-4 2.5S7.8 13 10 13s4-1.1 4-2.5"/></svg>;
+    case "Card Repayment": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><path {...p} d="M14 13.5l2-1.5-2-1.5"/><path {...p} d="M16 12H9"/></svg>;
+    case "Other Payments": return <svg viewBox="0 0 20 20" style={s}><circle {...p} cx="10" cy="10" r="8"/><path {...p} d="M10 6v4l3 2"/></svg>;
+    default: return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="3" y="3" width="14" height="14" rx="2"/><path {...p} d="M7 10h6M10 7v6"/></svg>;
+  }
+}
+
+function InsightIcon({type, color}) {
+  const s = {width:14, height:14, display:"block", flexShrink:0};
+  const p = {stroke:color, strokeWidth:1.6, strokeLinecap:"round", strokeLinejoin:"round", fill:"none"};
+  if(type==="chart") return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M3 15l4-6 4 3 4-8"/><circle {...p} cx="15" cy="4" r="1" fill={color}/></svg>;
+  if(type==="warn") return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M10 3L2 17h16L10 3z"/><path {...p} d="M10 9v4M10 14.5v.5"/></svg>;
+  if(type==="check") return <svg viewBox="0 0 20 20" style={s}><circle {...p} cx="10" cy="10" r="7"/><path {...p} d="M7 10l2 2 4-4"/></svg>;
+  return <svg viewBox="0 0 20 20" style={s}><circle {...p} cx="10" cy="10" r="7"/><path {...p} d="M10 9v5M10 7v.5"/></svg>;
+}
+
+
 // ─── Illustrations ────────────────────────────────────────────────────────────
 function IllustrationLayers() {
   return (
@@ -823,7 +849,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
  const isMobile=useIsMobile();
   if(step==="loading") return <LoadingScreen pct={pct} message={message} done={done} logLines={logLines}/>;
-  const CAT_EMOJI={"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
+  const CAT_EMOJI={};// icons handled by CatIcon
   return (
     <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
@@ -874,7 +900,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
               <div key={cat} style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px",border:"1px solid #1f1d35",borderTop:`2px solid ${color}44`,position:"relative",overflow:"hidden"}}>
                 <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:`linear-gradient(90deg,${color}88,transparent)`}}/>
                 <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
-                  <span style={{fontSize:14}}>{emoji}</span>
+                  <CatIcon cat={cat} size={15} color={color}/>
                   <span style={{fontSize:10,fontWeight:700,color:"#52525b",letterSpacing:"0.05em",textTransform:"uppercase"}}>{cat}</span>
                 </div>
                 <div style={{fontSize:22,fontWeight:800,color:total===0?"#2d2a6e":color,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
@@ -899,7 +925,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
               <div key={cat} style={{display:"flex",alignItems:"center",padding:"11px 18px",borderBottom:`1px solid #0f0e1a`,borderLeft:`3px solid ${color}`,gap:12,transition:"background 0.15s"}}
                 onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.04)"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <span style={{fontSize:16,flexShrink:0}}>{emoji}</span>
+                <CatIcon cat={cat} size={16} color={color}/>
                 <div style={{width:8,height:8,borderRadius:"50%",background:color,flexShrink:0,boxShadow:`0 0 6px ${color}88`}}/>
                 {editingCat===cat
                   ?<input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveRename();if(e.key==="Escape")setEditingCat(null);}} style={{flex:1,fontSize:13,background:"#1e1b38",border:`1px solid ${PURPLE}`,borderRadius:6,padding:"4px 10px",color:"#fff",outline:"none"}}/>
@@ -985,9 +1011,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   function onTouchStart(e){touchStartX.current=e.touches[0].clientX;touchStartY.current=e.touches[0].clientY;}
   function onTouchMove(e){if(touchStartX.current===null)return;const dx=e.touches[0].clientX-touchStartX.current,dy=e.touches[0].clientY-touchStartY.current;if(Math.abs(dy)>Math.abs(dx)+10)return;e.preventDefault();setSwipeOffset(dx);if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])setSwipeTarget(visibleMobileCats[0]);else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])setSwipeTarget(visibleMobileCats[1]);else setSwipeTarget(null);}
   function onTouchEnd(){if(touchStartX.current===null)return;const topItem=unsorted[0];if(topItem&&swipeTarget)assignItem(topItem.narrative,swipeTarget);else{setSwipeOffset(0);setSwipeTarget(null);}touchStartX.current=null;touchStartY.current=null;}
-  const CAT_EMOJI={"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
-  function getBucketEmoji(cat){return CAT_EMOJI[cat]||"📂";}
-
+  function getBucketIcon(cat, color, size=22){return <CatIcon cat={cat} size={size} color={color}/>;}
   const DesktopSort=()=>(
     <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
       <div style={{width:280,flexShrink:0,background:"#0a0818",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",overflow:"hidden"}}>
@@ -1061,7 +1085,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
                 style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}66`}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.015)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",position:"relative",boxShadow:isHovered?`0 0 28px ${color}33`:"none"}}>
                 {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:8,right:10,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
-                  <div style={{fontSize:28,lineHeight:1}}>{getBucketEmoji(cat)}</div>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32}}>{getBucketIcon(cat,isHovered?"#fff":color,26)}</div>
                   <div style={{fontSize:15,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center"}}>{cat}</div>
                   {isHovered&&<div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>drop here</div>}
                 </div>
@@ -1075,7 +1099,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
               style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
-                <div style={{fontSize:28,lineHeight:1,opacity:isHovered?1:0.4}}>🤷</div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,opacity:isHovered?1:0.35}}><svg viewBox="0 0 20 20" width="26" height="26" fill="none"><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
                 <div style={{fontSize:15,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center"}}>Not sure</div>
                 <div style={{fontSize:11,color:"#2d2a6e",textAlign:"center"}}>stays in Other Payments</div>
               </div>
@@ -1177,7 +1201,7 @@ const MobileSort=()=>{
             const isSkip=cat==="Skip",color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
             const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             return(<button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}} style={{padding:"14px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center",WebkitTapHighlightColor:"transparent"}}>
-              <span style={{fontSize:20}}>{getBucketEmoji(cat)}</span>
+              <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22}}>{getBucketIcon(cat,color,20)}</span>
               <span>{isSkip?"Not sure":cat}</span>
               {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
             </button>);
@@ -1322,17 +1346,17 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver}
       <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s"}}>
-          📊 Cash Flow
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
         </button>
         <button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
-          🔍 Review Transactions
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
         </button>
         <button onClick={onStartOver} style={{marginLeft:"auto",fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
       </div>
       {activeTab==="cashflow"&&showReviewPrompt&&(
         <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
-          <span style={{fontSize:20}}>🔍</span>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round"/></svg>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,color:"#fff",fontSize:13}}>Double-check your categories</div>
             <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>AI isn't perfect — a quick review makes your cash flow much more accurate.</div>
@@ -1472,9 +1496,9 @@ useEffect(()=>{
     const tips=[],totals={};
     categories.forEach(cat=>{totals[cat]=actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),0);});
     const top=Object.entries(totals).filter(([c])=>c!=="Salary"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
-    if(top)tips.push({icon:"📊",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`,detail:`Your highest spend category is ${top[0]} at £${Math.round(top[1]).toLocaleString()} total over the past 6 weeks. That's roughly £${Math.round(top[1]/6).toLocaleString()} per week on average.`});
-    categories.forEach(cat=>{if(cat==="Salary"||cat==="Card Repayment")return;const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));const avg=rollingAvg(vals),last=vals[vals.length-1];if(avg>0&&last>avg*1.8)tips.push({icon:"⚠️",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`,detail:`Your ${cat} spending last week (£${Math.round(last)}) was ${Math.round((last/avg-1)*100)}% above your 6-week average of £${Math.round(avg)}. Worth checking if there was a one-off purchase.`});});
-    if(tips.length<2)tips.push({icon:"✅",color:"#10b981",title:"Looks stable",body:"No major anomalies detected.",detail:"Your spending patterns look consistent week-on-week. No unusual spikes or sudden changes in any category."});
+    if(top)tips.push({icon:"chart",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`,detail:`Your highest spend category is ${top[0]} at £${Math.round(top[1]).toLocaleString()} total over the past 6 weeks. That's roughly £${Math.round(top[1]/6).toLocaleString()} per week on average.`});
+    categories.forEach(cat=>{if(cat==="Salary"||cat==="Card Repayment")return;const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));const avg=rollingAvg(vals),last=vals[vals.length-1];if(avg>0&&last>avg*1.8)tips.push({icon:"warn",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`,detail:`Your ${cat} spending last week (£${Math.round(last)}) was ${Math.round((last/avg-1)*100)}% above your 6-week average of £${Math.round(avg)}. Worth checking if there was a one-off purchase.`});});
+    if(tips.length<2)tips.push({icon:"check",color:"#10b981",title:"Looks stable",body:"No major anomalies detected.",detail:"Your spending patterns look consistent week-on-week. No unusual spikes or sudden changes in any category."});
     return tips.slice(0,4);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat]);
 
@@ -1751,7 +1775,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
         {/* Gradient top border */}
         <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,transparent)",pointerEvents:"none"}}/>
         <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #f3f4f6",color:PURPLE,fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
-          <span style={{fontSize:15}}>🤖</span>
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>
           {aiOpen&&<span style={{flex:1,textAlign:"left"}}>AI Advisor</span>}
           <span style={{fontSize:10,color:"#9ca3af"}}>{aiOpen?"›":"‹"}</span>
         </button>
@@ -1768,7 +1792,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
               insights.map((ins,i)=>(
                 <div key={i} style={{background:"#fafafa",borderRadius:10,borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"all 0.2s",animation:`fadeUp 0.4s ease ${i*120}ms both`}}>
                   <div style={{padding:"11px 14px",cursor:"pointer",display:"flex",gap:7,alignItems:"center"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
-                    <span style={{fontSize:14}}>{ins.icon}</span>
+                    <InsightIcon type={ins.icon} color={ins.color}/>
                     <span style={{fontSize:12,fontWeight:700,flex:1}}>{ins.title}</span>
                     <span style={{fontSize:10,color:"#9ca3af"}}>{aiExpanded===i?"▲":"▼"}</span>
                   </div>

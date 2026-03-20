@@ -1289,7 +1289,13 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
   const [tourVisible, setTourVisible] = useState(false);
   const [tooltip, setTooltip] = useState(null); // {text, x, y}
 
-  useEffect(()=>{const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);return()=>clearTimeout(t);},[]);
+const tourShownRef = useRef(false);
+  useEffect(()=>{
+    if(tourShownRef.current) return;
+    tourShownRef.current = true;
+    const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
+    return()=>clearTimeout(t);
+  },[]);
   useEffect(()=>{if(!aiOpen)return;setAiTyping(true);const t=setTimeout(()=>setAiTyping(false),1100);return()=>clearTimeout(t);},[aiOpen]);
 
   const ROW_TOOLTIPS = {

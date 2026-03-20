@@ -11,8 +11,10 @@ const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card", 2:"Credit Card 2", 3
 
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
   *, *::before, *::after { box-sizing: border-box; }
-  body { -webkit-font-smoothing: antialiased; }
+  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  .dark-screen { font-family: 'DM Sans', system-ui, sans-serif; }
   html { -webkit-text-size-adjust: 100%; }
   button, select, input { touch-action: manipulation; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
@@ -692,13 +694,17 @@ function UploadScreen({onDone}) {
     setLoading(false);
     onDone(allRows,accounts.length>1);
   }
-  function DropZone({account,index}){
+function DropZone({account,index}){
     const [dragging,setDragging]=useState(false);
     const inputRef=useRef(null);
     const loaded=!!account.file;
-    function onFileChange(e){const file=e.target.files?.[0];if(file){handleFile(account.id,file);e.target.value="";}}
+    function onFileChange(e){
+      const file=e.target.files?.[0];
+      if(file){handleFile(account.id,file);}
+      e.target.value=""; // reset so same file can be re-selected
+    }
     function onDrop(e){e.preventDefault();setDragging(false);const file=e.dataTransfer?.files?.[0];if(file)handleFile(account.id,file);}
-    function handleClick(){inputRef.current?.click();}
+    function handleClick(e){e.preventDefault();inputRef.current?.click();}
     const labelText=index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
     return(
       <div
@@ -707,7 +713,7 @@ function UploadScreen({onDone}) {
         onDragLeave={()=>setDragging(false)}
         onDrop={onDrop}
         style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{display:"none"}}/>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{position:"absolute",width:1,height:1,opacity:0,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
             {loaded?"✓":"📄"}
@@ -722,7 +728,7 @@ function UploadScreen({onDone}) {
     );
   }
   return(
-    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
+    <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
       {/* Privacy pulse */}
@@ -819,7 +825,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   if(step==="loading") return <LoadingScreen pct={pct} message={message} done={done} logLines={logLines}/>;
   const CAT_EMOJI={"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
   return (
-    <div style={{minHeight:"100vh",background:"#08070f",position:"relative",overflow:"hidden",fontFamily:"'Inter',system-ui,sans-serif"}}>
+    <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       {/* Background radial + grid */}
       <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 60% 0%,rgba(99,102,241,0.1) 0%,transparent 55%)",pointerEvents:"none"}}/>

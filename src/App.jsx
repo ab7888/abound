@@ -694,13 +694,20 @@ function UploadScreen({onDone}) {
   }
   function DropZone({account,index}){
     const [dragging,setDragging]=useState(false);
+    const inputRef=useRef(null);
     const loaded=!!account.file;
-    function onDrop(e){e.preventDefault();setDragging(false);const file=e.dataTransfer?.files?.[0]||e.target.files?.[0];if(file)handleFile(account.id,file);}
+    function onFileChange(e){const file=e.target.files?.[0];if(file){handleFile(account.id,file);e.target.value="";}}
+    function onDrop(e){e.preventDefault();setDragging(false);const file=e.dataTransfer?.files?.[0];if(file)handleFile(account.id,file);}
+    function handleClick(){inputRef.current?.click();}
     const labelText=index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
     return(
-      <label onDragOver={e=>{e.preventDefault();setDragging(true);}} onDragLeave={()=>setDragging(false)} onDrop={onDrop}
-        style={{display:"block",position:"relative",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none"}}>
-        <input type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onDrop} style={{position:"absolute",top:0,left:0,width:"100%",height:"100%",opacity:0,cursor:"pointer",zIndex:2}}/>
+      <div
+        onClick={handleClick}
+        onDragOver={e=>{e.preventDefault();setDragging(true);}}
+        onDragLeave={()=>setDragging(false)}
+        onDrop={onDrop}
+        style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{display:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
             {loaded?"✓":"📄"}
@@ -711,7 +718,7 @@ function UploadScreen({onDone}) {
           </div>
           {loaded&&<div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",flexShrink:0,boxShadow:"0 0 6px #10b981"}}/>}
         </div>
-      </label>
+      </div>
     );
   }
   return(
@@ -1296,18 +1303,30 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
     "Card Repayment":"Money moved to pay your credit card. Excluded from Total Spend — it's not new spending.",
     "Total Spend":"Sum of all real spend, excluding Card Repayments.",
     "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
-    "Closing Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
+    "Cash Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
   };
 
   const TOUR_STEPS = [
-    {title:"Welcome to your Cash Flow",body:"Want a 60-second tour? We'll explain exactly what you're looking at.",cta:"Show me around",skip:"Skip",highlight:null},
-    {title:"Your actual spending",body:"The left columns show real transactions grouped by week. Each row is a spending category.",cta:"Next →",highlight:null},
-    {title:"Your forecast",body:"The purple columns predict your spending ahead, based on your real patterns — monthly bills on their usual date, rolling average for daily spend.",cta:"Next →",highlight:null},
-    {title:"Total Spend",body:"Card repayments are excluded — that money was already counted when you spent it. This is your honest real spend.",cta:"Next →",highlight:null},
-    {title:"Closing Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all accounts.",cta:"Next →",highlight:null},
-    {title:"Set a budget",body:"Click 'set' next to any category. Abound flags in red when your forecast is about to exceed it.",cta:"Next →",highlight:null},
-    {title:"Check your categories",body:"AI isn't perfect. Two minutes reviewing your categories makes your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true},
+    {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.",cta:"Next →",highlight:"actual"},
+    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills (like rent) land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
+    {title:"Total Spend",body:"This is your honest weekly spend — Card Repayments are excluded because that money was already counted when you spent it on your credit card. No double-counting.",cta:"Next →",highlight:"totalspend"},
+    {title:"Cash Balance",body:"The most important row in the whole screen. This is your predicted cash position at the end of each week, combining all your accounts together.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
+    {title:"Set a budget",body:"Click 'set' on any row to add a weekly budget. Abound will highlight forecast weeks in red when you're on track to exceed it — giving you time to adjust.",cta:"Next →",highlight:"budget"},
+    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
   ];
+
+  const highlightRect = useRef(null);
+  useEffect(()=>{
+    if(!tourVisible||!currentStep?.highlight)return;
+    const el = document.querySelector(`[data-tour="${currentStep.highlight}"]`);
+    if(el){
+      const r = el.getBoundingClientRect();
+      highlightRect.current = {top:r.top-6, left:r.left-6, width:r.width+12, height:r.height+12};
+    } else {
+      highlightRect.current = null;
+    }
+  },[tourStep,tourVisible]);
 
   function advanceTour(){
     if(tourStep===0){setTourStep(1);return;}
@@ -1491,7 +1510,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
         {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {spendCatsLocal.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
-        <tr className="abound-row" style={{background:"#f0f0f8",borderBottom:"1px solid #ddddf0"}}>
+        <tr className="abound-row" data-tour="totalspend" style={{background:"#f0f0f8",borderBottom:"1px solid #ddddf0"}}>
           <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#374151",letterSpacing:"0.02em",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
@@ -1529,39 +1548,56 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
       )}
 
       {/* Tour spotlight overlay */}
-      {tourVisible&&currentStep&&(
-        <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
-          <div style={{position:"absolute",inset:0,background:"rgba(8,7,15,0.55)",pointerEvents:"all"}} onClick={closeTour}/>
-          {/* Tour card */}
-          <div style={{position:"fixed",bottom:80,right:24,width:300,background:"#1e1b38",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"18px 20px",zIndex:1001,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.5)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div>
-                <div style={{fontSize:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.08em",marginBottom:4}}>{tourStep===0?"✨ WELCOME":`STEP ${tourStep} OF ${TOUR_STEPS.length-1}`}</div>
-                <div style={{fontSize:14,fontWeight:700,color:"#fff"}}>{currentStep.title}</div>
-              </div>
-              <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0}}>×</button>
-            </div>
-            <p style={{fontSize:12,color:"#a1a1aa",lineHeight:1.6,margin:"0 0 16px"}}>{currentStep.body}</p>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={advanceTour}
-                style={{flex:1,padding:"9px 14px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",transition:"all 0.15s"}}
-                onMouseEnter={e=>e.target.style.background="#4f46e5"}
-                onMouseLeave={e=>e.target.style.background="#6366f1"}>
-                {currentStep.cta}
-              </button>
-              {currentStep.skip&&<button onClick={closeTour} style={{padding:"9px 12px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:8,fontSize:12,cursor:"pointer"}}>{currentStep.skip}</button>}
-            </div>
-            {/* Step dots */}
-            {tourStep>0&&(
-              <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:12}}>
-                {TOUR_STEPS.slice(1).map((_,i)=>(
-                  <div key={i} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s"}}/>
-                ))}
-              </div>
+      {tourVisible&&currentStep&&(()=>{
+        const hr=highlightRect.current;
+        return(
+          <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
+            {/* SVG overlay with cutout hole for highlighted element */}
+            <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"all"}} onClick={closeTour}>
+              <defs>
+                <mask id="tour-mask">
+                  <rect width="100%" height="100%" fill="white"/>
+                  {hr&&<rect x={hr.left} y={hr.top} width={hr.width} height={hr.height} rx="6" fill="black"/>}
+                </mask>
+              </defs>
+              <rect width="100%" height="100%" fill="rgba(8,7,15,0.78)" mask="url(#tour-mask)"/>
+            </svg>
+            {/* Highlight border glow around target */}
+            {hr&&(
+              <div style={{position:"fixed",left:hr.left,top:hr.top,width:hr.width,height:hr.height,borderRadius:8,border:"2px solid #6366f1",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 0 32px rgba(99,102,241,0.35)",pointerEvents:"none",zIndex:1001,animation:"glow 2s ease-in-out infinite"}}/>
             )}
+            {/* Tour card */}
+            <div style={{position:"fixed",bottom:32,right:28,width:360,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:16,padding:"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 12px 60px rgba(0,0,0,0.7)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+                <div>
+                  <div style={{fontSize:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:6,textTransform:"uppercase"}}>{tourStep===0?"✨ Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+                </div>
+                <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:12,lineHeight:1,flexShrink:0,padding:4}}>×</button>
+              </div>
+              {currentStep.body.split('\n\n').map((para,i)=>(
+                <p key={i} style={{fontSize:13,color:"#a1a1aa",lineHeight:1.7,margin:i===0?"0 0 10px":"10px 0 0"}}>{para}</p>
+              ))}
+              <div style={{display:"flex",gap:8,marginTop:20}}>
+                <button onClick={advanceTour}
+                  style={{flex:1,padding:"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)"}}
+                  onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
+                  onMouseLeave={e=>e.currentTarget.style.transform=""}>
+                  {currentStep.cta}
+                </button>
+                {currentStep.skip&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
+              </div>
+              {tourStep>0&&(
+                <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:16}}>
+                  {TOUR_STEPS.slice(1).map((_,i)=>(
+                    <div key={i} onClick={()=>setTourStep(i+1)} style={{width:6,height:6,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s",cursor:"pointer"}}/>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Main table area */}
       <div style={{flex:1,overflow:"auto",padding:isMobile?"12px 16px":"20px 24px"}}>
@@ -1582,7 +1618,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
         <div style={{background:"#fff",borderRadius:14,border:"1px solid #e5e7eb",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
-              <tr style={{background:"#1e1b4b"}}>
+              <tr data-tour="actual" style={{background:"#1e1b4b"}}>
                  <th colSpan={2} style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b"}}>
                   <img src={logo} alt="" style={{height:22,verticalAlign:"middle",marginRight:8}}/>
                   <span style={{fontSize:13,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>
@@ -1593,13 +1629,13 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"#a5b4fc",textAlign:"right",background:"#312e81",borderLeft:"2px solid #3730a3",whiteSpace:"nowrap"}}>FCST</th>
                 <th style={{background:"#1e1b4b"}} colSpan={2}/>
               </tr>
-              <tr style={{background:"#f8fafc"}}>
+              <tr data-tour="forecast" style={{background:"#f8fafc"}}>
                 <th colSpan={2} style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#374151",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
                 {forecastWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:PURPLE,textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:"1px solid #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{background:"rgba(99,102,241,0.05)",borderLeft:"2px solid #e5e7eb"}}/>
-                <th style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"center",whiteSpace:"nowrap"}}>BUDGET</th>
+                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"center",whiteSpace:"nowrap"}}>BUDGET</th>
                 <th/>
               </tr>
               <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
@@ -1612,12 +1648,12 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
             </thead>
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
-              {/* Closing Balance row */}
-              <tr style={{background:"linear-gradient(90deg,#0f0e1a,#111827 40%,#0f0e1a)"}}>
-                <td colSpan={2} style={{padding:"11px 16px",fontSize:12,fontWeight:800,color:"#6366f1",letterSpacing:"0.04em",cursor:"help"}}
-                  onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Closing Balance"],x:r.left,y:r.bottom+6});}}
+              {/* Cash Balance row */}
+              <tr data-tour="cashbalance" style={{background:"#111827",borderTop:"2px solid #6366f1"}}>
+                <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
+                  onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
-                  CLOSING BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super",marginLeft:2}}>?</span>
+                  CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
                 </td>
                 {combinedClosingBalances.actual.map((v,i)=>(
                   <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#374151":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1f1d35",fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.07)":v!==null?"rgba(239,68,68,0.07)":"transparent"}}>

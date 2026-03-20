@@ -317,11 +317,16 @@ async function readPdfFile(file) {
         }
       }
 
-      // Description = everything between date and first money item
+      // Description = everything between date and first money item, excluding Type codes
+      const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF)$/i;
       const firstMoneyX = moneyItems[0].x;
-      const descItems = lineItems.filter(i => i.x > (lineItems[0].x + dateStr.length * 4) && i.x < firstMoneyX);
-      const description = descItems.map(i => i.text).join(' ').trim()
-        || lineText.slice(dateStr.length, lineText.indexOf(txnItem.text)).trim();
+      const betweenItems = lineItems.filter(i => {
+        const afterDate = i.x > lineItems[0].x + (dateStr.length * 3);
+        const beforeMoney = i.x < firstMoneyX - 5;
+        const isType = TRANSACTION_TYPES.test(i.text.trim());
+        return afterDate && beforeMoney && !isType;
+      });
+      const description = betweenItems.map(i => i.text).join(' ').trim();
       if (!description || description.length < 2) continue;
 
       rows.push({

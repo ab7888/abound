@@ -37,7 +37,7 @@ function useIsMobile() {
   },[]);
   return isMobile;
 }
-
+let cashFlowTourShown = false;
 // ─── Merchant data ────────────────────────────────────────────────────────────
 const MERCHANT_MAP = {
   Food: [
@@ -817,53 +817,118 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
  const isMobile=useIsMobile();
   if(step==="loading") return <LoadingScreen pct={pct} message={message} done={done} logLines={logLines}/>;
+  const CAT_EMOJI={"Food":"🍔","Travel":"✈️","Rent":"🏠","Memberships":"📱","Salary":"💰","Other Payments":"💳","Card Repayment":"🔄"};
   return (
-    <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"16px":"40px 24px"}}>
+    <div style={{minHeight:"100vh",background:"#08070f",position:"relative",overflow:"hidden",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
-      <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:28}}>
-        <img src={logo} alt="Abound" style={{height:isMobile?32:44}}/>
-        <div>
-          <div style={{fontSize:isMobile?18:22,fontWeight:800,color:"#111827"}}>Your spending breakdown</div>
-          <div style={{fontSize:13,color:"#6b7280"}}>{categorised.length} transactions categorised · tweak anything below</div>
-        </div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(180px,1fr))",gap:10,marginBottom:28}}>
-        {categories.map((cat,i)=>{
-          const total=summary[cat]||0;
-          return (
-            <div key={cat} style={{background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #e5e7eb",borderLeft:`4px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}`}}>
-              <div style={{fontSize:11,color:"#6b7280",fontWeight:600,marginBottom:4}}>{cat}</div>
-              <div style={{fontSize:20,fontWeight:800,color:total===0?"#d1d5db":"#111827",fontVariantNumeric:"tabular-nums"}}>{total===0?"£0":`£${Math.round(total).toLocaleString()}`}</div>
-              <div style={{fontSize:10,color:"#9ca3af",marginTop:2}}>last 30 days</div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden",marginBottom:20}}>
-        <div style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",fontSize:11,fontWeight:700,color:"#9ca3af",letterSpacing:1}}>CATEGORIES</div>
-        {categories.map((cat,i)=>(
-          <div key={cat} style={{display:"flex",alignItems:"center",padding:"10px 16px",borderBottom:`1px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}22`,borderLeft:`3px solid ${CATEGORY_COLORS[i%CATEGORY_COLORS.length]}`,gap:10}}>
-            <span style={{width:10,height:10,borderRadius:"50%",background:CATEGORY_COLORS[i%CATEGORY_COLORS.length],flexShrink:0}}/>
-            {editingCat===cat
-              ?<input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveRename();if(e.key==="Escape")setEditingCat(null);}} style={{flex:1,fontSize:13,border:`1px solid ${PURPLE}`,borderRadius:6,padding:"3px 8px"}}/>
-              :<span style={{flex:1,fontSize:13,fontWeight:600}}>{cat}</span>
-            }
-            {editingCat===cat
-              ?<button onClick={saveRename} style={{fontSize:11,color:PURPLE,border:"none",background:"none",cursor:"pointer",fontWeight:700}}>Save</button>
-              :<button onClick={()=>{setEditingCat(cat);setEditVal(cat);}} style={{fontSize:11,color:"#9ca3af",border:"none",background:"none",cursor:"pointer"}}>rename</button>
-            }
-            <button onClick={()=>removeCategory(cat)} style={{fontSize:18,color:baseCats.includes(cat)?"#e5e7eb":"#9ca3af",border:"none",background:"none",cursor:baseCats.includes(cat)?"not-allowed":"pointer"}}>−</button>
+      {/* Background radial + grid */}
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 60% 0%,rgba(99,102,241,0.1) 0%,transparent 55%)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.025) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
+
+      <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"16px 16px 120px":"40px 24px 120px",position:"relative",zIndex:1}}>
+
+        {/* Header */}
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32,animation:"fadeUp 0.5s ease both"}}>
+          <img src={logo} alt="Abound" style={{height:isMobile?28:34,opacity:0.95}}/>
+          <div style={{width:1,height:28,background:"#1f1d35"}}/>
+          <div>
+            <div style={{fontSize:isMobile?16:19,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>{"Your spending breakdown"}</div>
+            <div style={{fontSize:12,color:"#52525b",marginTop:2}}>{categorised.length} transactions categorised · tweak anything below</div>
           </div>
-        ))}
-        <div style={{display:"flex",gap:8,padding:"10px 16px"}}>
-          <input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCategory()} placeholder="Add a custom category..." style={{flex:1,fontSize:13,border:"1px solid #e5e7eb",borderRadius:8,padding:"7px 12px"}}/>
-          <button onClick={addCategory} style={{padding:"7px 16px",background:PURPLE,color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>+</button>
         </div>
+
+        {/* Illustration + step indicator row */}
+        <div style={{display:"flex",alignItems:"center",gap:16,marginBottom:28,animation:"fadeUp 0.5s ease 0.05s both"}}>
+          <div style={{width:72,flexShrink:0,opacity:0.7}}>
+            <IllustrationSortBlocks/>
+          </div>
+          <div style={{flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:8}}>
+              {[["Upload",false],["Categorise",true],["Sort",false]].map(([label,active],i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{fontSize:9,color:active?"#6366f1":"#2d2a6e"}}>{active?"●":"○"}</span>
+                    <span style={{fontSize:10,fontWeight:active?700:400,color:active?"#6366f1":"#3f3f46",letterSpacing:"0.06em"}}>{label.toUpperCase()}</span>
+                  </div>
+                  {i<2&&<div style={{width:20,height:1,background:"#1f1d35",margin:"0 8px"}}/>}
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:12,color:"#3f3f46",lineHeight:1.5}}>{"Review the categories below. Rename or remove any that don't fit."}</div>
+          </div>
+        </div>
+
+        {/* Spend summary cards */}
+        <div style={{display:"grid",gridTemplateColumns:isMobile?"1fr 1fr":"repeat(auto-fill,minmax(160px,1fr))",gap:8,marginBottom:24,animation:"fadeUp 0.5s ease 0.1s both"}}>
+          {categories.map((cat,i)=>{
+            const total=summary[cat]||0;
+            const color=CATEGORY_COLORS[i%CATEGORY_COLORS.length];
+            const emoji=CAT_EMOJI[cat]||"📂";
+            return(
+              <div key={cat} style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"14px 16px",border:"1px solid #1f1d35",borderTop:`2px solid ${color}44`,position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:`linear-gradient(90deg,${color}88,transparent)`}}/>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}>
+                  <span style={{fontSize:14}}>{emoji}</span>
+                  <span style={{fontSize:10,fontWeight:700,color:"#52525b",letterSpacing:"0.05em",textTransform:"uppercase"}}>{cat}</span>
+                </div>
+                <div style={{fontSize:22,fontWeight:800,color:total===0?"#2d2a6e":color,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
+                  {total===0?"—":`£${Math.round(total).toLocaleString()}`}
+                </div>
+                <div style={{fontSize:10,color:"#374151",marginTop:3}}>{"last 30 days"}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Categories list */}
+        <div style={{background:"rgba(255,255,255,0.02)",borderRadius:14,border:"1px solid #1f1d35",overflow:"hidden",marginBottom:20,animation:"fadeUp 0.5s ease 0.15s both"}}>
+          <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:8}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#374151",letterSpacing:"0.1em",flex:1}}>CATEGORIES</div>
+            <div style={{fontSize:10,color:"#2d2a6e"}}>{categories.length} total</div>
+          </div>
+          {categories.map((cat,i)=>{
+            const color=CATEGORY_COLORS[i%CATEGORY_COLORS.length];
+            const emoji=CAT_EMOJI[cat]||"📂";
+            return(
+              <div key={cat} style={{display:"flex",alignItems:"center",padding:"11px 18px",borderBottom:`1px solid #0f0e1a`,borderLeft:`3px solid ${color}`,gap:12,transition:"background 0.15s"}}
+                onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.04)"}
+                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                <span style={{fontSize:16,flexShrink:0}}>{emoji}</span>
+                <div style={{width:8,height:8,borderRadius:"50%",background:color,flexShrink:0,boxShadow:`0 0 6px ${color}88`}}/>
+                {editingCat===cat
+                  ?<input autoFocus value={editVal} onChange={e=>setEditVal(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveRename();if(e.key==="Escape")setEditingCat(null);}} style={{flex:1,fontSize:13,background:"#1e1b38",border:`1px solid ${PURPLE}`,borderRadius:6,padding:"4px 10px",color:"#fff",outline:"none"}}/>
+                  :<span style={{flex:1,fontSize:13,fontWeight:600,color:"#e0e7ff"}}>{cat}</span>
+                }
+                {editingCat===cat
+                  ?<button onClick={saveRename} style={{fontSize:11,color:"#10b981",border:"1px solid #10b98133",background:"rgba(16,185,129,0.08)",borderRadius:6,padding:"3px 10px",cursor:"pointer",fontWeight:700}}>Save</button>
+                  :<button onClick={()=>{setEditingCat(cat);setEditVal(cat);}} style={{fontSize:11,color:"#374151",border:"none",background:"none",cursor:"pointer",padding:"3px 6px",transition:"color 0.15s"}}
+                    onMouseEnter={e=>e.target.style.color="#6366f1"}
+                    onMouseLeave={e=>e.target.style.color="#374151"}>rename</button>
+                }
+                <button onClick={()=>removeCategory(cat)} style={{fontSize:16,color:baseCats.includes(cat)?"#1f1d35":"#374151",border:"none",background:"none",cursor:baseCats.includes(cat)?"not-allowed":"pointer",lineHeight:1,padding:"2px 4px",transition:"color 0.15s"}}
+                  onMouseEnter={e=>{if(!baseCats.includes(cat))e.target.style.color="#ef4444";}}
+                  onMouseLeave={e=>e.target.style.color=baseCats.includes(cat)?"#1f1d35":"#374151"}>−</button>
+              </div>
+            );
+          })}
+          <div style={{display:"flex",gap:8,padding:"12px 18px",borderTop:"1px solid #0f0e1a"}}>
+            <input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCategory()} placeholder="Add a custom category..." style={{flex:1,fontSize:13,background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:8,padding:"8px 12px",color:"#e0e7ff",outline:"none"}}/>
+            <button onClick={addCategory} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(99,102,241,0.3)"}}>+</button>
+          </div>
+        </div>
+
       </div>
-      <div style={{position:"sticky",bottom:0,background:"linear-gradient(to top,#f8fafc 80%,transparent)",paddingTop:16,paddingBottom:16}}>
-        <button onClick={()=>onDone(categorised,categories)} style={{width:"100%",padding:"14px",background:PURPLE,color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.4)"}}>
-          Sort remaining transactions →
-        </button>
+
+      {/* Sticky CTA */}
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:10,padding:isMobile?"16px":"20px 24px",background:"linear-gradient(to top,#08070f 70%,transparent)"}}>
+        <div style={{maxWidth:680,margin:"0 auto"}}>
+          <button onClick={()=>onDone(categorised,categories)}
+            style={{width:"100%",padding:"15px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.35)",letterSpacing:"-0.01em",transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.target.style.transform="translateY(-1px)";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.6),0 12px 40px rgba(99,102,241,0.4)";}}
+            onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.35)";}}>
+            {"Sort remaining transactions →"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1290,8 +1355,8 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
   const [tooltip, setTooltip] = useState(null); // {text, x, y}
 
 useEffect(()=>{
-    if(localStorage.getItem("abound_tour_seen")) return;
-    localStorage.setItem("abound_tour_seen","1");
+    if(cashFlowTourShown) return;
+    cashFlowTourShown = true;
     const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
     return()=>clearTimeout(t);
   },[]);

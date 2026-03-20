@@ -226,66 +226,112 @@ async function readPdfFile(file) {
   const pdfjsLib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-  const allLines = [];
+
+  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/;
+  const moneyRx = /^-?[\d,]+\.\d{2}$/;
+  const rows = [];
+
+  // Track paid-in / paid-out column x-positions across all pages
+  let paidInX = null, paidOutX = null;
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    // Group text items by approximate y-position (same line = within 4 units)
+    // Keep full item data including x-position
     const items = textContent.items
       .map(item => ({
         text: item.str.trim(),
-        x: Math.round(item.transform[4]),
-        y: Math.round(item.transform[5] / 4) * 4,
+        x: item.transform[4],
+        y: Math.round(item.transform[5] / 3) * 3,
       }))
       .filter(i => i.text.length > 0);
 
+    // Group into lines by y
     const lineMap = {};
     items.forEach(item => {
       if (!lineMap[item.y]) lineMap[item.y] = [];
       lineMap[item.y].push(item);
     });
 
-    // Sort top-to-bottom (higher y = higher on page in PDF coords)
-    const lines = Object.entries(lineMap)
-      .sort((a, b) => parseFloat(b[0]) - parseFloat(a[0]))
-      .map(([, items]) =>
-        items.sort((a, b) => a.x - b.x).map(i => i.text).join(' ')
-      );
+    const lines = Object.values(lineMap)
+      .map(lineItems => lineItems.sort((a, b) => a.x - b.x))
+      .sort((a, b) => b[0].y - a[0].y); // top to bottom
 
-    allLines.push(...lines);
+    for (const lineItems of lines) {
+      const lineText = lineItems.map(i => i.text).join(' ');
+
+      // Detect header row: look for "paid in" and "paid out" keywords
+      // (they may be separate items: "Paid" + "in", or combined "Paid in")
+      const lowerText = lineText.toLowerCase();
+      if (lowerText.includes('paid in') || lowerText.includes('paid out')) {
+        // Find x-positions of the column headers
+        let piX = null, poX = null;
+        // Scan items for the words
+        for (let i = 0; i < lineItems.length; i++) {
+          const t = lineItems[i].text.toLowerCase();
+          const next = lineItems[i+1]?.text.toLowerCase() || '';
+          if (t === 'paid' && next === 'in')  { piX = lineItems[i].x; }
+          if (t === 'paid' && next === 'out') { poX = lineItems[i].x; }
+          if (t === 'paid in')  piX = lineItems[i].x;
+          if (t === 'paid out') poX = lineItems[i].x;
+          if (t === 'in'  && lineItems[i-1]?.text.toLowerCase() === 'paid') piX = lineItems[i].x;
+          if (t === 'out' && lineItems[i-1]?.text.toLowerCase() === 'paid') poX = lineItems[i].x;
+        }
+        if (piX !== null) paidInX = piX;
+        if (poX !== null) paidOutX = poX;
+        continue;
+      }
+
+      // Skip non-transaction lines
+      if (!dateRx.test(lineText)) continue;
+
+      const dateMatch = lineText.match(dateRx);
+      if (!dateMatch) continue;
+      const dateStr = dateMatch[0];
+
+      // Find money items on this line
+      const moneyItems = lineItems.filter(item => moneyRx.test(item.text.replace(/[£,]/g, '')));
+      if (moneyItems.length === 0) continue;
+
+      // Last = balance, second-to-last = transaction amount
+      const balItem = moneyItems[moneyItems.length - 1];
+      const txnItem = moneyItems.length >= 2 ? moneyItems[moneyItems.length - 2] : moneyItems[0];
+      const rawAmt  = parseFloat(txnItem.text.replace(/[£,]/g, ''));
+
+      // Determine sign using column x-positions if available
+      let signedAmt = rawAmt;
+      if (paidInX !== null && paidOutX !== null) {
+        const distIn  = Math.abs(txnItem.x - paidInX);
+        const distOut = Math.abs(txnItem.x - paidOutX);
+        // Closer to Paid out column = debit = negative
+        if (distOut < distIn) signedAmt = -Math.abs(rawAmt);
+        else signedAmt = Math.abs(rawAmt);
+      } else if (rawAmt > 0) {
+        // No column detection — try balance direction as fallback
+        // (if balance went down it was a debit)
+        const balAmt = parseFloat(balItem.text.replace(/[£,]/g, ''));
+        if (!isNaN(balAmt) && rows.length > 0) {
+          const prevBal = parseFloat(rows[rows.length-1].Balance);
+          if (!isNaN(prevBal) && balAmt < prevBal) signedAmt = -Math.abs(rawAmt);
+        }
+      }
+
+      // Description = everything between date and first money item
+      const firstMoneyX = moneyItems[0].x;
+      const descItems = lineItems.filter(i => i.x > (lineItems[0].x + dateStr.length * 4) && i.x < firstMoneyX);
+      const description = descItems.map(i => i.text).join(' ').trim()
+        || lineText.slice(dateStr.length, lineText.indexOf(txnItem.text)).trim();
+      if (!description || description.length < 2) continue;
+
+      rows.push({
+        Date:        dateStr,
+        Description: description,
+        Amount:      String(signedAmt),
+        Balance:     balItem.text.replace(/[£,]/g, ''),
+      });
+    }
   }
-
-  // Parse lines into transaction rows
-  // Match common UK bank date formats: 01/02/2026, 01-Feb-26, 1 Feb 2026
-  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/;
-  const amountRx = /-?[\d,]+\.\d{2}/g;
-  const rows = [];
-
-  allLines.forEach(line => {
-    const dateMatch = line.match(dateRx);
-    if (!dateMatch) return;
-    const dateStr = dateMatch[0];
-    const amounts = line.match(amountRx);
-    if (!amounts || amounts.length === 0) return;
-
-    // Last amount = balance, second-to-last = transaction; if only one, it's the transaction
-    const txnAmt = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0];
-    const bal    = amounts.length >= 2 ? amounts[amounts.length - 1] : '';
-
-    // Description sits between the date and the first amount
-    const firstAmtIdx = line.indexOf(amounts[0]);
-    const description = line.slice(dateStr.length, firstAmtIdx).replace(/\s+/g, ' ').trim();
-    if (!description || description.length < 2) return;
-
-    rows.push({
-      Date:        dateStr,
-      Description: description,
-      Amount:      txnAmt.replace(/,/g, ''),
-      Balance:     bal.replace(/,/g, ''),
-    });
-  });
 
   return rows;
 }
@@ -1064,7 +1110,7 @@ const MobileSort=()=>{
       </div>
     );
   };
-  
+
   return(
     <div style={{height:"100vh",maxHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>

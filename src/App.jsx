@@ -364,6 +364,10 @@ function normaliseRows(rows, accountLabel) {
   }).filter(Boolean);
 }
 
+function hasAnyBalance(txns) {
+  return txns.some(t => t.balance !== null && t.balance !== undefined);
+}
+
 // ─── AI Categorisation ────────────────────────────────────────────────────────
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
   const allCats = multipleAccounts
@@ -571,16 +575,57 @@ function IllustrationBarchart() {
   );
 }
 
+// ─── Session persistence ──────────────────────────────────────────────────────
+const SESSION_KEY = "abound_session_v1";
+
+function saveSession(transactions, categories) {
+  try {
+    const payload = {
+      savedAt: new Date().toISOString(),
+      txnCount: transactions.length,
+      categories,
+      transactions: transactions.map(t => ({
+        ...t,
+        date: t.date instanceof Date ? t.date.toISOString() : t.date,
+      })),
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(payload));
+  } catch(e) { console.warn("Session save failed", e); }
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    if (!p.transactions || !p.categories) return null;
+    return {
+      ...p,
+      transactions: p.transactions.map(t => ({
+        ...t,
+        date: new Date(t.date),
+      })),
+    };
+  } catch(e) { return null; }
+}
+
+function clearSession() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
 // ─── SCREEN 0: Hero ───────────────────────────────────────────────────────────
-function HeroScreen({onEnter}) {
+function HeroScreen({onEnter, onResume}) {
   const [phase, setPhase] = useState(0);
   const [leaving, setLeaving] = useState(false);
+  const [session, setSession] = useState(null);
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase(1),500);
     const t2=setTimeout(()=>setPhase(2),1200);
+    setSession(loadSession());
     return ()=>{clearTimeout(t1);clearTimeout(t2);};
   },[]);
   function handleEnter(){setLeaving(true);setTimeout(onEnter,500);}
+  function handleResume(){setLeaving(true);setTimeout(onResume,500);}
   const features=[
     {dot:"#10b981",text:"No bank logins. Ever."},
     {dot:"#6366f1",text:"Upload your statement. See 6 weeks ahead."},
@@ -615,11 +660,25 @@ function HeroScreen({onEnter}) {
           ))}
         </div>
         <div style={{opacity:phase>=2?1:0,transform:phase>=2?"translateY(0)":"translateY(8px)",transition:"all 0.5s cubic-bezier(0.16,1,0.3,1) 0.2s"}}>
+          {session&&(
+            <div style={{marginBottom:16,animation:"fadeUp 0.5s ease both"}}>
+              <button onClick={handleResume}
+                style={{width:"100%",padding:"14px 24px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)",transition:"all 0.2s",marginBottom:0}}
+                onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-2px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.transform="";}}>
+                Resume last session →
+              </button>
+              <div style={{marginTop:8,fontSize:11,color:"#3f3f46",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                <span>{session.txnCount} transactions · saved {new Date(session.savedAt).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span>
+                <button onClick={e=>{e.stopPropagation();clearSession();setSession(null);}} style={{fontSize:10,color:"#374151",border:"1px solid #1f1d35",borderRadius:4,padding:"1px 6px",background:"none",cursor:"pointer"}}>clear</button>
+              </div>
+            </div>
+          )}
           <button onClick={handleEnter}
-            style={{padding:"14px 40px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)",transition:"all 0.2s",animation:"glow 3s ease-in-out 2s infinite"}}
-            onMouseEnter={e=>{e.target.style.transform="translateY(-2px)";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.6),0 12px 40px rgba(99,102,241,0.4)";}}
-            onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)";}}>
-            Get started →
+            style={{padding:"14px 40px",background:session?"transparent":"linear-gradient(135deg,#6366f1,#4f46e5)",color:session?"#52525b":"#fff",border:session?"1px solid #1f1d35":"none",borderRadius:12,fontSize:session?13:15,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:session?"none":"0 0 0 1px rgba(99,102,241,0.4),0 8px 32px rgba(99,102,241,0.3)",transition:"all 0.2s"}}
+            onMouseEnter={e=>{if(!session){e.currentTarget.style.transform="translateY(-2px)";}}}
+            onMouseLeave={e=>{e.currentTarget.style.transform="";}}>
+            {session?"Start fresh instead":"Get started →"}
           </button>
           <div style={{marginTop:14,fontSize:11,color:"#3f3f46",letterSpacing:"0.08em"}}>FREE · NO ACCOUNT REQUIRED</div>
         </div>
@@ -698,29 +757,123 @@ function UploadScreen({onDone}) {
   const [accounts, setAccounts] = useState([{id:1,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(true);
+  const [step, setStep] = useState("upload"); // "upload" | "balance"
+  const [parsedTxns, setParsedTxns] = useState([]);
+  const [multipleAccounts, setMultipleAccounts] = useState(false);
+  const [missingBalanceAccounts, setMissingBalanceAccounts] = useState([]); // [{label, value}]
+  const [balanceInputs, setBalanceInputs] = useState({});
   const hasMainFile = !!accounts[0].file;
   useEffect(()=>{const t=setTimeout(()=>setShowPrivacy(false),3200);return()=>clearTimeout(t);},[]);
   function addCard(){setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]);}
   function removeAccount(id){setAccounts(a=>a.filter(x=>x.id!==id));}
   async function handleFile(id,file){setAccounts(a=>a.map(x=>x.id===id?{...x,file,name:file.name}:x));}
+
   async function handleContinue(){
     setLoading(true);
     const allRows=[];let ccIndex=1;
+    const missing=[];
     for(const acc of accounts){
       if(!acc.file)continue;
       const ext=acc.file.name.split('.').pop().toLowerCase();
-      const rows=ext==="pdf" ? await readPdfFile(acc.file) : await readExcelFile(acc.file);
+      const rows=ext==="pdf"?await readPdfFile(acc.file):await readExcelFile(acc.file);
       const isFirst=acc.id===accounts[0].id;
       let label;
       if(isFirst)label="Main Account";
       else if(ccIndex===1){label="Credit Card";ccIndex++;}
       else{label=`Credit Card ${ccIndex}`;ccIndex++;}
-      allRows.push(...normaliseRows(rows,label));
+      const txns=normaliseRows(rows,label);
+      allRows.push(...txns);
+      if(!hasAnyBalance(txns)) missing.push({label, txns});
     }
     setLoading(false);
-    onDone(allRows,accounts.length>1);
+    if(missing.length>0){
+      setParsedTxns(allRows);
+      setMultipleAccounts(accounts.filter(a=>a.file).length>1);
+      setMissingBalanceAccounts(missing);
+      const inputs={};
+      missing.forEach(m=>{inputs[m.label]="";});
+      setBalanceInputs(inputs);
+      setStep("balance");
+    } else {
+      onDone(allRows, accounts.filter(a=>a.file).length>1);
+    }
   }
-function DropZone({account,index}){
+
+  function handleBalanceConfirm(){
+    // Inject the manually entered balance as a synthetic balance on the most recent transaction
+    const injected=parsedTxns.map(t=>{
+      const entry=missingBalanceAccounts.find(m=>m.label===t.account);
+      if(!entry) return t;
+      const val=parseFloat(String(balanceInputs[t.account]||"").replace(/[£,]/g,""));
+      if(isNaN(val)) return t;
+      // Find the most recent transaction for this account and attach balance there
+      const acctTxns=parsedTxns.filter(x=>x.account===t.account);
+      const mostRecent=acctTxns.reduce((a,b)=>a.date>b.date?a:b);
+      if(t===mostRecent||t.date.getTime()===mostRecent.date.getTime()) return {...t, balance:val};
+      return t;
+    });
+    onDone(injected, multipleAccounts);
+  }`
+  `
+  if(step==="balance"){
+    return(
+      <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
+        <style>{GLOBAL_CSS}</style>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(239,68,68,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
+        <div style={{width:"100%",maxWidth:440,position:"relative",zIndex:1,animation:"fadeUp 0.5s ease both"}}>
+          {/* Warning header */}
+          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:28}}>
+            <div style={{width:40,height:40,borderRadius:10,background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3L2 17h16L10 3z" stroke="#ef4444" strokeWidth="1.5" strokeLinejoin="round"/><path d="M10 8v4M10 13.5v.5" stroke="#ef4444" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </div>
+            <div>
+              <div style={{fontSize:17,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>Opening balance not found</div>
+              <div style={{fontSize:12,color:"#52525b",marginTop:2}}>Your statement doesn't include a balance column. Without this, the cash flow forecast will be wrong.</div>
+            </div>
+          </div>
+
+          {/* Explanation card */}
+          <div style={{background:"rgba(239,68,68,0.05)",border:"1px solid rgba(239,68,68,0.15)",borderRadius:12,padding:"14px 16px",marginBottom:24}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#ef4444",letterSpacing:"0.05em",marginBottom:6}}>WHY THIS MATTERS</div>
+            <div style={{fontSize:12,color:"#9ca3af",lineHeight:1.6}}>The Cash Balance row — the most important number in Abound — is calculated by walking forward from your opening balance. If this is wrong, every week's forecast will be wrong by the same amount.</div>
+          </div>
+
+          {/* Balance inputs per missing account */}
+          {missingBalanceAccounts.map(({label})=>(
+            <div key={label} style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#52525b",letterSpacing:"0.06em",marginBottom:8,textTransform:"uppercase"}}>{label} — current balance</div>
+              <div style={{position:"relative"}}>
+                <span style={{position:"absolute",left:14,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"#6366f1",fontWeight:700,pointerEvents:"none"}}>£</span>
+                <input
+                  type="number"
+                  placeholder="e.g. 2450.00"
+                  value={balanceInputs[label]||""}
+                  onChange={e=>setBalanceInputs(p=>({...p,[label]:e.target.value}))}
+                  style={{width:"100%",padding:"13px 14px 13px 30px",background:"rgba(255,255,255,0.04)",border:"1px solid #2d2a6e",borderRadius:10,color:"#fff",fontSize:16,fontWeight:700,outline:"none",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.01em"}}
+                  onFocus={e=>{e.target.style.borderColor="#6366f1";e.target.style.boxShadow="0 0 0 2px rgba(99,102,241,0.15)";}}
+                  onBlur={e=>{e.target.style.borderColor="#2d2a6e";e.target.style.boxShadow="none";}}
+                />
+              </div>
+              <div style={{fontSize:11,color:"#374151",marginTop:6}}>Open your banking app and enter what you see as the current balance.</div>
+            </div>
+          ))}
+
+          <div style={{display:"flex",gap:10,marginTop:8}}>
+            <button onClick={handleBalanceConfirm}
+              disabled={missingBalanceAccounts.some(({label})=>!balanceInputs[label]||isNaN(parseFloat(String(balanceInputs[label]).replace(/[£,]/g,""))))}
+              style={{flex:1,padding:"13px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)",letterSpacing:"-0.01em",opacity:missingBalanceAccounts.some(({label})=>!balanceInputs[label])?0.5:1,transition:"opacity 0.2s"}}>
+              Continue with this balance →
+            </button>
+          </div>
+          <button onClick={()=>onDone(parsedTxns,multipleAccounts)} style={{width:"100%",padding:"10px",marginTop:8,background:"none",border:"none",color:"#374151",fontSize:12,cursor:"pointer"}}>
+            Skip — I know the forecast may be inaccurate
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  function DropZone({account,index}){
     const [dragging,setDragging]=useState(false);
     const inputRef=useRef(null);
     const loaded=!!account.file;
@@ -730,8 +883,7 @@ function DropZone({account,index}){
       e.target.value="";
     }
     function onDrop(e){
-      e.preventDefault();
-      setDragging(false);
+      e.preventDefault();setDragging(false);
       const file=e.dataTransfer?.files?.[0];
       if(file) handleFile(account.id,file);
     }
@@ -743,15 +895,9 @@ function DropZone({account,index}){
         onDragLeave={()=>setDragging(false)}
         onDrop={onDrop}
         style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,.xls,.csv,.pdf"
-          onChange={onFileChange}
-          style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}
-        />
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
+          <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {loaded
               ? <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M4 10l5 5 7-8"/></svg>
               : <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" d="M10 13V5M6 9l4-4 4 4"/><path stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" d="M4 15h12"/></svg>
@@ -765,7 +911,8 @@ function DropZone({account,index}){
         </div>
       </div>
     );
-  }  return(
+  }
+    return(
     <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
@@ -1134,33 +1281,32 @@ const MobileSort=()=>{
     const [localOffset,setLocalOffset]=useState(0);
     const [localTarget,setLocalTarget]=useState(null);
 
-    // Reset card when top item changes
     useEffect(()=>{
       setLocalOffset(0);setLocalTarget(null);
-      activeTargetRef.current=null;txStartX.current=null;txStartY.current=null;
+      activeTargetRef.current=null;
     },[topItem?.narrative]);
 
-    // Non-passive touch listeners — the only way e.preventDefault() works in React
+    // Non-passive touch handler so preventDefault actually works
     useEffect(()=>{
       const el=cardRef.current;
-      if(!el||!topItem)return;
+      if(!el||!topItem) return;
       function onTS(e){txStartX.current=e.touches[0].clientX;txStartY.current=e.touches[0].clientY;}
       function onTM(e){
-        if(txStartX.current===null)return;
+        if(txStartX.current===null) return;
         const dx=e.touches[0].clientX-txStartX.current;
         const dy=e.touches[0].clientY-txStartY.current;
         if(Math.abs(dx)>Math.abs(dy)+8){
-          e.preventDefault(); // works because listener is non-passive
+          e.preventDefault();
           setLocalOffset(dx);
-          let t=null;
-          if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])t=visibleMobileCats[0];
-          else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])t=visibleMobileCats[1];
-          activeTargetRef.current=t;
-          setLocalTarget(t);
+          // swipe hint only — actual assignment is via tap buttons
+          if(dx>SWIPE_THRESHOLD) activeTargetRef.current=allBuckets[0]||null;
+          else if(dx<-SWIPE_THRESHOLD) activeTargetRef.current=allBuckets[1]||null;
+          else activeTargetRef.current=null;
+          setLocalTarget(activeTargetRef.current);
         }
       }
       function onTE(){
-        if(activeTargetRef.current)assignItem(topItem.narrative,activeTargetRef.current);
+        if(activeTargetRef.current) assignItem(topItem.narrative,activeTargetRef.current);
         setLocalOffset(0);setLocalTarget(null);
         activeTargetRef.current=null;txStartX.current=null;txStartY.current=null;
       }
@@ -1168,62 +1314,81 @@ const MobileSort=()=>{
       el.addEventListener('touchmove',onTM,{passive:false});
       el.addEventListener('touchend',onTE,{passive:true});
       return()=>{el.removeEventListener('touchstart',onTS);el.removeEventListener('touchmove',onTM);el.removeEventListener('touchend',onTE);};
-    },[topItem?.narrative,visibleMobileCats[0],visibleMobileCats[1]]);
+    },[topItem?.narrative]);
 
-    const swipeRight=visibleMobileCats[0],swipeLeft=visibleMobileCats[1];
-    const swipeRightColor=swipeRight==="Skip"?"#6b7280":catColor(swipeRight,spendCats.indexOf(swipeRight));
-    const swipeLeftColor=swipeLeft==="Skip"?"#6b7280":catColor(swipeLeft,spendCats.indexOf(swipeLeft));
     const swipeProgress=Math.min(Math.abs(localOffset)/SWIPE_THRESHOLD,1);
     const swipingRight=localOffset>20,swipingLeft=localOffset<-20;
+    const hintColorRight=localTarget?catColor(localTarget,allBuckets.indexOf(localTarget)):"#6366f1";
+    const hintColorLeft=allBuckets[1]?catColor(allBuckets[1],allBuckets.indexOf(allBuckets[1])):"#6366f1";
+
     return(
-      <div style={{flex:1,display:"flex",flexDirection:"column",padding:"12px 16px",gap:12,overflow:"hidden",touchAction:"none",userSelect:"none"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{flex:1,height:4,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",touchAction:"none"}}>
+        {/* Progress bar */}
+        <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+          <div style={{flex:1,height:3,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
             <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
           </div>
-          <span style={{fontSize:12,color:"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{pct}% sorted</span>
+          <span style={{fontSize:11,color:pct===100?"#10b981":"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{sorted.length+skipped.length}/{allItems.length}</span>
         </div>
-        <div style={{position:"relative",height:150,flexShrink:0}}>
+
+        {/* Card stack */}
+        <div style={{padding:"0 16px",flexShrink:0}}>
           {unsorted.length===0?(
-            <div style={{textAlign:"center",padding:"30px 0"}}>
-              <div style={{fontSize:32,marginBottom:8}}>🎉</div>
-              <div style={{fontSize:14,fontWeight:700,color:"#fff",marginBottom:12}}>All sorted!</div>
+            <div style={{textAlign:"center",padding:"24px 0 16px"}}>
+              <div style={{width:100,margin:"0 auto 12px",opacity:0.7}}><IllustrationSortBlocks/></div>
+              <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:8}}>All sorted!</div>
               <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
             </div>
           ):(
-            <>
-              {visible.slice(1,3).map((item,idx)=>(<div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:16,padding:"16px",transform:`translateY(${(idx+1)*6}px) scale(${1-(idx+1)*0.03})`,transformOrigin:"top center",zIndex:1-idx}}/>))}
+            <div style={{position:"relative",height:130,marginBottom:8}}>
+              {visible.slice(1,3).map((item,idx)=>(
+                <div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:14,padding:"14px",transform:`translateY(${(idx+1)*5}px) scale(${1-(idx+1)*0.025})`,transformOrigin:"top center",zIndex:1-idx}}/>
+              ))}
               {topItem&&(
-                <div ref={cardRef}
-                  style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${swipeRightColor}33,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${swipeLeftColor}33,#1e1b38)`:"#1e1b38",border:`2px solid ${localTarget?(swipingRight?swipeRightColor:swipeLeftColor):"#4338ca"}`,borderRadius:16,padding:"20px",transform:`translateX(${localOffset}px) rotate(${localOffset*0.03}deg)`,transition:localOffset===0?"transform 0.3s":"none",zIndex:10,userSelect:"none"}}>
-                  {localTarget&&(<div style={{position:"absolute",top:12,right:swipingRight?12:undefined,left:swipingLeft?12:undefined,background:swipingRight?swipeRightColor:swipeLeftColor,color:"#fff",fontSize:11,fontWeight:800,padding:"3px 10px",borderRadius:20,opacity:swipeProgress}}>{localTarget==="Skip"?"NOT SURE":localTarget.toUpperCase()}</div>)}
-                  <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:8}}>{topItem.narrative}</div>
+                <div ref={cardRef} style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${hintColorRight}22,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${hintColorLeft}22,#1e1b38)`:"#1e1b38",border:`2px solid ${localTarget?(swipingRight?hintColorRight:hintColorLeft):"#4338ca"}`,borderRadius:14,padding:"16px 18px",transform:`translateX(${localOffset}px) rotate(${localOffset*0.025}deg)`,transition:localOffset===0?"transform 0.3s":"none",zIndex:10,userSelect:"none"}}>
+                  {localTarget&&(
+                    <div style={{position:"absolute",top:10,right:swipingRight?10:undefined,left:swipingLeft?10:undefined,background:swipingRight?hintColorRight:hintColorLeft,color:"#fff",fontSize:10,fontWeight:800,padding:"2px 9px",borderRadius:20,opacity:swipeProgress}}>
+                      {localTarget==="Skip"?"NOT SURE":localTarget.toUpperCase()}
+                    </div>
+                  )}
+                  <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:6}}>{topItem.narrative}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
-                    <span style={{fontSize:22,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(topItem.total).toLocaleString()}</span>
-                    <span style={{fontSize:12,color:"#4b5563"}}>{topItem.count} txn{topItem.count>1?"s":""}</span>
+                    <span style={{fontSize:20,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(topItem.total).toLocaleString()}</span>
+                    <span style={{fontSize:11,color:"#4b5563"}}>{topItem.count} txn{topItem.count>1?"s":""} · {unsorted.length} left</span>
                   </div>
-                  <div style={{fontSize:10,color:"#4b5563",marginTop:6}}>{unsorted.length} left · swipe or tap below</div>
                 </div>
               )}
-            </>
+            </div>
           )}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {visibleMobileCats.map(cat=>{
-            const isSkip=cat==="Skip",color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
-            const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
-            return(<button key={cat} onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}} style={{padding:"14px 10px",background:`${color}18`,border:`2px solid ${color}`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:3,alignItems:"center",WebkitTapHighlightColor:"transparent"}}>
-              <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:22,height:22}}>{getBucketIcon(cat,color,20)}</span>
-              <span>{isSkip?"Not sure":cat}</span>
-              {count>0&&<span style={{fontSize:10,fontWeight:400,opacity:0.7}}>{count} txn{count>1?"s":""}</span>}
-            </button>);
-          })}
-        </div>
-        {totalPages>1&&(
-          <div style={{display:"flex",justifyContent:"center",gap:8,alignItems:"center"}}>
-            <button onClick={()=>setMobileCatPage(p=>Math.max(0,p-1))} disabled={mobileCatPage===0} style={{fontSize:20,padding:"4px 12px",background:"none",border:"none",color:mobileCatPage===0?"#2d2a6e":"#6366f1",cursor:"pointer"}}>‹</button>
-            {Array.from({length:totalPages}).map((_,i)=>(<div key={i} onClick={()=>setMobileCatPage(i)} style={{width:8,height:8,borderRadius:"50%",background:i===mobileCatPage?"#6366f1":"#2d2a6e",cursor:"pointer"}}/>))}
-            <button onClick={()=>setMobileCatPage(p=>Math.min(totalPages-1,p+1))} disabled={mobileCatPage===totalPages-1} style={{fontSize:20,padding:"4px 12px",background:"none",border:"none",color:mobileCatPage===totalPages-1?"#2d2a6e":"#6366f1",cursor:"pointer"}}>›</button>
+
+        {/* ALL categories — always visible, scrollable */}
+        {unsorted.length>0&&(
+          <div style={{flex:1,overflowY:"auto",padding:"4px 16px 16px",WebkitOverflowScrolling:"touch",touchAction:"pan-y"}}>
+            <div style={{fontSize:9,fontWeight:700,color:"#374151",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Tap to categorise</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              {allBuckets.map(cat=>{
+                const isSkip=cat==="Skip";
+                const color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
+                const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
+                return(
+                  <button key={cat}
+                    onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}}
+                    style={{padding:"13px 10px",background:`${color}14`,border:`1.5px solid ${color}55`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:4,alignItems:"center",WebkitTapHighlightColor:"transparent",transition:"background 0.1s,border-color 0.1s",touchAction:"manipulation"}}
+                    onTouchStart={e=>e.currentTarget.style.background=`${color}28`}
+                    onTouchEnd={e=>e.currentTarget.style.background=`${color}14`}>
+                    <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:24,height:24}}>
+                      {isSkip
+                        ? <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke={color} strokeWidth="1.5"/><path d="M7 10h6M13 8l2 2-2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        : <CatIcon cat={cat} size={18} color={color}/>
+                      }
+                    </span>
+                    <span style={{fontSize:12}}>{isSkip?"Skip":cat}</span>
+                    {count>0&&<span style={{fontSize:9,fontWeight:500,opacity:0.6}}>{count} sorted</span>}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
@@ -1557,7 +1722,7 @@ useEffect(()=>{
     return tips.slice(0,5);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
-const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:`1px solid ${isForecast?"#ebebf8":"#f0f0f0"}`,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.08:1,background:isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:isForecast?"1px dashed #ebebf8":"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
   const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#6366f1":"#111827",background:isForecast?"rgba(99,102,241,0.08)":"#f4f4f8",borderLeft:"2px solid #e0e0f0",borderRight:"2px solid #e0e0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
 
   function LabelCell({label,account}){
@@ -1597,7 +1762,7 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
         </td>
         {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false)}>{fmtMoney(v)}</td>)}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
-        {forecasts.map((v,i)=>{const over=budget&&v>budget;return<td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
+        {forecasts.map((v,i)=>{const over=budget&&v>budget;return<td key={i} style={tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i)}>{fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}</td>;})}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
         <td style={{padding:"4px 8px",textAlign:"center"}}>
           {editingBudget===key
@@ -1822,15 +1987,24 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
                 </th>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>Actual</th>)}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"right",background:"#111827",borderLeft:"2px solid #374151",borderRight:"2px solid #374151",whiteSpace:"nowrap"}}>6WK</th>
-                {forecastWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#a5b4fc",textAlign:"right",background:"#312e81",borderRight:"1px solid #3730a3",whiteSpace:"nowrap"}}>Forecast</th>)}
-                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"#a5b4fc",textAlign:"right",background:"#312e81",borderLeft:"2px solid #3730a3",whiteSpace:"nowrap"}}>FCST</th>
+                {forecastWeeks.map((w,i)=>{
+                  const confidence=1-i*0.11; // 1.0 → 0.45 across 6 weeks
+                  return<th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(165,180,252,${confidence})`,textAlign:"right",background:`rgba(49,46,129,${0.5+confidence*0.5})`,borderRight:"1px dashed rgba(55,48,163,0.6)",whiteSpace:"nowrap",position:"relative"}}>
+                    {i===0?"Near":"Far"[i]||"Forecast"}
+                    {i>=4&&<span style={{position:"absolute",top:2,right:4,fontSize:7,color:"rgba(165,180,252,0.4)",fontWeight:400}}>~</span>}
+                  </th>;
+                })}
+                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(165,180,252,0.5)",textAlign:"right",background:"rgba(49,46,129,0.6)",borderLeft:"2px solid #3730a3",whiteSpace:"nowrap"}}>FCST</th>
                 <th style={{background:"#1e1b4b"}} colSpan={2}/>
               </tr>
               <tr data-tour="forecast" style={{background:"#f8fafc"}}>
                 <th colSpan={2} style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#374151",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
-                {forecastWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:PURPLE,textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:"1px solid #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                {forecastWeeks.map((w,i)=>{
+                  const confidence=1-i*0.11;
+                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${0.4+confidence*0.6})`,textAlign:"right",background:`rgba(99,102,241,${0.02+i*0.004})`,borderRight:"1px dashed #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
+                })}
                 <th style={{background:"rgba(99,102,241,0.05)",borderLeft:"2px solid #e5e7eb"}}/>
                 <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"center",whiteSpace:"nowrap"}}>BUDGET</th>
                 <th/>
@@ -1839,7 +2013,11 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
                 <th colSpan={2} style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
-                {forecastWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:"1px solid #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
+                {forecastWeeks.map((w,i)=>{
+                  const confidence=1-i*0.11;
+                  const label=i===0?"1-2 wks ahead":i<=2?"~3-4 wks":"further out";
+                  return<th key={w.key} title={`Confidence: ${Math.round(confidence*100)}% — ${label}`} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(156,163,175,${0.35+confidence*0.65})`,textAlign:"right",background:`rgba(99,102,241,${0.02+i*0.004})`,borderRight:"1px dashed #e8e8f0",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
+                })}
                 <th style={{background:"rgba(99,102,241,0.05)",borderLeft:"2px solid #e5e7eb"}}/><th/><th/>
               </tr>
             </thead>
@@ -1869,6 +2047,36 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
             </tbody>
           </table>
         </div>
+
+        {/* "So what" summary bar */}
+        {(()=>{
+          const lastActual = combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+          const forecastEnd = combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
+          const topSpendCat = categories
+            .filter(c=>c!=="Salary"&&c!=="Card Repayment")
+            .map(c=>({c, total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)}))
+            .sort((a,b)=>b.total-a.total)[0];
+          const weeklyTopSpend = topSpendCat ? Math.round(topSpendCat.total / Math.max(actualWeeks.length,1)) : 0;
+          if(forecastEnd===null||forecastEnd===undefined||lastActual===null||lastActual===undefined) return null;
+          const diff = forecastEnd - lastActual;
+          const isUp = diff >= 0;
+          return(
+            <div style={{margin:"14px 0 0",background:isUp?"rgba(16,185,129,0.05)":"rgba(239,68,68,0.05)",border:`1px solid ${isUp?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)"}`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:isUp?"#10b981":"#ef4444",boxShadow:`0 0 8px ${isUp?"#10b981":"#ef4444"}`}}/>
+                <span style={{fontSize:13,fontWeight:800,color:isUp?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>
+                  {isUp?"+":"-"}£{Math.round(Math.abs(diff)).toLocaleString()} in 6 weeks
+                </span>
+              </div>
+              <span style={{fontSize:12,color:"#6b7280",flex:1}}>
+                {isUp
+                  ? `You're on track to have £${Math.round(forecastEnd).toLocaleString()} in 6 weeks.${topSpendCat?` Your biggest controllable cost is ${topSpendCat.c} at £${weeklyTopSpend.toLocaleString()}/wk.`:""}`
+                  : `Your balance is forecast to drop by £${Math.round(Math.abs(diff)).toLocaleString()} over 6 weeks.${topSpendCat?` Reducing ${topSpendCat.c} (£${weeklyTopSpend.toLocaleString()}/wk) would have the biggest impact.`:""}`
+                }
+              </span>
+            </div>
+          );
+        })()}
       </div>
 
       {/* AI Advisor sidebar */}
@@ -1934,15 +2142,35 @@ export default function App() {
   const [categorisedTransactions, setCategorisedTransactions] = useState([]);
   const [sortedTransactions, setSortedTransactions] = useState([]);
   const [finalCategories, setFinalCategories] = useState([]);
-  const bg = screen==="hero"||screen==="upload"||screen==="sort"||screen==="session-complete" ? "#08070f" : "#f8fafc";
+
+  function handleResume() {
+    const s = loadSession();
+    if (!s) return;
+    setSortedTransactions(s.transactions);
+    setFinalCategories(s.categories);
+    setScreen("main");
+  }
+
+  function handleSortDone(txns, cats) {
+    setSortedTransactions(txns);
+    setFinalCategories(cats);
+    saveSession(txns, cats);
+    setScreen("main");
+  }
+
+  function handleStartOver() {
+    clearSession();
+    setScreen("session-complete");
+  }
+
   return (
-    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:bg,minHeight:"100vh"}}>
+    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:["hero","upload","sort","categorise","session-complete"].includes(screen)?"#08070f":"#f8fafc",minHeight:"100vh"}}>
       <style>{GLOBAL_CSS}</style>
-      {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")}/>}
+      {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")} onResume={handleResume}/>}
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
-      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={(txns,cats)=>{setSortedTransactions(txns);setFinalCategories(cats);setScreen("main");}}/>}
-      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={()=>setScreen("session-complete")}/>}
+      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
+      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
     </div>
   );

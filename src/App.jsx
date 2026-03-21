@@ -1578,7 +1578,7 @@ useEffect(()=>{
     "Memberships":"Subscriptions — streaming, gym, apps, and recurring services.",
     "Other Payments":"Transactions that didn't fit a specific category.",
     "Card Repayment":"Money moved to pay your credit card. Excluded from Total Spend — it's not new spending.",
-    "Total Spend":"Sum of all real spend, excluding Card Repayments.",
+    "Total Spend":"Sum of all real spend including Card Repayments — money that left this account.",
     "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
     "Cash Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
   };
@@ -1655,8 +1655,18 @@ useEffect(()=>{
     const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>spendCatsLocal.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
     const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
     const runningBals=Array(actualWeeks.length).fill(null);
-    const firstKnown=knownBals.findIndex(b=>b!==null);
-    if(firstKnown!==-1){runningBals[firstKnown]=knownBals[firstKnown];for(let i=firstKnown+1;i<actualWeeks.length;i++)runningBals[i]=runningBals[i-1]!==null?runningBals[i-1]+mainNet[i-1]:null;for(let i=firstKnown-1;i>=0;i--)runningBals[i]=runningBals[i+1]!==null?runningBals[i+1]-mainNet[i]:null;}
+    // Pin every week with a real statement balance
+    knownBals.forEach((b,i)=>{if(b!==null)runningBals[i]=b;});
+    // Walk forward between pins
+    for(let i=0;i<actualWeeks.length-1;i++){
+      if(runningBals[i]!==null&&runningBals[i+1]===null)
+        runningBals[i+1]=runningBals[i]+mainNet[i];
+    }
+    // Walk backward before first pin
+    for(let i=actualWeeks.length-1;i>0;i--){
+      if(runningBals[i]!==null&&runningBals[i-1]===null)
+        runningBals[i-1]=runningBals[i]-mainNet[i-1];
+    }
     const actualClosing=runningBals.map((ob,i)=>ob!==null?ob+mainNet[i]-ccActuals[i]:null);
     const lastActualBal=runningBals.filter(b=>b!==null).slice(-1)[0]??null;
     const mainFActuals=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
@@ -1782,17 +1792,28 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
   function AccountSection({account}){
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
-    const spendCatsLocal=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    // Card Repayment included — it IS money leaving the account
+    const spendCatsLocal=categories.filter(c=>c!=="Salary");
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const accIncome=actualWeeks.map(w=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accIncomeForecasts=forecastWeeks.map((_,i)=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
-    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
+   const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
     const runningBalances=Array(actualWeeks.length).fill(null);
-    const firstKnownIdx=knownBalances.findIndex(b=>b!==null);
-    if(firstKnownIdx!==-1){runningBalances[firstKnownIdx]=knownBalances[firstKnownIdx];for(let i=firstKnownIdx+1;i<actualWeeks.length;i++)runningBalances[i]=runningBalances[i-1]!==null?runningBalances[i-1]+weeklyNetActual[i-1]:null;for(let i=firstKnownIdx-1;i>=0;i--)runningBalances[i]=runningBalances[i+1]!==null?runningBalances[i+1]-weeklyNetActual[i]:null;}
+    // Pin every week that has a real balance from the statement
+    knownBalances.forEach((b,i)=>{if(b!==null)runningBalances[i]=b;});
+    // Walk forward between pins (or from first pin to end)
+    for(let i=0;i<actualWeeks.length-1;i++){
+      if(runningBalances[i]!==null&&runningBalances[i+1]===null)
+        runningBalances[i+1]=runningBalances[i]+weeklyNetActual[i];
+    }
+    // Walk backward for any gaps before the first pin
+    for(let i=actualWeeks.length-1;i>0;i--){
+      if(runningBalances[i]!==null&&runningBalances[i-1]===null)
+        runningBalances[i-1]=runningBalances[i]-weeklyNetActual[i-1];
+    }
     const lastActualBal=runningBalances.filter(b=>b!==null).slice(-1)[0]??null;
     const forecastBalances=Array(forecastWeeks.length).fill(null);
     if(lastActualBal!==null){forecastBalances[0]=lastActualBal+weeklyNetActual[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];}

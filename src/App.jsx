@@ -726,23 +726,36 @@ function DropZone({account,index}){
     const loaded=!!account.file;
     function onFileChange(e){
       const file=e.target.files?.[0];
-      if(file){handleFile(account.id,file);}
-      e.target.value=""; // reset so same file can be re-selected
+      if(file) handleFile(account.id,file);
+      e.target.value="";
     }
-    function onDrop(e){e.preventDefault();setDragging(false);const file=e.dataTransfer?.files?.[0];if(file)handleFile(account.id,file);}
-    function handleClick(e){e.preventDefault();inputRef.current?.click();}
+    function onDrop(e){
+      e.preventDefault();
+      setDragging(false);
+      const file=e.dataTransfer?.files?.[0];
+      if(file) handleFile(account.id,file);
+    }
     const labelText=index===0?"Main Account":index===1?"Credit Card":`Credit Card ${index}`;
     return(
       <div
-        onClick={handleClick}
+        onClick={()=>inputRef.current?.click()}
         onDragOver={e=>{e.preventDefault();setDragging(true);}}
         onDragLeave={()=>setDragging(false)}
         onDrop={onDrop}
         style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{position:"absolute",width:1,height:1,opacity:0,pointerEvents:"none"}}/>
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv,.pdf"
+          onChange={onFileChange}
+          style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}
+        />
         <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
-            {loaded?"✓":"📄"}
+          <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,color:loaded?"#a5b4fc":"#52525b"}}>
+            {loaded
+              ? <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path stroke="#a5b4fc" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" d="M4 10l5 5 7-8"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" d="M10 13V5M6 9l4-4 4 4"/><path stroke="#52525b" strokeWidth="1.5" strokeLinecap="round" d="M4 15h12"/></svg>
+            }
           </div>
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:13,fontWeight:600,color:loaded?"#a5b4fc":"#71717a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{loaded?account.name:`Drop ${labelText} statement here`}</div>
@@ -752,8 +765,7 @@ function DropZone({account,index}){
         </div>
       </div>
     );
-  }
-  return(
+  }  return(
     <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
@@ -1493,14 +1505,57 @@ useEffect(()=>{
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData]);
 
   const insights=useMemo(()=>{
-    const tips=[],totals={};
-    categories.forEach(cat=>{totals[cat]=actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),0);});
+    const tips=[],totals={},weeklyTotals={};
+    categories.forEach(cat=>{
+      totals[cat]=actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),0);
+      weeklyTotals[cat]=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));
+    });
+
+    // 1. Projected cash balance in 6 weeks
+    const lastForecast=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
+    const lastActual=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+    if(lastForecast!==null&&lastForecast!==undefined&&lastActual!==null&&lastActual!==undefined){
+      const diff=lastForecast-lastActual;
+      const isUp=diff>=0;
+      tips.push({
+        icon:"chart",color:isUp?"#10b981":"#ef4444",
+        title:`Cash in 6 weeks: £${Math.round(lastForecast).toLocaleString()}`,
+        body:isUp?`Up £${Math.round(diff).toLocaleString()} from today's £${Math.round(lastActual).toLocaleString()}.`:`Down £${Math.round(Math.abs(diff)).toLocaleString()} from today's £${Math.round(lastActual).toLocaleString()}.`,
+        detail:isUp?`Your forecast shows your cash position improving over the next 6 weeks. This assumes your spending stays in line with recent patterns and salary lands on its usual date.`:`Your cash position is forecast to drop over the next 6 weeks. If this continues, consider where you can reduce discretionary spend.`,
+        trend:isUp?"up":"down"
+      });
+    }
+
+    // 2. Biggest spend category with weekly breakdown
     const top=Object.entries(totals).filter(([c])=>c!=="Salary"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
-    if(top)tips.push({icon:"chart",color:PURPLE,title:`Biggest: ${top[0]}`,body:`£${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks.`,detail:`Your highest spend category is ${top[0]} at £${Math.round(top[1]).toLocaleString()} total over the past 6 weeks. That's roughly £${Math.round(top[1]/6).toLocaleString()} per week on average.`});
-    categories.forEach(cat=>{if(cat==="Salary"||cat==="Card Repayment")return;const vals=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0));const avg=rollingAvg(vals),last=vals[vals.length-1];if(avg>0&&last>avg*1.8)tips.push({icon:"warn",color:"#f59e0b",title:`${cat} spike`,body:`Last week £${Math.round(last)} vs avg £${Math.round(avg)}.`,detail:`Your ${cat} spending last week (£${Math.round(last)}) was ${Math.round((last/avg-1)*100)}% above your 6-week average of £${Math.round(avg)}. Worth checking if there was a one-off purchase.`});});
-    if(tips.length<2)tips.push({icon:"check",color:"#10b981",title:"Looks stable",body:"No major anomalies detected.",detail:"Your spending patterns look consistent week-on-week. No unusual spikes or sudden changes in any category."});
-    return tips.slice(0,4);
-  },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat]);
+    if(top){
+      const weeklyAvg=Math.round(totals[top[0]]/Math.max(actualWeeks.length,1));
+      tips.push({icon:"chart",color:PURPLE,title:`Top spend: ${top[0]}`,body:`£${weeklyAvg.toLocaleString()}/wk avg · £${Math.round(top[1]).toLocaleString()} total.`,detail:`${top[0]} is your biggest spending category at £${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks — £${weeklyAvg.toLocaleString()} per week on average. Your forecast adds another £${Math.round((forecastData[accounts[0]]?.[top[0]]||[]).reduce((a,b)=>a+b,0)).toLocaleString()} over the next 6 weeks.`,trend:null});
+    }
+
+    // 3. Spending spikes
+    categories.forEach(cat=>{
+      if(cat==="Salary"||cat==="Card Repayment")return;
+      const vals=weeklyTotals[cat]||[];
+      const avg=rollingAvg(vals),last=vals[vals.length-1];
+      if(avg>0&&last>avg*1.6)tips.push({icon:"warn",color:"#f59e0b",title:`${cat} up ${Math.round((last/avg-1)*100)}% last week`,body:`£${Math.round(last).toLocaleString()} vs £${Math.round(avg).toLocaleString()} avg.`,detail:`Your ${cat} spending last week was £${Math.round(last).toLocaleString()}, which is ${Math.round((last/avg-1)*100)}% above your usual weekly average of £${Math.round(avg).toLocaleString()}. This could be a one-off or a new recurring cost — worth checking.`,trend:"warn"});
+    });
+
+    // 4. Months with big bills coming
+    const nextBigWeek=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
+    if(nextBigWeek!==null&&combinedClosingBalances.forecast[nextBigWeek]!==null){
+      const wk=forecastWeeks[nextBigWeek];
+      const bal=combinedClosingBalances.forecast[nextBigWeek];
+      if(bal<(lastActual||0)*0.7){
+        tips.push({icon:"warn",color:"#f59e0b",title:`Low point: ${fmt(wk?.date||new Date())}`,body:`Balance drops to £${Math.round(bal).toLocaleString()} that week.`,detail:`Week of ${fmt(wk?.date||new Date())} is your tightest forecast point at £${Math.round(bal).toLocaleString()}. This is likely due to multiple bills landing at once. Worth making sure you have enough buffer going in.`,trend:"warn"});
+      }
+    }
+
+    // 5. Stable fallback
+    if(tips.length<3)tips.push({icon:"check",color:"#10b981",title:"Spending on track",body:"No unusual patterns in the last 6 weeks.",detail:"Your spending across all categories has been consistent week-on-week. No sudden spikes, no categories trending upward. You're in good shape.",trend:"up"});
+
+    return tips.slice(0,5);
+  },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
 const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",background:isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:`1px solid ${isForecast?"#ebebf8":"#f0f0f0"}`,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
   const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#6366f1":"#111827",background:isForecast?"rgba(99,102,241,0.08)":"#f4f4f8",borderLeft:"2px solid #e0e0f0",borderRight:"2px solid #e0e0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
@@ -1695,22 +1750,68 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
         );
       })()}
 
-      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:isMobile?"12px 16px":"20px 24px"}}>
-        <div style={{display:isMobile?"grid":"flex",gridTemplateColumns:isMobile?"1fr 1fr":undefined,gap:isMobile?8:12,marginBottom:16,overflowX:isMobile?"auto":undefined}}>
-          {[
-            {label:"Transactions",value:transactions.length.toLocaleString(),sub:`${accounts.length} account${accounts.length>1?"s":""}`,color:PURPLE,accent:"#6366f1"},
-            {label:"6-Wk Actual",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"real spend",color:"#10b981",accent:"#10b981"},
-            {label:"6-Wk Forecast",value:`£${Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0)).toLocaleString()}`,sub:"predicted ahead",color:"#6366f1",accent:"#6366f1"},
-            {label:"Avg Weekly",value:`£${Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1)).toLocaleString()}`,sub:"last 6 weeks",color:"#f59e0b",accent:"#f59e0b"},
-          ].map((c,i)=>(
-            <div key={i} style={{flex:1,background:"#fff",borderRadius:12,padding:"14px 18px",border:"1px solid #ebebf4",borderLeft:`3px solid ${c.accent}`,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:"0.07em",marginBottom:6,textTransform:"uppercase"}}>{c.label}</div>
-              <div style={{fontSize:24,fontWeight:800,color:c.color,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{c.value}</div>
-              <div style={{fontSize:11,color:"#b0b0c0",marginTop:4}}>{c.sub}</div>
+     {/* Main table area */}
+      <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
+        {(()=>{
+          const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
+          const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
+          const weeklyAvg=Math.round(totalSpent/Math.max(actualWeeks.length,1));
+          const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+          const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
+          const balDiff=forecastEndBal!==null&&forecastEndBal!==undefined&&lastActualBal!==null&&lastActualBal!==undefined?forecastEndBal-lastActualBal:null;
+          const cards=[
+            {
+              label:"Cash today",
+              value:lastActualBal!=null?`£${Math.round(lastActualBal).toLocaleString()}`:"—",
+              sub:"current balance",
+              color:"#f8fafc",
+              accent:"#374151",
+              valColor:"#111827",
+              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="16" height="11" rx="2" stroke="#9ca3af" strokeWidth="1.5"/><path d="M2 9h16" stroke="#9ca3af" strokeWidth="1.5"/><circle cx="6" cy="13" r="1" fill="#9ca3af"/></svg>
+            },
+            {
+              label:"In 6 weeks",
+              value:forecastEndBal!=null?`£${Math.round(forecastEndBal).toLocaleString()}`:"—",
+              sub:balDiff!=null?(balDiff>=0?`+£${Math.round(balDiff).toLocaleString()} projected`:`−£${Math.round(Math.abs(balDiff)).toLocaleString()} projected`):"forecast balance",
+              color:"#f8fafc",
+              accent:balDiff!=null&&balDiff>=0?"#10b981":"#ef4444",
+              valColor:balDiff!=null&&balDiff>=0?"#059669":"#ef4444",
+              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 15l4-6 4 3 4-8" stroke={balDiff!=null&&balDiff>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinecap="round"/></svg>
+            },
+            {
+              label:"Avg weekly spend",
+              value:`£${weeklyAvg.toLocaleString()}`,
+              sub:`over ${actualWeeks.length} weeks`,
+              color:"#f8fafc",
+              accent:PURPLE,
+              valColor:"#6366f1",
+              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="3" y="10" width="3" height="7" rx="1" fill="#6366f1" opacity="0.5"/><rect x="8" y="6" width="3" height="11" rx="1" fill="#6366f1" opacity="0.7"/><rect x="13" y="3" width="3" height="14" rx="1" fill="#6366f1"/></svg>
+            },
+            {
+              label:"Forecast spend",
+              value:`£${totalForecastSpend.toLocaleString()}`,
+              sub:"next 6 weeks",
+              color:"#f8fafc",
+              accent:totalForecastSpend>totalSpent?"#f59e0b":"#10b981",
+              valColor:totalForecastSpend>totalSpent?"#d97706":"#059669",
+              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M13 6l4 4-4 4" stroke={totalForecastSpend>totalSpent?"#f59e0b":"#10b981"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            },
+          ];
+          return(
+            <div style={{display:"flex",gap:10,marginBottom:18}}>
+              {cards.map((c,i)=>(
+                <div key={i} style={{flex:1,background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #e8eaf0",borderTop:`3px solid ${c.accent}22`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
+                    {c.icon}
+                    <span style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:"0.06em",textTransform:"uppercase"}}>{c.label}</span>
+                  </div>
+                  <div style={{fontSize:22,fontWeight:800,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em",marginBottom:3}}>{c.value}</div>
+                  <div style={{fontSize:11,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#9ca3af"}}>{c.sub}</div>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()}
         <div style={{background:"#fff",borderRadius:14,border:"1px solid #e5e7eb",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
@@ -1771,42 +1872,48 @@ const tdAmt=(color,isForecast,bold)=>({padding:"7px 10px",textAlign:"right",font
       </div>
 
       {/* AI Advisor sidebar */}
-      <div style={{width:aiOpen?288:44,flexShrink:0,background:"#fff",borderLeft:"1px solid #e5e7eb",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
-        {/* Gradient top border */}
-        <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,transparent)",pointerEvents:"none"}}/>
-        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #f3f4f6",color:PURPLE,fontWeight:700,fontSize:13,whiteSpace:"nowrap",flexShrink:0}}>
-          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>
-          {aiOpen&&<span style={{flex:1,textAlign:"left"}}>AI Advisor</span>}
-          <span style={{fontSize:10,color:"#9ca3af"}}>{aiOpen?"›":"‹"}</span>
+      <div style={{width:aiOpen?300:44,flexShrink:0,background:"#fafbfc",borderLeft:"1px solid #e8eaf0",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",pointerEvents:"none"}}/>
+        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"13px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #e8eaf0",whiteSpace:"nowrap",flexShrink:0}}>
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>
+          {aiOpen&&<span style={{flex:1,textAlign:"left",fontSize:13,fontWeight:700,color:"#111827"}}>Insights</span>}
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d={aiOpen?"M14 8l-4 4-4-4":"M6 12l4-4 4 4"} stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
         {aiOpen&&(
-          <div style={{padding:14,display:"flex",flexDirection:"column",gap:10,overflow:"auto",flex:1}}>
-            <div style={{fontSize:10,color:"#9ca3af",fontWeight:700,letterSpacing:0.8}}>INSIGHTS</div>
+          <div style={{padding:"12px",display:"flex",flexDirection:"column",gap:8,overflow:"auto",flex:1}}>
             {aiTyping?(
-              <div style={{display:"flex",gap:5,padding:"12px 14px",background:"#fafafa",borderRadius:10,alignItems:"center"}}>
+              <div style={{display:"flex",gap:5,padding:"16px",background:"#fff",borderRadius:10,alignItems:"center",border:"1px solid #e8eaf0"}}>
+                <span style={{fontSize:11,color:"#9ca3af",marginRight:4}}>Analysing your data</span>
                 {[0,1,2].map(i=>(
-                  <div key={i} style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>
+                  <div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>
                 ))}
               </div>
             ):(
               insights.map((ins,i)=>(
-                <div key={i} style={{background:"#fafafa",borderRadius:10,borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"all 0.2s",animation:`fadeUp 0.4s ease ${i*120}ms both`}}>
-                  <div style={{padding:"11px 14px",cursor:"pointer",display:"flex",gap:7,alignItems:"center"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
-                    <InsightIcon type={ins.icon} color={ins.color}/>
-                    <span style={{fontSize:12,fontWeight:700,flex:1}}>{ins.title}</span>
-                    <span style={{fontSize:10,color:"#9ca3af"}}>{aiExpanded===i?"▲":"▼"}</span>
+                <div key={i} style={{background:"#fff",borderRadius:10,border:"1px solid #e8eaf0",borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"box-shadow 0.2s",animation:`fadeUp 0.4s ease ${i*100}ms both`,boxShadow:aiExpanded===i?"0 2px 12px rgba(0,0,0,0.07)":"none"}}>
+                  <div style={{padding:"11px 13px",cursor:"pointer",display:"flex",gap:8,alignItems:"flex-start"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
+                    <div style={{marginTop:1,flexShrink:0}}><InsightIcon type={ins.icon} color={ins.color}/></div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:2,lineHeight:1.3}}>{ins.title}</div>
+                      <div style={{fontSize:11,color:"#6b7280",lineHeight:1.5}}>{ins.body}</div>
+                    </div>
+                    <svg width="10" height="10" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:2}}><path d={aiExpanded===i?"M5 13l5-5 5 5":"M5 8l5 5 5-5"} stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
-                  <div style={{padding:aiExpanded===i?"0 14px 12px":"0 14px",maxHeight:aiExpanded===i?200:40,overflow:"hidden",transition:"all 0.3s ease"}}>
-                    <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.6}}>{ins.body}</p>
-                    {aiExpanded===i&&ins.detail&&<p style={{fontSize:11,color:"#9ca3af",margin:"8px 0 0",lineHeight:1.6,borderTop:"1px solid #f3f4f6",paddingTop:8}}>{ins.detail}</p>}
-                  </div>
+                  {aiExpanded===i&&ins.detail&&(
+                    <div style={{padding:"0 13px 12px",borderTop:"1px solid #f3f4f6",paddingTop:10}}>
+                      <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.7}}>{ins.detail}</p>
+                    </div>
+                  )}
                 </div>
               ))
             )}
+            <div style={{marginTop:4,padding:"10px 12px",background:"#f3f4f6",borderRadius:8,fontSize:10,color:"#9ca3af",lineHeight:1.5,textAlign:"center"}}>
+              Insights update automatically as you edit categories
+            </div>
           </div>
         )}
       </div>
-
+      
       {/* Tour reopen button */}
       <button onClick={reopenTour}
         title="Tour & tips"

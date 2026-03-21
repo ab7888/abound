@@ -12,10 +12,10 @@ const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card", 2:"Credit Card 2", 3
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
-  *, *::before, *::after { box-sizing: border-box; }
-  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; background: #08070f; height: 100%; }
+  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background: #08070f; margin: 0; padding: 0; min-height: 100%; }}
   .dark-screen { font-family: 'DM Sans', system-ui, sans-serif; }
-  html { -webkit-text-size-adjust: 100%; }
   button, select, input { touch-action: manipulation; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
   @keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
@@ -26,7 +26,10 @@ const GLOBAL_CSS = `
   @keyframes slideInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
   @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-4px);opacity:1} }
   @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes spotlightIn { from{opacity:0;transform:tr@keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes logoWipe { from{width:0} to{width:100%} }
+  @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
+  .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }anslateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }
 `;
 
@@ -641,8 +644,13 @@ function HeroScreen({onEnter, onResume}) {
         <div style={{width:110,margin:"0 auto 14px",opacity:0.72,animation:"fadeUp 0.7s ease both"}}>
           <IllustrationDocumentStack/>
         </div>
-        <div style={{marginBottom:24,animation:"fadeIn 0.6s ease both"}}>
-          <img src={logo} alt="Abound" style={{height:44,opacity:0.95}}/>
+        <div style={{marginBottom:36,display:"flex",justifyContent:"center"}}>
+          <div style={{padding:"10px 20px",borderRadius:16,background:"rgba(8,7,15,0.92)",border:"1px solid rgba(99,102,241,0.15)",boxShadow:"0 0 40px rgba(99,102,241,0.08)",animation:"logoBgFade 0.3s ease both"}}>
+            {/* overflow:hidden + width animation = left-to-right wipe */}
+            <div style={{overflow:"hidden",height:52,animation:"logoWipe 1s cubic-bezier(0.4,0,0.2,1) 0.2s both"}}>
+              <img src={logo} alt="Abound" style={{height:52,display:"block",minWidth:"100%"}}/>
+            </div>
+          </div>
         </div>
         <div style={{width:180,margin:"0 auto 28px",opacity:0.88,animation:"fadeUp 0.9s cubic-bezier(0.16,1,0.3,1) 0.05s both"}}>
           <IllustrationLayers/>
@@ -2185,7 +2193,7 @@ export default function App() {
   }
 
   return (
-    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:["hero","upload","sort","categorise","session-complete"].includes(screen)?"#08070f":"#f8fafc",minHeight:"100vh"}}>
+    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:["hero","upload","sort","categorise","session-complete"].includes(screen)?"#08070f":"#f8fafc",minHeight:"100vh",minWidth:"100vw",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
       {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")} onResume={handleResume}/>}
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}

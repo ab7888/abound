@@ -1647,7 +1647,7 @@ function OrientationGate({children}) {
   if(isMobile && !isLandscape) return <RotateScreen/>;
   return children;
 }
-function MainScreen({transactions: initialTransactions, categories, onStartOver}) {
+function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback}) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
@@ -1664,7 +1664,8 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver}
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
         </button>
-        <button onClick={onStartOver} style={{marginLeft:"auto",fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
+        <button onClick={()=>setScreen&&setScreen("feedback")} style={{marginLeft:"auto",padding:"6px 14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.3)"}}>⭐ Review</button>
+        <button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
       </div>
       {activeTab==="cashflow"&&showReviewPrompt&&(
         <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
@@ -2470,7 +2471,7 @@ export default function App() {
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
       {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
-      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver}/>}
+      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
     </div>

@@ -1739,39 +1739,38 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
 
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
-    const spendCatsLocal=categories.filter(c=>c!=="Salary"); // Card Repayment included
+    const mainSpendCats=categories.filter(c=>c!=="Salary");
+    const ccSpendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
     const ccAccounts=accounts.filter(a=>a!==mainAcc);
-    const mainActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
+    const mainActuals=actualWeeks.map(w=>mainSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
     const mainIncome=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Salary"]||0));
     const mainNet=actualWeeks.map((_,i)=>mainIncome[i]-mainActuals[i]);
-    const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>spendCatsLocal.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
+    const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
+    const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
     const runningBals=Array(actualWeeks.length).fill(null);
-    // Pin every week with a real statement balance
     knownBals.forEach((b,i)=>{if(b!==null)runningBals[i]=b;});
-    // Walk forward between pins
     for(let i=0;i<actualWeeks.length-1;i++){
       if(runningBals[i]!==null&&runningBals[i+1]===null)
         runningBals[i+1]=runningBals[i]+mainNet[i];
     }
-    // Walk backward before first pin
     for(let i=actualWeeks.length-1;i>0;i--){
       if(runningBals[i]!==null&&runningBals[i-1]===null)
         runningBals[i-1]=runningBals[i]-mainNet[i-1];
     }
     const actualClosing=runningBals.map((ob,i)=>ob!==null?ob+mainNet[i]-ccActuals[i]:null);
     const lastActualBal=runningBals.filter(b=>b!==null).slice(-1)[0]??null;
-    const mainFActuals=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
+    const mainFActuals=forecastWeeks.map((_,i)=>mainSpendCats.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
     const mainFIncome=forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
     const mainFNet=forecastWeeks.map((w,i)=>{
       const eventSpend=events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0);
       return mainFIncome[i]-mainFActuals[i]-eventSpend;
     });
-    const ccFActuals=forecastWeeks.map((_,i)=>ccAccounts.reduce((s,acc)=>spendCatsLocal.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
+    const ccFActuals=forecastWeeks.map((_,i)=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
     const forecastBals=Array(forecastWeeks.length).fill(null);
     if(lastActualBal!==null){forecastBals[0]=lastActualBal+mainNet[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
     const forecastClosing=forecastBals.map((ob,i)=>ob!==null?ob+mainFNet[i]-ccFActuals[i]:null);
     return{actual:actualClosing,forecast:forecastClosing};
-},[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events]);
 
   const insights=useMemo(()=>{
     const tips=[],totals={},weeklyTotals={};

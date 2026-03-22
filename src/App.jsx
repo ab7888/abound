@@ -1372,8 +1372,11 @@ const MobileSort=()=>{
 
         {/* ALL categories — always visible, scrollable */}
         {unsorted.length>0&&(
-          <div style={{flex:1,overflowY:"auto",padding:"4px 16px 16px",WebkitOverflowScrolling:"touch",touchAction:"pan-y"}}>
-            <div style={{fontSize:9,fontWeight:700,color:"#374151",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Tap to categorise</div>
+          <div style={{flex:1,overflowY:"auto",padding:"4px 16px 80px",WebkitOverflowScrolling:"touch",touchAction:"pan-y"}}>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:2}}>Which category does it belong to?</div>
+              <div style={{fontSize:11,color:"#52525b"}}>Tap to assign, or swipe the card.</div>
+            </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               {allBuckets.map(cat=>{
                 const isSkip=cat==="Skip";
@@ -1398,6 +1401,22 @@ const MobileSort=()=>{
               })}
             </div>
           </div>
+        )}
+        {/* FAB: add category — mobile only */}
+        {showAddCat?(
+          <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:"#1a1830",borderTop:"1px solid #4338ca",borderRadius:"16px 16px 0 0",padding:"20px 16px 32px",boxShadow:"0 -8px 40px rgba(0,0,0,0.7)"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#6366f1",marginBottom:12,letterSpacing:"0.08em"}}>NEW CATEGORY</div>
+            <div style={{display:"flex",gap:8}}>
+              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="e.g. Healthcare..." style={{flex:1,padding:"12px 14px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:10,color:"#fff",fontSize:15,outline:"none"}}/>
+              <button onClick={addCategory} style={{padding:"12px 20px",background:"#6366f1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer"}}>Add</button>
+              <button onClick={()=>setShowAddCat(false)} style={{padding:"12px 14px",background:"none",border:"1px solid #2d2a6e",borderRadius:10,color:"#6b7280",fontSize:15,cursor:"pointer"}}>×</button>
+            </div>
+          </div>
+        ):(
+          <button onClick={()=>setShowAddCat(true)}
+            style={{position:"fixed",bottom:24,right:20,zIndex:200,width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",fontSize:28,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,WebkitTapHighlightColor:"transparent"}}>
+            +
+          </button>
         )}
       </div>
     );
@@ -1608,9 +1627,19 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
-  const [aiOpen, setAiOpen] = useState(typeof window!=="undefined"?window.innerWidth>=768:true);
+  const [aiOpen, setAiOpen] = useState(false);
   const [aiTyping, setAiTyping] = useState(true);
   const [aiExpanded, setAiExpanded] = useState(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  function toggleFullscreen(){
+    if(!document.fullscreenElement){document.documentElement.requestFullscreen?.().then(()=>setIsFullscreen(true)).catch(()=>{});}
+    else{document.exitFullscreen?.().then(()=>setIsFullscreen(false)).catch(()=>{});}
+  }
+  useEffect(()=>{
+    const handler=()=>setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange",handler);
+    return()=>document.removeEventListener("fullscreenchange",handler);
+  },[]);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
   const [tooltip, setTooltip] = useState(null);
@@ -1935,7 +1964,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
           <td style={{borderLeft:"2px solid #e5e7eb",background:"rgba(99,102,241,0.02)"}}/><td/><td/>
         </tr>
         {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
-        {spendCatsLocal.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        {spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
           <tr className="abound-row" style={{background:"#fffbeb",borderBottom:"1px solid #fde68a"}}>
@@ -2115,10 +2144,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
               <tr data-tour="actual" style={{background:"#1e1b4b"}}>
-                <th colSpan={2} style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b"}}>
-                  <img src={logo} alt="" style={{height:22,verticalAlign:"middle",marginRight:8}}/>
-                  <span style={{fontSize:13,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>
+                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b",whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
+                  <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
+                  <span style={{fontSize:12,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
+                <th style={{background:"#1e1b4b",borderRight:"1px solid #2d2a6e",width:0,padding:0}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>Actual</th>)}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"right",background:"#111827",borderLeft:"2px solid #374151",borderRight:"2px solid #374151",whiteSpace:"nowrap"}}>6WK</th>
                 {forecastWeeks.map((w,i)=>{
@@ -2132,7 +2162,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
                 <th style={{background:"#1e1b4b"}} colSpan={2}/>
               </tr>
               <tr data-tour="forecast" style={{background:"#f8fafc"}}>
-                <th colSpan={2} style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
+                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc",maxWidth:130}}/><th style={{background:"#f8fafc",width:0,padding:0}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#374151",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
                 {forecastWeeks.map((w,i)=>{
@@ -2145,7 +2175,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
                 <th/>
               </tr>
               <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
-                <th colSpan={2} style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc"}}/>
+                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc",maxWidth:130}}/><th style={{background:"#f8fafc",width:0,padding:0}}/>
                 {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
                 <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
                 {forecastWeeks.map((w,i)=>{
@@ -2257,6 +2287,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
         )}
       </div>
       
+      {isMobile&&(
+        <button onClick={toggleFullscreen} title={isFullscreen?"Exit fullscreen":"Go fullscreen"}
+          style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
+          {isFullscreen
+            ?<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M7 3H3v4M17 3h-4v4M7 17H3v-4M17 17h-4v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+            :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          }
+        </button>
+      )}
       {/* Tour reopen button */}
       <button onClick={reopenTour}
         title="Tour & tips"

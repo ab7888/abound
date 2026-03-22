@@ -1832,7 +1832,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
         for(const row of rows){
           const tds = [...row.querySelectorAll("td")];
           let candidate=null;
-          for(let idx=8;idx<=13;idx++){
+          for(let idx=9;idx<=14;idx++){
             const td=tds[idx];
             if(!td) continue;
             const txt=td.textContent?.trim();

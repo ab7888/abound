@@ -724,7 +724,7 @@ function FeedbackScreen({txnCount, onDone}) {
       await fetch(`https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`, {
         method:"POST",
         headers:{"Content-Type":"application/json","Accept":"application/json"},
-        body:JSON.stringify({...answers, feedback:text, txnCount, submittedAt:new Date().toISOString(), _subject:"Abound feedback"}),
+        body:JSON.stringify({...answers, name:userName||"Anonymous", improvements, feedback:text, txnCount, submittedAt:new Date().toISOString(), _subject:"Abound feedback"}),
       });
     } catch(e){console.warn("Feedback failed",e);}
     setSubmitted(true);
@@ -773,11 +773,33 @@ function FeedbackScreen({txnCount, onDone}) {
             </div>
           </div>
         ))}
+       {/* Name */}
         <div style={{marginBottom:24}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:10}}>Anything else you'd like to share?</div>
+          <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:4}}>Your name <span style={{fontSize:11,fontWeight:400,color:"#52525b"}}>(optional)</span></div>
+          <input value={userName} onChange={e=>setUserName(e.target.value)}
+            placeholder="e.g. Sarah"
+            style={{width:"100%",padding:"11px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:10,color:"#e0e7ff",fontSize:16,outline:"none",fontFamily:"inherit"}}
+            onFocus={e=>{e.target.style.borderColor="#6366f1";}}
+            onBlur={e=>{e.target.style.borderColor="#1f1d35";}}/>
+        </div>
+
+        {/* What could be improved */}
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:4}}>What could be improved?</div>
+          <textarea value={improvements} onChange={e=>setImprovements(e.target.value)}
+            placeholder="Any bugs, confusing parts, or features you wished existed..."
+            rows={3}
+            style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:10,color:"#e0e7ff",fontSize:16,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.6}}
+            onFocus={e=>{e.target.style.borderColor="#6366f1";}}
+            onBlur={e=>{e.target.style.borderColor="#1f1d35";}}/>
+        </div>
+
+        {/* Anything else */}
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:4}}>Anything else you'd like to share?</div>
           <textarea value={text} onChange={e=>setText(e.target.value)}
-            placeholder="What worked, what didn't, what you'd love to see next..."
-            rows={4}
+            placeholder="What worked well, what you loved, what you'd like to see next..."
+            rows={3}
             style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:10,color:"#e0e7ff",fontSize:16,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.6}}
             onFocus={e=>{e.target.style.borderColor="#6366f1";}}
             onBlur={e=>{e.target.style.borderColor="#1f1d35";}}/>
@@ -1788,19 +1810,40 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   );
 }
 
-function AnimatedCursor({targetSelector, offsetX=12, offsetY=8}) {
+function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
   const [pos, setPos] = useState(null);
   const [clicking, setClicking] = useState(false);
 
   useEffect(()=>{
     function measure(){
-      const el = document.querySelector(targetSelector);
+      let el = null;
+      // Handle special selectors that encode intent rather than CSS
+      if(targetSelector==="actual-cell"){
+        // Find first non-zero actual data cell in tbody
+        const tds = document.querySelectorAll("tbody td");
+        for(const td of tds){
+          const txt = td.textContent?.trim();
+          if(txt && txt !== "-" && /^\d/.test(txt)){el=td;break;}
+        }
+      } else if(targetSelector==="forecast-cell"){
+        // Find a forecast cell — they sit after the 6WK separator
+        const rows = document.querySelectorAll("tbody tr");
+        for(const row of rows){
+          const tds = [...row.querySelectorAll("td")];
+          // Forecast cells are roughly positions 9-14
+          const target = tds[9]||tds[10];
+          if(target){el=target;break;}
+        }
+      } else {
+        el = document.querySelector(targetSelector);
+      }
       if(!el) return;
       const r = el.getBoundingClientRect();
-      setPos({x: r.left + r.width*0.6 + offsetX, y: r.top + r.height*0.5 + offsetY});
+      if(r.width===0||r.height===0) return;
+      setPos({x: r.left + r.width*0.5 + offsetX, y: r.top + r.height*0.5 + offsetY});
     }
     measure();
-    const t = setTimeout(measure, 400);
+    const t = setTimeout(measure, 600);
     window.addEventListener("resize", measure);
     return ()=>{ clearTimeout(t); window.removeEventListener("resize", measure); };
   },[targetSelector]);
@@ -1907,9 +1950,9 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"[data-tour='actual'] ~ * td:nth-child(4)"},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"actual-cell"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
-    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:"forecast",cursorTarget:"[data-tour='forecast'] ~ * td:nth-child(10)"},
+    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:"forecast",cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any row to add a weekly budget. Abound highlights forecast weeks in red when you're on track to exceed it.",cta:"Next →",highlight:"budget"},
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},

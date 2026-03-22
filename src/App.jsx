@@ -1282,55 +1282,19 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
 
 const MobileSort=()=>{
     const topItem=unsorted[0];
-    const cardRef=useRef(null);
-    const txStartX=useRef(null);
-    const txStartY=useRef(null);
-    const activeTargetRef=useRef(null);
-    const [localOffset,setLocalOffset]=useState(0);
-    const [localTarget,setLocalTarget]=useState(null);
+    const [addingCat,setAddingCat]=useState(false);
+    const [newCatLocal,setNewCatLocal]=useState("");
 
-    useEffect(()=>{
-      setLocalOffset(0);setLocalTarget(null);
-      activeTargetRef.current=null;
-    },[topItem?.narrative]);
-
-    // Non-passive touch handler so preventDefault actually works
-    useEffect(()=>{
-      const el=cardRef.current;
-      if(!el||!topItem) return;
-      function onTS(e){txStartX.current=e.touches[0].clientX;txStartY.current=e.touches[0].clientY;}
-      function onTM(e){
-        if(txStartX.current===null) return;
-        const dx=e.touches[0].clientX-txStartX.current;
-        const dy=e.touches[0].clientY-txStartY.current;
-        if(Math.abs(dx)>Math.abs(dy)+8){
-          e.preventDefault();
-          setLocalOffset(dx);
-          // swipe hint only — actual assignment is via tap buttons
-          if(dx>SWIPE_THRESHOLD) activeTargetRef.current=allBuckets[0]||null;
-          else if(dx<-SWIPE_THRESHOLD) activeTargetRef.current=allBuckets[1]||null;
-          else activeTargetRef.current=null;
-          setLocalTarget(activeTargetRef.current);
-        }
-      }
-      function onTE(){
-        if(activeTargetRef.current) assignItem(topItem.narrative,activeTargetRef.current);
-        setLocalOffset(0);setLocalTarget(null);
-        activeTargetRef.current=null;txStartX.current=null;txStartY.current=null;
-      }
-      el.addEventListener('touchstart',onTS,{passive:true});
-      el.addEventListener('touchmove',onTM,{passive:false});
-      el.addEventListener('touchend',onTE,{passive:true});
-      return()=>{el.removeEventListener('touchstart',onTS);el.removeEventListener('touchmove',onTM);el.removeEventListener('touchend',onTE);};
-    },[topItem?.narrative]);
-
-    const swipeProgress=Math.min(Math.abs(localOffset)/SWIPE_THRESHOLD,1);
-    const swipingRight=localOffset>20,swipingLeft=localOffset<-20;
-    const hintColorRight=localTarget?catColor(localTarget,allBuckets.indexOf(localTarget)):"#6366f1";
-    const hintColorLeft=allBuckets[1]?catColor(allBuckets[1],allBuckets.indexOf(allBuckets[1])):"#6366f1";
+    function doAdd(){
+      const t=newCatLocal.trim();
+      if(!t||categories.includes(t))return;
+      setCategories(c=>[...c,t]);
+      setNewCatLocal("");
+      setAddingCat(false);
+    }
 
     return(
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",touchAction:"none"}}>
+      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",overscrollBehavior:"none"}}>
         {/* Progress bar */}
         <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
           <div style={{flex:1,height:3,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
@@ -1348,17 +1312,12 @@ const MobileSort=()=>{
               <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>Show cash flow →</button>
             </div>
           ):(
-            <div style={{position:"relative",height:130,marginBottom:8}}>
+            <div style={{position:"relative",height:118,marginBottom:8}}>
               {visible.slice(1,3).map((item,idx)=>(
                 <div key={item.narrative} style={{position:"absolute",top:0,left:0,right:0,background:`rgba(20,18,42,${1-(idx+1)*0.15})`,border:"1px solid #2d2a6e",borderRadius:14,padding:"14px",transform:`translateY(${(idx+1)*5}px) scale(${1-(idx+1)*0.025})`,transformOrigin:"top center",zIndex:1-idx}}/>
               ))}
               {topItem&&(
-                <div ref={cardRef} style={{position:"absolute",top:0,left:0,right:0,background:swipingRight?`linear-gradient(135deg,${hintColorRight}22,#1e1b38)`:swipingLeft?`linear-gradient(225deg,${hintColorLeft}22,#1e1b38)`:"#1e1b38",border:`2px solid ${localTarget?(swipingRight?hintColorRight:hintColorLeft):"#4338ca"}`,borderRadius:14,padding:"16px 18px",transform:`translateX(${localOffset}px) rotate(${localOffset*0.025}deg)`,transition:localOffset===0?"transform 0.3s":"none",zIndex:10,userSelect:"none"}}>
-                  {localTarget&&(
-                    <div style={{position:"absolute",top:10,right:swipingRight?10:undefined,left:swipingLeft?10:undefined,background:swipingRight?hintColorRight:hintColorLeft,color:"#fff",fontSize:10,fontWeight:800,padding:"2px 9px",borderRadius:20,opacity:swipeProgress}}>
-                      {localTarget==="Skip"?"NOT SURE":localTarget.toUpperCase()}
-                    </div>
-                  )}
+                <div style={{position:"absolute",top:0,left:0,right:0,background:"#1e1b38",border:"2px solid #4338ca",borderRadius:14,padding:"16px 18px",zIndex:10,userSelect:"none"}}>
                   <div style={{fontSize:13,fontWeight:600,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",marginBottom:6}}>{topItem.narrative}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10}}>
                     <span style={{fontSize:20,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(topItem.total).toLocaleString()}</span>
@@ -1370,12 +1329,12 @@ const MobileSort=()=>{
           )}
         </div>
 
-        {/* ALL categories — always visible, scrollable */}
+        {/* Category grid */}
         {unsorted.length>0&&(
-          <div style={{flex:1,overflowY:"auto",padding:"4px 16px 80px",WebkitOverflowScrolling:"touch",touchAction:"pan-y"}}>
+          <div style={{flex:1,overflowY:"auto",overscrollBehavior:"contain",padding:"4px 16px 24px",WebkitOverflowScrolling:"touch",touchAction:"pan-y"}}>
             <div style={{marginBottom:10}}>
               <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:2}}>Which category does it belong to?</div>
-              <div style={{fontSize:11,color:"#52525b"}}>Tap to assign, or swipe the card.</div>
+              <div style={{fontSize:11,color:"#52525b"}}>Tap to assign.</div>
             </div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               {allBuckets.map(cat=>{
@@ -1385,13 +1344,13 @@ const MobileSort=()=>{
                 return(
                   <button key={cat}
                     onClick={()=>{if(unsorted[0])assignItem(unsorted[0].narrative,cat);}}
-                    style={{padding:"13px 10px",background:`${color}14`,border:`1.5px solid ${color}55`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:4,alignItems:"center",WebkitTapHighlightColor:"transparent",transition:"background 0.1s,border-color 0.1s",touchAction:"manipulation"}}
+                    style={{padding:"13px 10px",background:`${color}14`,border:`1.5px solid ${color}55`,borderRadius:12,color,fontWeight:700,fontSize:13,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:4,alignItems:"center",WebkitTapHighlightColor:"transparent",transition:"background 0.1s",touchAction:"manipulation"}}
                     onTouchStart={e=>e.currentTarget.style.background=`${color}28`}
                     onTouchEnd={e=>e.currentTarget.style.background=`${color}14`}>
                     <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:24,height:24}}>
                       {isSkip
-                        ? <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke={color} strokeWidth="1.5"/><path d="M7 10h6M13 8l2 2-2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        : <CatIcon cat={cat} size={18} color={color}/>
+                        ?<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7" stroke={color} strokeWidth="1.5"/><path d="M7 10h6M13 8l2 2-2 2" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        :<CatIcon cat={cat} size={18} color={color}/>
                       }
                     </span>
                     <span style={{fontSize:12}}>{isSkip?"Skip":cat}</span>
@@ -1399,24 +1358,34 @@ const MobileSort=()=>{
                   </button>
                 );
               })}
+
+              {/* Add category inline card */}
+              {addingCat?(
+                <div style={{gridColumn:"span 2",padding:"12px",background:"rgba(99,102,241,0.08)",border:"1.5px solid #6366f1",borderRadius:12,display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em"}}>NEW CATEGORY</div>
+                  <div style={{display:"flex",gap:6}}>
+                    <input autoFocus value={newCatLocal}
+                      onChange={e=>setNewCatLocal(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter")doAdd();if(e.key==="Escape"){setAddingCat(false);setNewCatLocal("");}}}
+                      placeholder="e.g. Healthcare..."
+                      style={{flex:1,padding:"10px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#fff",fontSize:16,outline:"none"}}/>
+                    <button onClick={doAdd} style={{padding:"10px 16px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",touchAction:"manipulation"}}>Add</button>
+                    <button onClick={()=>{setAddingCat(false);setNewCatLocal("");}} style={{padding:"10px 12px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#6b7280",fontSize:14,cursor:"pointer",touchAction:"manipulation"}}>×</button>
+                  </div>
+                </div>
+              ):(
+                <button onClick={()=>setAddingCat(true)}
+                  style={{padding:"13px 10px",background:"rgba(99,102,241,0.06)",border:"1.5px dashed #4338ca",borderRadius:12,color:"#6366f1",fontWeight:600,fontSize:12,cursor:"pointer",textAlign:"center",display:"flex",flexDirection:"column",gap:4,alignItems:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}
+                  onTouchStart={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
+                  onTouchEnd={e=>e.currentTarget.style.background="rgba(99,102,241,0.06)"}>
+                  <span style={{display:"flex",alignItems:"center",justifyContent:"center",width:24,height:24}}>
+                    <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="#6366f1" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                  </span>
+                  <span>Add category</span>
+                </button>
+              )}
             </div>
           </div>
-        )}
-        {/* FAB: add category — mobile only */}
-        {showAddCat?(
-          <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:200,background:"#1a1830",borderTop:"1px solid #4338ca",borderRadius:"16px 16px 0 0",padding:"20px 16px 32px",boxShadow:"0 -8px 40px rgba(0,0,0,0.7)"}}>
-            <div style={{fontSize:11,fontWeight:700,color:"#6366f1",marginBottom:12,letterSpacing:"0.08em"}}>NEW CATEGORY</div>
-            <div style={{display:"flex",gap:8}}>
-              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="e.g. Healthcare..." style={{flex:1,padding:"12px 14px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:10,color:"#fff",fontSize:15,outline:"none"}}/>
-              <button onClick={addCategory} style={{padding:"12px 20px",background:"#6366f1",color:"#fff",border:"none",borderRadius:10,fontSize:15,fontWeight:700,cursor:"pointer"}}>Add</button>
-              <button onClick={()=>setShowAddCat(false)} style={{padding:"12px 14px",background:"none",border:"1px solid #2d2a6e",borderRadius:10,color:"#6b7280",fontSize:15,cursor:"pointer"}}>×</button>
-            </div>
-          </div>
-        ):(
-          <button onClick={()=>setShowAddCat(true)}
-            style={{position:"fixed",bottom:24,right:20,zIndex:200,width:52,height:52,borderRadius:"50%",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",fontSize:28,cursor:"pointer",boxShadow:"0 4px 20px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1,WebkitTapHighlightColor:"transparent"}}>
-            +
-          </button>
         )}
       </div>
     );
@@ -1739,7 +1708,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
 
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
-    const mainSpendCats=categories.filter(c=>c!=="Salary");
+    const mainSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
     const ccSpendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
     const ccAccounts=accounts.filter(a=>a!==mainAcc);
     const mainActuals=actualWeeks.map(w=>mainSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
@@ -1910,8 +1879,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
   function AccountSection({account}){
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
-    // Card Repayment included — it IS money leaving the account
-    const spendCatsLocal=categories.filter(c=>c!=="Salary");
+    // Always include Card Repayment in spend, even if not in categories (single account case)
+    const spendCatsLocal=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const accIncome=actualWeeks.map(w=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));

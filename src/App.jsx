@@ -1061,7 +1061,37 @@ function UploadScreen({onDone}) {
     </div>
   );
 }
-
+function computeCategorySuggestions(txns, existingCats) {
+  const STOP = new Set(["from","with","payment","purchase","transaction","direct","debit","transfer","card","charge","services","service","limited","ltd","uk","the","and","for","via","ref","online","pay","paid","account","bank"]);
+  const KEYWORD_MAP = {"gym":"Gym & Fitness","fitness":"Gym & Fitness","pilates":"Gym & Fitness","yoga":"Gym & Fitness","crossfit":"Gym & Fitness","pet":"Pets","pets":"Pets","vets":"Pets","vet":"Pets","veterinary":"Pets","pawsome":"Pets","dog":"Pets","cat":"Pets","pharmacy":"Healthcare","chemist":"Healthcare","doctor":"Healthcare","dental":"Healthcare","dentist":"Healthcare","medical":"Healthcare","clinic":"Healthcare","optician":"Healthcare","nursery":"Childcare","childcare":"Childcare","creche":"Childcare","nanny":"Childcare","babysitter":"Childcare","school":"Education","college":"Education","university":"Education","tutor":"Education","course":"Education","salon":"Beauty","hairdresser":"Beauty","barber":"Beauty","beauty":"Beauty","nails":"Beauty","spa":"Beauty","massage":"Beauty","charity":"Charity","donate":"Charity","donation":"Charity","fundraising":"Charity"};
+  const otherTxns = txns.filter(t=>t.category==="Other Payments");
+  if(otherTxns.length < 3) return [];
+  const wordGroups = {};
+  otherTxns.forEach(t=>{
+    const words = t.narrative.toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).filter(w=>w.length>3&&!STOP.has(w));
+    const seen = new Set();
+    words.forEach(w=>{
+      if(seen.has(w)) return;
+      seen.add(w);
+      if(!wordGroups[w]) wordGroups[w]={count:0,narratives:new Set(),suggestedName:null};
+      wordGroups[w].count++;
+      wordGroups[w].narratives.add(t.narrative);
+      if(KEYWORD_MAP[w]) wordGroups[w].suggestedName=KEYWORD_MAP[w];
+    });
+  });
+  const suggestions = Object.entries(wordGroups)
+    .filter(([w,g])=>g.narratives.size>=3&&!existingCats.map(c=>c.toLowerCase()).includes(w))
+    .sort((a,b)=>b[1].narratives.size-a[1].narratives.size)
+    .slice(0,4)
+    .map(([word,g])=>({
+      keyword:word,
+      name: g.suggestedName || (word.charAt(0).toUpperCase()+word.slice(1)),
+      count: g.narratives.size
+    }));
+  // Deduplicate by suggestedName
+  const seen = new Set();
+  return suggestions.filter(s=>{if(seen.has(s.name))return false;seen.add(s.name);return true;});
+}
 // ─── Categorise Screen ────────────────────────────────────────────────────────
 function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [pct, setPct] = useState(5);
@@ -1075,6 +1105,8 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [editVal, setEditVal] = useState("");
   const [step, setStep] = useState("loading");
   const [logLines, setLogLines] = useState([{text:"Starting merchant lookup...",done:false,active:true}]);
+  const [suggestions, setSuggestions] = useState([]);
+  const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
   useEffect(()=>{
     (async()=>{
       const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
@@ -1092,7 +1124,11 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           setLogLines(l=>[...l.map(x=>({...x,done:true,active:false})),{text:"All categorised ✓",done:true,active:false}]);
         }
       });
-      setCategorised(result); setDone(true); setTimeout(()=>setStep("review"),1200);
+      setCategorised(result);
+      setDone(true);
+      const sugg = computeCategorySuggestions(result, baseCats);
+      setSuggestions(sugg);
+      setTimeout(()=>setStep("review"),1200);
     })();
   },[]);
   const summary = useMemo(()=>{
@@ -1172,6 +1208,31 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           })}
         </div>
 
+        {/* Smart suggestions */}
+        {suggestions.filter(s=>!dismissedSuggestions.has(s.name)&&!categories.includes(s.name)).length>0&&(
+          <div style={{background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:16,animation:"fadeUp 0.5s ease 0.12s both"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 2a6 6 0 00-3 11.2V15h6v-1.8A6 6 0 0010 2z" stroke="#a5b4fc" strokeWidth="1.5"/><path d="M8 17h4M9 15v2M11 15v2" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              <span style={{fontSize:12,fontWeight:700,color:"#a5b4fc",letterSpacing:"0.04em"}}>SUGGESTED CATEGORIES</span>
+              <span style={{fontSize:11,color:"#52525b",marginLeft:4}}>Abound spotted recurring patterns in your transactions</span>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
+              {suggestions.filter(s=>!dismissedSuggestions.has(s.name)&&!categories.includes(s.name)).map(s=>(
+                <div key={s.name} style={{display:"flex",alignItems:"center",gap:0,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:20,overflow:"hidden"}}>
+                  <button onClick={()=>{setCategories(c=>[...c,s.name]);setDismissedSuggestions(d=>new Set([...d,s.name]));}}
+                    style={{padding:"6px 12px",background:"none",border:"none",color:"#c7d2fe",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{color:"#6366f1",fontSize:14,fontWeight:400}}>+</span>
+                    {s.name}
+                    <span style={{fontSize:10,color:"#6366f1",background:"rgba(99,102,241,0.15)",borderRadius:10,padding:"1px 6px"}}>{s.count} txns</span>
+                  </button>
+                  <button onClick={()=>setDismissedSuggestions(d=>new Set([...d,s.name]))}
+                    style={{padding:"6px 8px",background:"none",border:"none",borderLeft:"1px solid rgba(99,102,241,0.2)",color:"#4b5563",fontSize:13,cursor:"pointer",lineHeight:1}}>×</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Categories list */}
         <div style={{background:"rgba(255,255,255,0.02)",borderRadius:14,border:"1px solid #1f1d35",overflow:"hidden",marginBottom:20,animation:"fadeUp 0.5s ease 0.15s both"}}>
           <div style={{padding:"12px 18px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:8}}>
@@ -1239,6 +1300,8 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [bucketCounts, setBucketCounts] = useState({});
   const [newCat, setNewCat] = useState("");
   const [showAddCat, setShowAddCat] = useState(false);
+  const [mobileAddingCat, setMobileAddingCat] = useState(false);
+  const [mobileCatInput, setMobileCatInput] = useState("");
   const dragRef = useRef(null);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
@@ -1253,8 +1316,9 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const sorted=items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
   const skipped=items.filter(i=>i.category==="Skip");
   const visible=unsorted.slice(0,VISIBLE);
-  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Other Payments");
-  const allBuckets=[...spendCats,"Skip"];
+  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Other Payments"&&c!=="Card Repayment");
+  const catRepaymentInCats=categories.includes("Card Repayment");
+  const allBuckets=[...spendCats,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
   const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
   function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
   function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);}
@@ -1375,17 +1439,16 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
 
 const MobileSort=()=>{
     const topItem=unsorted[0];
-    const [addingCat,setAddingCat]=useState(false);
-    const [newCatLocal,setNewCatLocal]=useState("");
+    const addingCat=mobileAddingCat;
+    const setAddingCat=setMobileAddingCat;
 
     function doAdd(){
-      const t=newCatLocal.trim();
+      const t=mobileCatInput.trim();
       if(!t||categories.includes(t))return;
       setCategories(c=>[...c,t]);
-      setNewCatLocal("");
-      setAddingCat(false);
+      setMobileCatInput("");
+      setMobileAddingCat(false);
     }
-
     return(
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",overscrollBehavior:"none"}}>
         {/* Progress bar */}
@@ -1457,13 +1520,13 @@ const MobileSort=()=>{
                 <div style={{gridColumn:"span 2",padding:"12px",background:"rgba(99,102,241,0.08)",border:"1.5px solid #6366f1",borderRadius:12,display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em"}}>NEW CATEGORY</div>
                   <div style={{display:"flex",gap:6}}>
-                    <input autoFocus value={newCatLocal}
-                      onChange={e=>setNewCatLocal(e.target.value)}
-                      onKeyDown={e=>{if(e.key==="Enter")doAdd();if(e.key==="Escape"){setAddingCat(false);setNewCatLocal("");}}}
+                    <input autoFocus value={mobileCatInput}
+                      onChange={e=>setMobileCatInput(e.target.value)}
+                      onKeyDown={e=>{if(e.key==="Enter")doAdd();if(e.key==="Escape"){setMobileAddingCat(false);setMobileCatInput("");}}}
                       placeholder="e.g. Healthcare..."
                       style={{flex:1,padding:"10px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#fff",fontSize:16,outline:"none"}}/>
                     <button onClick={doAdd} style={{padding:"10px 16px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",touchAction:"manipulation"}}>Add</button>
-                    <button onClick={()=>{setAddingCat(false);setNewCatLocal("");}} style={{padding:"10px 12px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#6b7280",fontSize:14,cursor:"pointer",touchAction:"manipulation"}}>×</button>
+                    <button onClick={()=>{setMobileAddingCat(false);setMobileCatInput("");}} style={{padding:"10px 12px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#6b7280",fontSize:14,cursor:"pointer",touchAction:"manipulation"}}>×</button>
                   </div>
                 </div>
               ):(
@@ -1651,6 +1714,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
+  const isMobile = useIsMobile();
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
@@ -1664,10 +1728,12 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
         </button>
-        <button onClick={()=>setScreen&&setScreen("feedback")} style={{marginLeft:"auto",padding:"6px 14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.3)"}}>⭐ Review</button>
-        <button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>
+        <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.3)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          {isMobile?"⭐":"⭐ Leave a review"}
+        </button>
+        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>}
       </div>
-      {activeTab==="cashflow"&&showReviewPrompt&&(
+      {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
         <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round"/></svg>
           <div style={{flex:1}}>
@@ -1695,8 +1761,24 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const [aiExpanded, setAiExpanded] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   function toggleFullscreen(){
-    if(!document.fullscreenElement){document.documentElement.requestFullscreen?.().then(()=>setIsFullscreen(true)).catch(()=>{});}
-    else{document.exitFullscreen?.().then(()=>setIsFullscreen(false)).catch(()=>{});}
+    const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
+    if(isIOS){
+      // iOS doesn't support Fullscreen API — scroll to hide browser chrome
+      if(!isFullscreen){
+        window.scrollTo(0,1);
+        try{screen.orientation?.lock("landscape");}catch(e){}
+        setIsFullscreen(true);
+      } else {
+        window.scrollTo(0,0);
+        setIsFullscreen(false);
+      }
+      return;
+    }
+    if(!document.fullscreenElement){
+      document.documentElement.requestFullscreen?.().then(()=>setIsFullscreen(true)).catch(()=>{});
+    } else {
+      document.exitFullscreen?.().then(()=>setIsFullscreen(false)).catch(()=>{});
+    }
   }
   useEffect(()=>{
     const handler=()=>setIsFullscreen(!!document.fullscreenElement);
@@ -1740,7 +1822,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.",cta:"Next →",highlight:"actual"},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nTap any cell to move that transaction to a different category instantly.",cta:"Next →",highlight:"actual"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.\n\nTry it: click any purple cell.",cta:"Next →",highlight:"forecast"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
@@ -1904,7 +1986,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
     return tips.slice(0,5);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
-const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:color||"#374151",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.08:1,background:isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:isForecast?"1px dashed #ebebf8":"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#374151",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.08:1,background:isOverBudget?"rgba(239,68,68,0.06)":isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:isForecast?"1px dashed #ebebf8":"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
   const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#6366f1":"#111827",background:isForecast?"rgba(99,102,241,0.08)":"#f4f4f8",borderLeft:"2px solid #e0e0f0",borderRight:"2px solid #e0e0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
 
   function LabelCell({label,account}){
@@ -1944,18 +2026,19 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false),cursor:v>0?"context-menu":"default"}}
+            style={{...tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            onClick={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}
             onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}>
-            {fmtMoney(v)}
+            {v>0?<span style={{borderBottom:"1px dashed #d1d5db"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {forecasts.map((v,i)=>{
-          const over=budget&&v>budget;
+          const over=budget&&v>0&&v>budget;
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account===account;
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i),position:"relative",cursor:"pointer"}}
+            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),position:"relative",cursor:"pointer"}}
               onClick={()=>!isEditing&&setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:""})}>
               {isEditing&&(
                 <div style={{position:"absolute",top:0,left:0,zIndex:50,background:"#1e1b38",border:"1px solid #6366f1",borderRadius:8,padding:"8px 10px",minWidth:180,boxShadow:"0 4px 20px rgba(0,0,0,0.5)"}}>
@@ -1977,10 +2060,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
           );
         })}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
-        <td style={{padding:"4px 8px",textAlign:"center"}}>
+        <td style={{padding:"4px 8px",textAlign:"center",minWidth:64}}>
           {editingBudget===key
-            ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{setBudgets(b=>({...b,[key]:+e.target.value}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"1px 4px"}}/>
-            :<span onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#d1d5db",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
+            ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"2px 5px",outline:"none"}}/>
+            :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+              <span onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#d1d5db",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
+              {budget&&forecasts.some(v=>v>budget)&&<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>OVER</span>}
+            </div>
           }
         </td>
         <td style={{padding:"3px 6px",textAlign:"center"}}>
@@ -2141,22 +2227,24 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
         const hr=getHighlightRect();
         return(
           <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
-            {/* SVG overlay with cutout hole for highlighted element */}
-            <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"all"}} onClick={closeTour}>
-              <defs>
-                <mask id="tour-mask">
-                  <rect width="100%" height="100%" fill="white"/>
-                  {hr&&<rect x={hr.left} y={hr.top} width={hr.width} height={hr.height} rx="6" fill="black"/>}
-                </mask>
-              </defs>
-              <rect width="100%" height="100%" fill="rgba(8,7,15,0.78)" mask="url(#tour-mask)"/>
-            </svg>
+            {/* Only show spotlight overlay on desktop — on mobile it blocks scroll */}
+            {!isMobile&&(
+              <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"all"}} onClick={closeTour}>
+                <defs>
+                  <mask id="tour-mask">
+                    <rect width="100%" height="100%" fill="white"/>
+                    {hr&&<rect x={hr.left} y={hr.top} width={hr.width} height={hr.height} rx="6" fill="black"/>}
+                  </mask>
+                </defs>
+                <rect width="100%" height="100%" fill="rgba(8,7,15,0.78)" mask="url(#tour-mask)"/>
+              </svg>
+            )}
             {/* Highlight border glow around target */}
             {hr&&(
               <div style={{position:"fixed",left:hr.left,top:hr.top,width:hr.width,height:hr.height,borderRadius:8,border:"2px solid #6366f1",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 0 32px rgba(99,102,241,0.35)",pointerEvents:"none",zIndex:1001,animation:"glow 2s ease-in-out infinite"}}/>
             )}
             {/* Tour card */}
-            <div style={{position:"fixed",bottom:32,right:28,width:360,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:16,padding:"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 12px 60px rgba(0,0,0,0.7)"}}>
+            <div style={{position:"fixed",bottom:isMobile?0:32,right:isMobile?0:28,left:isMobile?0:"auto",width:isMobile?"100%":360,background:"#1a1830",border:"1px solid #4338ca",borderLeft:isMobile?"none":"4px solid #6366f1",borderTop:isMobile?"4px solid #6366f1":"none",borderRadius:isMobile?"16px 16px 0 0":16,padding:isMobile?"18px 20px 28px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
                 <div>
                   <div style={{fontSize:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:6,textTransform:"uppercase"}}>{tourStep===0?"✨ Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
@@ -2236,24 +2324,25 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
             },
           ];
           return(
-            <div style={{display:"flex",gap:10,marginBottom:18}}>
+            <div style={{display:"flex",gap:8,marginBottom:20}}>
               {cards.map((c,i)=>(
-                <div key={i} style={{flex:1,background:"#fff",borderRadius:12,padding:"14px 16px",border:"1px solid #e8eaf0",borderTop:`3px solid ${c.accent}22`,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8}}>
-                    {c.icon}
-                    <span style={{fontSize:10,fontWeight:700,color:"#9ca3af",letterSpacing:"0.06em",textTransform:"uppercase"}}>{c.label}</span>
+                <div key={i} style={{flex:1,background:"#fff",borderRadius:10,padding:"12px 14px",border:"1px solid #f0f0f0",boxShadow:"0 1px 2px rgba(0,0,0,0.03),0 4px 12px rgba(0,0,0,0.04)",transition:"box-shadow 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
+                  onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.03),0 4px 12px rgba(0,0,0,0.04)"}>
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
+                    <span style={{fontSize:10,fontWeight:600,color:"#a1a1aa",letterSpacing:"0.05em",textTransform:"uppercase"}}>{c.label}</span>
                   </div>
-                  <div style={{fontSize:22,fontWeight:800,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em",marginBottom:3}}>{c.value}</div>
-                  <div style={{fontSize:11,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#9ca3af"}}>{c.sub}</div>
+                  <div style={{fontSize:isMobile?17:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
+                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#a1a1aa",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
             </div>
           );
         })()}
-        <div style={{background:"#fff",borderRadius:14,border:"1px solid #e5e7eb",overflow:"auto",WebkitOverflowScrolling:"touch"}}>
+       <div style={{background:"#fff",borderRadius:10,border:"1px solid #f0f0f0",overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 1px 2px rgba(0,0,0,0.03),0 4px 16px rgba(0,0,0,0.05)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
-              <tr data-tour="actual" style={{background:"#1e1b4b"}}>
+              <tr data-tour="actual" style={{background:"#0f0c2e"}}>
                 <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b",whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
                   <span style={{fontSize:12,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>

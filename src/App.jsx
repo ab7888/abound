@@ -1858,12 +1858,13 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
     const out={};
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
-    const MONTHLY_CATS=["Salary","Card Repayment"];
-    const EXACT_CATS=["Rent","Memberships"];
+    const MONTHLY_CATS=["Salary"];
+    const EXACT_CATS=["Rent","Memberships","Card Repayment"];
     const ROLLING_CATS=["Food","Travel","Other Payments"];
+    const forecastCats=[...new Set([...categories, INTERCOMPANY_CATEGORY])];
     accounts.forEach(acc=>{
       out[acc]={};
-      categories.forEach(cat=>{
+      forecastCats.forEach(cat=>{
         const actualVals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
         const avg=rollingAvg(actualVals);
         if(EXACT_CATS.includes(cat)){

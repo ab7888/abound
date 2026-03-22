@@ -711,6 +711,8 @@ function FeedbackScreen({txnCount, onDone}) {
     {id:"return",    label:"Would you use Abound again?",                     options:["Definitely","Probably","Maybe","Probably not","Definitely not"]},
     {id:"usecase",   label:"What best describes your use case?",              options:["Personal budgeting","Planning a big purchase","Tracking monthly spend","Reviewing past spending","Professional / business use"]},
   ];
+  const [userName, setUserName] = useState("");
+  const [improvements, setImprovements] = useState("");
   const allAnswered = QUESTIONS.every(q=>answers[q.id]);
   async function handleSubmit() {
     setSubmitting(true);

@@ -30,6 +30,10 @@ const GLOBAL_CSS = `
   @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-4px);opacity:1} }
   @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
   @keyframes spotlightIn { from{opacity:0;transform:tr@keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes cursorFloat { 0%,100%{transform:translate(0,0)} 40%{transform:translate(4px,6px)} 60%{transform:translate(4px,6px) scale(0.9)} 80%{transform:translate(4px,6px) scale(1)} }
+  @keyframes cursorClick { 0%,100%{transform:scale(1)} 50%{transform:scale(0.82)} }
+  @keyframes ripple { 0%{transform:scale(0.5);opacity:0.8} 100%{transform:scale(2.5);opacity:0} }
+  @keyframes cursorFadeIn { from{opacity:0;transform:translate(-8px,-8px)} to{opacity:1;transform:translate(0,0)} }
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }anslateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
@@ -1784,6 +1788,53 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   );
 }
 
+function AnimatedCursor({targetSelector, offsetX=12, offsetY=8}) {
+  const [pos, setPos] = useState(null);
+  const [clicking, setClicking] = useState(false);
+
+  useEffect(()=>{
+    function measure(){
+      const el = document.querySelector(targetSelector);
+      if(!el) return;
+      const r = el.getBoundingClientRect();
+      setPos({x: r.left + r.width*0.6 + offsetX, y: r.top + r.height*0.5 + offsetY});
+    }
+    measure();
+    const t = setTimeout(measure, 400);
+    window.addEventListener("resize", measure);
+    return ()=>{ clearTimeout(t); window.removeEventListener("resize", measure); };
+  },[targetSelector]);
+
+  useEffect(()=>{
+    if(!pos) return;
+    const interval = setInterval(()=>{
+      setClicking(true);
+      setTimeout(()=>setClicking(false), 350);
+    }, 1800);
+    return ()=>clearInterval(interval);
+  },[pos]);
+
+  if(!pos) return null;
+  return(
+    <div style={{position:"fixed", left:pos.x, top:pos.y, zIndex:1005, pointerEvents:"none", animation:"cursorFadeIn 0.4s ease both"}}>
+      {/* Ripple on click */}
+      {clicking&&(
+        <div style={{position:"absolute",left:-12,top:-12,width:24,height:24,borderRadius:"50%",border:"2px solid #6366f1",animation:"ripple 0.5s ease-out both",pointerEvents:"none"}}/>
+      )}
+      {/* Cursor SVG */}
+      <svg width="22" height="26" viewBox="0 0 22 26" fill="none"
+        style={{animation:"cursorFloat 1.8s ease-in-out infinite", filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.4))"}}>
+        <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" stroke="#1a1a2e" strokeWidth="1.5" strokeLinejoin="round"/>
+        <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" opacity="0.9"/>
+      </svg>
+      {/* Click flash */}
+      {clicking&&(
+        <div style={{position:"absolute",left:-6,top:-6,width:14,height:14,borderRadius:"50%",background:"rgba(99,102,241,0.4)",animation:"cursorClick 0.35s ease both",pointerEvents:"none"}}/>
+      )}
+    </div>
+  );
+}
+
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
 function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) {
   const isMobile = useIsMobile();
@@ -1856,9 +1907,9 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nTap any cell to move that transaction to a different category instantly.",cta:"Next →",highlight:"actual"},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"[data-tour='actual'] ~ * td:nth-child(4)"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
-    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.\n\nTry it: click any purple cell.",cta:"Next →",highlight:"forecast"},
+    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:"forecast",cursorTarget:"[data-tour='forecast'] ~ * td:nth-child(10)"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any row to add a weekly budget. Abound highlights forecast weeks in red when you're on track to exceed it.",cta:"Next →",highlight:"budget"},
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
@@ -2277,6 +2328,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {/* Highlight border glow around target */}
             {hr&&(
               <div style={{position:"fixed",left:hr.left,top:hr.top,width:hr.width,height:hr.height,borderRadius:8,border:"2px solid #6366f1",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 0 32px rgba(99,102,241,0.35)",pointerEvents:"none",zIndex:1001,animation:"glow 2s ease-in-out infinite"}}/>
+            )}
+            {/* Animated cursor demo */}
+            {currentStep?.cursorTarget&&(
+              <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
             {/* Tour card */}
             <div style={{position:"fixed",bottom:isMobile?0:32,right:isMobile?0:28,left:isMobile?0:"auto",width:isMobile?"100%":360,background:"#1a1830",border:"1px solid #4338ca",borderLeft:isMobile?"none":"4px solid #6366f1",borderTop:isMobile?"4px solid #6366f1":"none",borderRadius:isMobile?"16px 16px 0 0":16,padding:isMobile?"18px 20px 28px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>

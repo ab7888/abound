@@ -1063,11 +1063,12 @@ function UploadScreen({onDone}) {
     </div>
   );
 }
-function computeCategorySuggestions(txns, existingCats) {
+async function computeCategorySuggestions(txns, existingCats, apiKey) {
   const STOP = new Set(["from","with","payment","purchase","transaction","direct","debit","transfer","card","charge","services","service","limited","ltd","uk","the","and","for","via","ref","online","pay","paid","account","bank"]);
-  const KEYWORD_MAP = {"gym":"Gym & Fitness","fitness":"Gym & Fitness","pilates":"Gym & Fitness","yoga":"Gym & Fitness","crossfit":"Gym & Fitness","pet":"Pets","pets":"Pets","vets":"Pets","vet":"Pets","veterinary":"Pets","pawsome":"Pets","dog":"Pets","cat":"Pets","pharmacy":"Healthcare","chemist":"Healthcare","doctor":"Healthcare","dental":"Healthcare","dentist":"Healthcare","medical":"Healthcare","clinic":"Healthcare","optician":"Healthcare","nursery":"Childcare","childcare":"Childcare","creche":"Childcare","nanny":"Childcare","babysitter":"Childcare","school":"Education","college":"Education","university":"Education","tutor":"Education","course":"Education","salon":"Beauty","hairdresser":"Beauty","barber":"Beauty","beauty":"Beauty","nails":"Beauty","spa":"Beauty","massage":"Beauty","charity":"Charity","donate":"Charity","donation":"Charity","fundraising":"Charity"};
   const otherTxns = txns.filter(t=>t.category==="Other Payments");
   if(otherTxns.length < 3) return [];
+
+  // Group by keyword frequency
   const wordGroups = {};
   otherTxns.forEach(t=>{
     const words = t.narrative.toLowerCase().replace(/[^a-z\s]/g," ").split(/\s+/).filter(w=>w.length>3&&!STOP.has(w));
@@ -1075,24 +1076,54 @@ function computeCategorySuggestions(txns, existingCats) {
     words.forEach(w=>{
       if(seen.has(w)) return;
       seen.add(w);
-      if(!wordGroups[w]) wordGroups[w]={count:0,narratives:new Set(),suggestedName:null};
+      if(!wordGroups[w]) wordGroups[w]={count:0,narratives:[]};
       wordGroups[w].count++;
-      wordGroups[w].narratives.add(t.narrative);
-      if(KEYWORD_MAP[w]) wordGroups[w].suggestedName=KEYWORD_MAP[w];
+      wordGroups[w].narratives.push(t.narrative);
     });
   });
-  const suggestions = Object.entries(wordGroups)
-    .filter(([w,g])=>g.narratives.size>=3&&!existingCats.map(c=>c.toLowerCase()).includes(w))
-    .sort((a,b)=>b[1].narratives.size-a[1].narratives.size)
-    .slice(0,4)
-    .map(([word,g])=>({
-      keyword:word,
-      name: g.suggestedName || (word.charAt(0).toUpperCase()+word.slice(1)),
-      count: g.narratives.size
-    }));
-  // Deduplicate by suggestedName
-  const seen = new Set();
-  return suggestions.filter(s=>{if(seen.has(s.name))return false;seen.add(s.name);return true;});
+
+  const clusters = Object.entries(wordGroups)
+    .filter(([w,g])=>g.narratives.length>=3&&!existingCats.map(c=>c.toLowerCase()).includes(w))
+    .sort((a,b)=>b[1].narratives.length-a[1].narratives.length)
+    .slice(0,6)
+    .map(([word,g])=>({keyword:word, narratives:[...new Set(g.narratives)].slice(0,5), count:[...new Set(g.narratives)].length}));
+
+  if(clusters.length===0) return [];
+
+  // Use Claude to name each cluster
+  if(apiKey&&apiKey.startsWith("sk-")){
+    try {
+      const prompt = `You are helping categorise personal bank transactions. For each cluster of similar transactions below, suggest a short, friendly spending category name (2-3 words max, title case, e.g. "Pet Care", "Healthcare", "Gym & Fitness", "Childcare", "Dining Out").
+
+Clusters:
+${clusters.map((c,i)=>`${i+1}. Keyword: "${c.keyword}" | Example transactions: ${c.narratives.join(", ")}`).join("\n")}
+
+Respond ONLY with a JSON array of ${clusters.length} strings, one name per cluster. No explanation.`;
+
+      const res = await fetch("https://api.anthropic.com/v1/messages",{
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})
+      });
+      if(res.ok){
+        const data = await res.json();
+        const text = data.content?.[0]?.text||"[]";
+        const names = JSON.parse(text.replace(/```json|```/g,"").trim());
+        return clusters.map((c,i)=>({
+          keyword:c.keyword,
+          name: names[i]||c.keyword.charAt(0).toUpperCase()+c.keyword.slice(1),
+          count:c.count
+        }));
+      }
+    } catch(e){ console.warn("Suggestion naming failed",e); }
+  }
+
+  // Fallback without API
+  return clusters.map(c=>({
+    keyword:c.keyword,
+    name:c.keyword.charAt(0).toUpperCase()+c.keyword.slice(1),
+    count:c.count
+  }));
 }
 // ─── Categorise Screen ────────────────────────────────────────────────────────
 function CategoriseScreen({transactions, multipleAccounts, onDone}) {
@@ -1128,7 +1159,8 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       });
       setCategorised(result);
       setDone(true);
-      const sugg = computeCategorySuggestions(result, baseCats);
+      const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
+      const sugg = await computeCategorySuggestions(result, baseCats, apiKey);
       setSuggestions(sugg);
       setTimeout(()=>setStep("review"),1200);
     })();

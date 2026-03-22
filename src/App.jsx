@@ -1812,6 +1812,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
 
 function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
   const [pos, setPos] = useState(null);
+  const [cellRect, setCellRect] = useState(null);
   const [clicking, setClicking] = useState(false);
 
   useEffect(()=>{
@@ -1826,21 +1827,30 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
           if(txt && txt !== "-" && /^\d/.test(txt)){el=td;break;}
         }
       } else if(targetSelector==="forecast-cell"){
-        // Find a forecast cell — they sit after the 6WK separator
-        const rows = document.querySelectorAll("tbody tr");
+        const rows = document.querySelectorAll("tbody tr.abound-row");
+        let matchCount=0;
         for(const row of rows){
           const tds = [...row.querySelectorAll("td")];
-          // Forecast cells are roughly positions 9-14
-          const target = tds[9]||tds[10];
-          if(target){el=target;break;}
+          let candidate=null;
+          for(let idx=8;idx<=13;idx++){
+            const td=tds[idx];
+            if(!td) continue;
+            const txt=td.textContent?.trim();
+            if(txt && txt!=="-" && /^\d/.test(txt)){candidate=td;break;}
+          }
+          if(candidate){
+            matchCount++;
+            if(matchCount===4){el=candidate;break;} // skip 3, use 4th
+          }
         }
       } else {
         el = document.querySelector(targetSelector);
       }
-      if(!el) return;
+     if(!el) return;
       const r = el.getBoundingClientRect();
       if(r.width===0||r.height===0) return;
-      setPos({x: r.left + r.width*0.5 + offsetX, y: r.top + r.height*0.5 + offsetY});
+      setCellRect({left:r.left, top:r.top, width:r.width, height:r.height});
+      setPos({x: r.left + r.width*0.5 - 4, y: r.top + r.height*0.5 - 4});
     }
     measure();
     const t = setTimeout(measure, 600);
@@ -1857,24 +1867,39 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
     return ()=>clearInterval(interval);
   },[pos]);
 
-  if(!pos) return null;
+  if(!pos||!cellRect) return null;
   return(
-    <div style={{position:"fixed", left:pos.x, top:pos.y, zIndex:1005, pointerEvents:"none", animation:"cursorFadeIn 0.4s ease both"}}>
-      {/* Ripple on click */}
-      {clicking&&(
-        <div style={{position:"absolute",left:-12,top:-12,width:24,height:24,borderRadius:"50%",border:"2px solid #6366f1",animation:"ripple 0.5s ease-out both",pointerEvents:"none"}}/>
-      )}
-      {/* Cursor SVG */}
-      <svg width="22" height="26" viewBox="0 0 22 26" fill="none"
-        style={{animation:"cursorFloat 1.8s ease-in-out infinite", filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.4))"}}>
-        <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" stroke="#1a1a2e" strokeWidth="1.5" strokeLinejoin="round"/>
-        <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" opacity="0.9"/>
-      </svg>
-      {/* Click flash */}
-      {clicking&&(
-        <div style={{position:"absolute",left:-6,top:-6,width:14,height:14,borderRadius:"50%",background:"rgba(99,102,241,0.4)",animation:"cursorClick 0.35s ease both",pointerEvents:"none"}}/>
-      )}
-    </div>
+    <>
+      {/* Cell highlight box */}
+      <div style={{
+        position:"fixed",
+        left:cellRect.left-3,
+        top:cellRect.top-3,
+        width:cellRect.width+6,
+        height:cellRect.height+6,
+        borderRadius:6,
+        border:"2px solid #818cf8",
+        background:"rgba(99,102,241,0.35)",
+        boxShadow:"0 0 0 2px rgba(99,102,241,0.5),0 0 28px rgba(99,102,241,0.6),inset 0 0 12px rgba(165,180,252,0.3)",
+        pointerEvents:"none",
+        zIndex:1003,
+        animation:"glow 1.4s ease-in-out infinite"
+      }}/>
+      {/* Cursor */}
+      <div style={{position:"fixed", left:pos.x, top:pos.y, zIndex:1005, pointerEvents:"none", animation:"cursorFadeIn 0.4s ease both"}}>
+        {clicking&&(
+          <div style={{position:"absolute",left:-12,top:-12,width:24,height:24,borderRadius:"50%",border:"2px solid #6366f1",animation:"ripple 0.5s ease-out both",pointerEvents:"none"}}/>
+        )}
+        <svg width="22" height="26" viewBox="0 0 22 26" fill="none"
+          style={{animation:"cursorFloat 1.8s ease-in-out infinite", filter:"drop-shadow(0 2px 4px rgba(0,0,0,0.4))"}}>
+          <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" stroke="#1a1a2e" strokeWidth="1.5" strokeLinejoin="round"/>
+          <path d="M1 1l7 18 3.5-5.5L18 17 1 1z" fill="white" opacity="0.9"/>
+        </svg>
+        {clicking&&(
+          <div style={{position:"absolute",left:-6,top:-6,width:14,height:14,borderRadius:"50%",background:"rgba(99,102,241,0.4)",animation:"cursorClick 0.35s ease both",pointerEvents:"none"}}/>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -1952,7 +1977,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
     {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"actual-cell"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
-    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:"forecast",cursorTarget:"forecast-cell"},
+    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any row to add a weekly budget. Abound highlights forecast weeks in red when you're on track to exceed it.",cta:"Next →",highlight:"budget"},
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},

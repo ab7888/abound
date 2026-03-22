@@ -8,13 +8,16 @@ const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
 const ACCOUNT_LABELS = { 0:"Main Account", 1:"Credit Card", 2:"Credit Card 2", 3:"Credit Card 3" };
+// ─── Feedback ─────────────────────────────────────────────────────────────────
+// Responses are emailed to you via formsubmit.co — replace with your email address
+const FEEDBACK_EMAIL = "ali.barrie100@gmail.com";
 
 const GLOBAL_CSS = `
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&display=swap');
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html { -webkit-text-size-adjust: 100%; background: #08070f; height: 100%; }
-  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background: #08070f; margin: 0; padding: 0; min-height: 100%; }}
+    html { -webkit-text-size-adjust: 100%; background: #08070f; height: 100%; overscroll-behavior: none; }
+  body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background: #08070f; margin: 0; padding: 0; min-height: 100%; overscroll-behavior: none; touch-action: pan-x pan-y; }
   .dark-screen { font-family: 'DM Sans', system-ui, sans-serif; }
   button, select, input { touch-action: manipulation; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
@@ -695,6 +698,96 @@ function HeroScreen({onEnter, onResume}) {
   );
 }
 
+// ─── Feedback Screen ──────────────────────────────────────────────────────────
+function FeedbackScreen({txnCount, onDone}) {
+  const [answers, setAnswers] = useState({});
+  const [text, setText] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const QUESTIONS = [
+    {id:"overall",   label:"How satisfied are you with Abound overall?",    options:["Very satisfied","Satisfied","Neutral","Dissatisfied","Very dissatisfied"]},
+    {id:"accuracy",  label:"How accurate was the AI categorisation?",         options:["Very accurate","Mostly accurate","Somewhat accurate","Mostly inaccurate","Very inaccurate"]},
+    {id:"ease",      label:"How easy was the app to use?",                    options:["Very easy","Easy","Neutral","Difficult","Very difficult"]},
+    {id:"return",    label:"Would you use Abound again?",                     options:["Definitely","Probably","Maybe","Probably not","Definitely not"]},
+    {id:"usecase",   label:"What best describes your use case?",              options:["Personal budgeting","Planning a big purchase","Tracking monthly spend","Reviewing past spending","Professional / business use"]},
+  ];
+  const allAnswered = QUESTIONS.every(q=>answers[q.id]);
+  async function handleSubmit() {
+    setSubmitting(true);
+    try {
+      await fetch(`https://formsubmit.co/ajax/${FEEDBACK_EMAIL}`, {
+        method:"POST",
+        headers:{"Content-Type":"application/json","Accept":"application/json"},
+        body:JSON.stringify({...answers, feedback:text, txnCount, submittedAt:new Date().toISOString(), _subject:"Abound feedback"}),
+      });
+    } catch(e){console.warn("Feedback failed",e);}
+    setSubmitted(true);
+    setSubmitting(false);
+    setTimeout(onDone, 2200);
+  }
+  if(submitted) return(
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{textAlign:"center",animation:"fadeUp 0.6s ease both"}}>
+        <div style={{fontSize:52,marginBottom:16}}>🙏</div>
+        <div style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:8}}>Thanks for your feedback!</div>
+        <div style={{fontSize:14,color:"#52525b"}}>Heading back now...</div>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-start",padding:"40px 24px 80px",overflowY:"auto",position:"relative"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.1) 0%,transparent 55%)",pointerEvents:"none"}}/>
+      <div style={{width:"100%",maxWidth:520,position:"relative",zIndex:1,animation:"fadeUp 0.5s ease both"}}>
+        <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32}}>
+          <img src={logo} alt="Abound" style={{height:30,opacity:0.95}}/>
+          <div style={{width:1,height:28,background:"#1f1d35"}}/>
+          <div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>How did we do?</div>
+            <div style={{fontSize:12,color:"#52525b",marginTop:2}}>30 seconds · helps us improve</div>
+          </div>
+        </div>
+        {QUESTIONS.map((q,qi)=>(
+          <div key={q.id} style={{marginBottom:24,animation:`fadeUp 0.5s ease ${qi*60}ms both`}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:10}}>{q.label}</div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {q.options.map(opt=>{
+                const sel=answers[q.id]===opt;
+                return(
+                  <button key={opt} onClick={()=>setAnswers(a=>({...a,[q.id]:opt}))}
+                    style={{padding:"11px 16px",background:sel?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.03)",border:`1.5px solid ${sel?"#6366f1":"#1f1d35"}`,borderRadius:10,color:sel?"#a5b4fc":"#6b7280",fontSize:13,fontWeight:sel?700:400,cursor:"pointer",textAlign:"left",transition:"all 0.15s",display:"flex",alignItems:"center",gap:10}}>
+                    <span style={{width:16,height:16,borderRadius:"50%",border:`2px solid ${sel?"#6366f1":"#374151"}`,background:sel?"#6366f1":"transparent",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      {sel&&<span style={{width:6,height:6,borderRadius:"50%",background:"#fff",display:"block"}}/>}
+                    </span>
+                    {opt}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+        <div style={{marginBottom:24}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:10}}>Anything else you'd like to share?</div>
+          <textarea value={text} onChange={e=>setText(e.target.value)}
+            placeholder="What worked, what didn't, what you'd love to see next..."
+            rows={4}
+            style={{width:"100%",padding:"12px 14px",background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:10,color:"#e0e7ff",fontSize:16,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.6}}
+            onFocus={e=>{e.target.style.borderColor="#6366f1";}}
+            onBlur={e=>{e.target.style.borderColor="#1f1d35";}}/>
+        </div>
+        <button onClick={handleSubmit} disabled={!allAnswered||submitting}
+          style={{width:"100%",padding:"14px",background:allAnswered?"linear-gradient(135deg,#6366f1,#4f46e5)":"#151322",color:allAnswered?"#fff":"#3f3f46",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:allAnswered?"pointer":"not-allowed",boxShadow:allAnswered?"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)":"none",transition:"all 0.2s",marginBottom:12}}>
+          {submitting?"Sending...":"Submit feedback →"}
+        </button>
+        <button onClick={onDone} style={{width:"100%",padding:"10px",background:"none",border:"none",color:"#374151",fontSize:12,cursor:"pointer"}}>
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Session Complete ─────────────────────────────────────────────────────────
 function SessionCompleteScreen({txnCount, onRestart}) {
   const [visible, setVisible] = useState(false);
@@ -1111,7 +1204,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
             );
           })}
           <div style={{display:"flex",gap:8,padding:"12px 18px",borderTop:"1px solid #0f0e1a"}}>
-            <input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCategory()} placeholder="Add a custom category..." style={{flex:1,fontSize:13,background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:8,padding:"8px 12px",color:"#e0e7ff",outline:"none"}}/>
+            <input value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCategory()} placeholder="Add a custom category..." style={{flex:1,fontSize:16,background:"rgba(255,255,255,0.03)",border:"1px solid #1f1d35",borderRadius:8,padding:"8px 12px",color:"#e0e7ff",outline:"none"}}/>
             <button onClick={addCategory} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 12px rgba(99,102,241,0.3)"}}>+</button>
           </div>
         </div>
@@ -1441,7 +1534,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
       )}
       <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
         <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,width:isMobile?"100%":220,outline:"none"}}/>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:16,width:isMobile?"100%":220,outline:"none"}}/>
           <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
             <option value="All">All accounts</option>
             {accounts.map(a=><option key={a} value={a}>{a}</option>)}
@@ -1584,14 +1677,14 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver}
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview}/></OrientationGate>}
+      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions}/></OrientationGate>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
     </div>
   );
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview}) {
+function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [budgets, setBudgets] = useState({});
@@ -1620,6 +1713,7 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
   }
   const [events, setEvents] = useState([]);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [ctxMenu, setCtxMenu] = useState(null);
 
   useEffect(()=>{
     if(cashFlowTourShown) return;
@@ -1681,14 +1775,29 @@ function CashFlowScreen({transactions, categories, onGoToReview}) {
     const out={};
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
-    const MONTHLY_CATS=["Salary","Rent","Memberships","Card Repayment"];
+    const MONTHLY_CATS=["Salary","Card Repayment"];
+    const EXACT_CATS=["Rent","Memberships"];
     const ROLLING_CATS=["Food","Travel","Other Payments"];
     accounts.forEach(acc=>{
       out[acc]={};
       categories.forEach(cat=>{
         const actualVals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
         const avg=rollingAvg(actualVals);
-        if(MONTHLY_CATS.includes(cat)){
+        if(EXACT_CATS.includes(cat)){
+          // Project each unique recurring transaction to the same day-of-month in future weeks
+          const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat);
+          const byNarrative={};
+          catTxns.forEach(t=>{if(!byNarrative[t.narrative]||t.date>byNarrative[t.narrative].date)byNarrative[t.narrative]=t;});
+          const result=Array(forecastWeeks.length).fill(0);
+          Object.values(byNarrative).forEach(t=>{
+            const dom=t.date.getDate();
+            forecastWeeks.forEach((w,i)=>{
+              const d=new Date(w.date);
+              while(d<=w.sunday){if(d.getDate()===dom){result[i]+=t.amount;break;}d.setDate(d.getDate()+1);}
+            });
+          });
+          out[acc][cat]=result;
+        } else if(MONTHLY_CATS.includes(cat)){
           const dayOfMonth=getMonthlyDay(acc,cat);
           if(!dayOfMonth||avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{out[acc][cat]=forecastWeeks.map(w=>weekContainsDay(w.date,w.sunday,dayOfMonth)?avg:0);}
@@ -1832,7 +1941,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
           {cat}
           <span style={{marginLeft:4,fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span>
         </td>
-        {actuals.map((v,i)=><td key={i} style={tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false)}>{fmtMoney(v)}</td>)}
+        {actuals.map((v,i)=>(
+          <td key={i}
+            style={{...tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false),cursor:v>0?"context-menu":"default"}}
+            onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}>
+            {fmtMoney(v)}
+          </td>
+        ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {forecasts.map((v,i)=>{
           const over=budget&&v>budget;
@@ -1986,6 +2101,32 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* Right-click category menu */}
+      {ctxMenu&&(
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:9990}} onClick={()=>setCtxMenu(null)}/>
+          <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9991,background:"#1e1b38",border:"1px solid #4338ca",borderRadius:10,padding:"6px 0",boxShadow:"0 8px 32px rgba(0,0,0,0.5)",minWidth:190,animation:"tooltipIn 0.15s ease both"}}>
+            <div style={{padding:"7px 14px 8px",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",borderBottom:"1px solid #2d2a6e"}}>MOVE TO CATEGORY</div>
+            {categories.filter(c=>c!==ctxMenu.cat).map(c=>(
+              <button key={c} onClick={()=>{
+                if(onUpdateTxns){
+                  onUpdateTxns(transactions.map(t=>{
+                    const wk=getWeekMonday(t.date).toISOString().slice(0,10);
+                    return(t.account===ctxMenu.account&&t.category===ctxMenu.cat&&wk===ctxMenu.weekKey)?{...t,category:c}:t;
+                  }));
+                }
+                setCtxMenu(null);
+              }}
+              style={{display:"block",width:"100%",padding:"8px 14px",background:"none",border:"none",color:"#c7d2fe",fontSize:12,cursor:"pointer",textAlign:"left"}}
+              onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
+              onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                {c}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       {/* Tooltip */}
       {tooltip&&(
@@ -2279,6 +2420,23 @@ const tdAmt=(color,isForecast,bold,forecastIdx)=>({padding:"5px 10px",textAlign:
 // ─── Root ─────────────────────────────────────────────────────────────────────
 export default function App() {
   const [screen, setScreen] = useState("hero");
+
+  useEffect(()=>{
+    // Fix viewport to prevent zoom on input focus (iOS)
+    let meta = document.querySelector('meta[name="viewport"]');
+    if(!meta){meta=document.createElement('meta');meta.name="viewport";document.head.appendChild(meta);}
+    meta.content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no";
+
+    // Auto-fullscreen on mobile to hide browser chrome/tabs
+    const isMob = window.innerWidth<768;
+    if(isMob && document.documentElement.requestFullscreen){
+      const tryFull = ()=>{
+        document.documentElement.requestFullscreen().catch(()=>{});
+        document.removeEventListener('touchstart', tryFull);
+      };
+      document.addEventListener('touchstart', tryFull, {once:true});
+    }
+  },[]);
   const [rawTransactions, setRawTransactions] = useState([]);
   const [multipleAccounts, setMultipleAccounts] = useState(false);
   const [categorisedTransactions, setCategorisedTransactions] = useState([]);
@@ -2302,7 +2460,7 @@ export default function App() {
 
   function handleStartOver() {
     clearSession();
-    setScreen("session-complete");
+    setScreen("feedback");
   }
 
   return (
@@ -2313,6 +2471,7 @@ export default function App() {
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
       {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
       {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver}/>}
+      {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
     </div>
   );

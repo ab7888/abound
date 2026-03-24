@@ -393,12 +393,7 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const unknown = withLookup.filter(t=>t.category===null);
   onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
   if (unknown.length===0) { onProgress({type:"done"}); return withLookup; }
-  const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
-  if (!apiKey||!apiKey.startsWith("sk-")) {
-    onProgress({type:"done"});
-    return withLookup.map(t=>({...t, category:t.category||"Other Payments"}));
-  }
-  const cats = allCats.join(", ");
+    const cats = allCats.join(", ");
   const batchSize = 80;
   const claudeResults = [];
   const totalBatches = Math.ceil(unknown.length/batchSize);
@@ -429,11 +424,11 @@ Respond ONLY with a JSON array of ${batch.length} category strings. No explanati
     try {
       const controller = new AbortController();
       const timer = setTimeout(()=>controller.abort(), 13000);
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST", signal:controller.signal,
-        headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
-      });
+      const res = await fetch("/api/categorise", {
+  method:"POST", signal:controller.signal,
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
+});
       clearTimeout(timer);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -1117,7 +1112,7 @@ async function computeCategorySuggestions(txns, existingCats, apiKey) {
   if(clusters.length===0) return [];
 
   // Use Claude to name each cluster
-  if(apiKey&&apiKey.startsWith("sk-")){
+
     try {
       const prompt = `You are helping categorise personal bank transactions. For each cluster of similar transactions below, suggest a short, friendly spending category name (2-3 words max, title case, e.g. "Pet Care", "Healthcare", "Gym & Fitness", "Childcare", "Dining Out").
 
@@ -1126,11 +1121,11 @@ ${clusters.map((c,i)=>`${i+1}. Keyword: "${c.keyword}" | Example transactions: $
 
 Respond ONLY with a JSON array of ${clusters.length} strings, one name per cluster. No explanation.`;
 
-      const res = await fetch("https://api.anthropic.com/v1/messages",{
-        method:"POST",
-        headers:{"Content-Type":"application/json","x-api-key":apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})
-      });
+      const res = await fetch("/api/categorise",{
+  method:"POST",
+  headers:{"Content-Type":"application/json"},
+  body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})
+});
       if(res.ok){
         const data = await res.json();
         const text = data.content?.[0]?.text||"[]";
@@ -1142,7 +1137,6 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
         }));
       }
     } catch(e){ console.warn("Suggestion naming failed",e); }
-  }
 
   // Fallback without API
   return clusters.map(c=>({
@@ -1185,7 +1179,6 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       });
       setCategorised(result);
       setDone(true);
-      const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
       const sugg = await computeCategorySuggestions(result, baseCats, apiKey);
       setSuggestions(sugg);
       setTimeout(()=>setStep("review"),1200);

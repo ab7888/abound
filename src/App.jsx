@@ -1179,6 +1179,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       });
       setCategorised(result);
       setDone(true);
+      const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
       const sugg = await computeCategorySuggestions(result, baseCats, apiKey);
       setSuggestions(sugg);
       setTimeout(()=>setStep("review"),1200);

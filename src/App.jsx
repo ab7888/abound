@@ -178,6 +178,16 @@ function fmtMoney(v) {
   return n.toLocaleString();
 }
 function rollingAvg(vals) { const nz=vals.filter(v=>v>0); return nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0; }
+function rollingAvgFiltered(vals) {
+  const nz=vals.filter(v=>v>0);
+  if(!nz.length) return 0;
+  const sorted=[...nz].sort((a,b)=>a-b);
+  const median=sorted[Math.floor(sorted.length/2)];
+  // Remove outlier weeks more than 2.5x the median (e.g. holiday travel splurge)
+  const filtered=nz.filter(v=>v<=median*2.5);
+  const use=filtered.length>=Math.ceil(nz.length/2)?filtered:nz;
+  return Math.round(use.reduce((a,b)=>a+b,0)/use.length);
+}
 
 // ─── File Reading ─────────────────────────────────────────────────────────────
 function readExcelFile(file) {
@@ -1854,12 +1864,13 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 
   useEffect(()=>{
     if(!pos) return;
+    if(targetSelector==="actual-cell") return; // no clicking on actual step
     const interval = setInterval(()=>{
       setClicking(true);
       setTimeout(()=>setClicking(false), 350);
     }, 1800);
     return ()=>clearInterval(interval);
-  },[pos]);
+  },[pos, targetSelector]);
 
   if(!pos||!cellRect) return null;
   return(
@@ -1901,6 +1912,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
+  const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
   const [aiOpen, setAiOpen] = useState(false);
@@ -1969,11 +1981,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"actual-cell"},
-    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:null,cursorTarget:"actual-cell"},
+    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:null},
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
-    {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance"},
-    {title:"Set a budget",body:"Click 'set' on any row to add a weekly budget. Abound highlights forecast weeks in red when you're on track to exceed it.",cta:"Next →",highlight:"budget"},
+    {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
+    {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:null,scrollTo:"budget-cell"},
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
   ];
 
@@ -1987,9 +1999,18 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   
 
   function advanceTour(){
-    if(tourStep===0){setTourStep(1);return;}
+    const nextStep = tourStep===0 ? 1 : tourStep+1;
     if(tourStep>=TOUR_STEPS.length-1){setTourVisible(false);setTourStep(null);if(onGoToReview)onGoToReview();return;}
-    setTourStep(s=>s+1);
+    setTourStep(nextStep);
+    const target = TOUR_STEPS[nextStep]?.scrollTo;
+    if(target){
+      setTimeout(()=>{
+        const el = target==="budget-cell"
+          ? document.querySelector("tbody tr.abound-row td:last-child button, tbody tr.abound-row [data-budget-cell]")
+          : document.querySelector(`[data-tour="${target}"]`);
+        el?.scrollIntoView({behavior:"smooth", block:"center"});
+      }, 200);
+    }
   }
   function closeTour(){setTourVisible(false);setTourStep(null);}
   function reopenTour(){setTourStep(0);setTourVisible(true);}
@@ -2001,6 +2022,12 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Salary"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
   const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
 
+function getLastWorkingDay(year, month) {
+    const d = new Date(year, month + 1, 0); // last calendar day
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() - 1);
+    return d.getDate();
+  }
+  
   const forecastData = useMemo(()=>{
     const out={};
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
@@ -2029,12 +2056,26 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
           });
           out[acc][cat]=result;
         } else if(MONTHLY_CATS.includes(cat)){
-          const dayOfMonth=getMonthlyDay(acc,cat);
-          if(!dayOfMonth||avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
-          else{out[acc][cat]=forecastWeeks.map(w=>weekContainsDay(w.date,w.sunday,dayOfMonth)?avg:0);}
+          if(avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
+          else{
+            out[acc][cat]=forecastWeeks.map(w=>{
+              // Check every day in the week — does it contain the last working day of its month?
+              const d=new Date(w.date);
+              while(d<=w.sunday){
+                const lwd=getLastWorkingDay(d.getFullYear(),d.getMonth());
+                if(d.getDate()===lwd) return avg;
+                d.setDate(d.getDate()+1);
+              }
+              return 0;
+            });
+          }
         } else if(ROLLING_CATS.includes(cat)){
           const window=[...actualVals];const result=[];
-          for(let i=0;i<forecastWeeks.length;i++){const last6=window.slice(-6);const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/6);result.push(forecastVal);window.push(forecastVal);}
+          for(let i=0;i<forecastWeeks.length;i++){
+            const last6=window.slice(-6);
+            const forecastVal=rollingAvgFiltered(last6);
+            result.push(forecastVal);window.push(forecastVal);
+          }
           out[acc][cat]=result;
         } else {out[acc][cat]=Array(forecastWeeks.length).fill(avg);}
       });
@@ -2209,10 +2250,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         })}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
         <td style={{padding:"4px 8px",textAlign:"center",minWidth:64}}>
-          {editingBudget===key
+          {isIncome ? null : editingBudget===key
             ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"2px 5px",outline:"none"}}/>
             :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-              <span onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#d1d5db",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
+              <span data-budget-cell onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#d1d5db",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
               {budget&&forecasts.some(v=>v>budget)&&<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>OVER</span>}
             </div>
           }
@@ -2262,6 +2303,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
               <span style={{width:3,height:14,borderRadius:2,background:"#6366f1",display:"inline-block"}}/>
               {account}
+              {account!=="Main Account"&&(
+                <button onClick={()=>setCollapsedAccounts(s=>{const n=new Set(s);n.has(account)?n.delete(account):n.add(account);return n;})}
+                  style={{marginLeft:8,fontSize:9,padding:"2px 8px",borderRadius:4,border:"1px solid #4338ca",background:"rgba(99,102,241,0.15)",color:"#a5b4fc",cursor:"pointer",fontWeight:700,letterSpacing:"0.05em"}}>
+                  {collapsedAccounts.has(account)?"▶ EXPAND":"▼ MINIMISE"}
+                </button>
+              )}
             </span>
           </td>
           {actualWeeks.map((_,i)=><td key={i} style={{background:"transparent",borderRight:"1px solid #2d2a6e"}}/>)}
@@ -2269,7 +2316,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.15)",borderRight:"1px solid #3730a3"}}/>)}
           <td style={{background:"rgba(99,102,241,0.15)",borderLeft:"2px solid #3730a3"}}/><td colSpan={2}/>
         </tr>
-        <tr className="abound-row" style={{background:"#fafafe",borderBottom:"1px solid #ececf8"}}>
+        {!collapsedAccounts.has(account)&&<tr className="abound-row" style={{background:"#fafafe",borderBottom:"1px solid #ececf8"}}>
           <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af"}}/>
           <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(ROW_TOOLTIPS["Opening Balance"],r.left,r.bottom+6);}}
@@ -2280,10 +2327,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td style={{borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",background:"#f9fafb"}}/>
           {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:"2px solid #e5e7eb",background:"rgba(99,102,241,0.02)"}}/><td/><td/>
-        </tr>
-        {incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
-        {spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
-        <CatRow key="Card Repayment" cat="Card Repayment" account={account}/>
+        </tr>}
+        {!collapsedAccounts.has(account)&&incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        {!collapsedAccounts.has(account)&&spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        {!collapsedAccounts.has(account)&&<CatRow key="Card Repayment" cat="Card Repayment" account={account}/>}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
           <tr className="abound-row" style={{background:"#fffbeb",borderBottom:"1px solid #fde68a"}}>
             <td/><td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706"}}>Planned expenses</td>

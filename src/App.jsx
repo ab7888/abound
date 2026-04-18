@@ -36,8 +36,8 @@ const GLOBAL_CSS = `
   @keyframes cursorFadeIn { from{opacity:0;transform:translate(-8px,-8px)} to{opacity:1;transform:translate(0,0)} }
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
-  .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }anslateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
-  .abound-row:hover td { background: rgba(99,102,241,0.03) !important; transition: background 0.1s; }
+  .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }anslateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
 `;
 
 function useIsMobile() {
@@ -1629,82 +1629,103 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
   const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
   function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(editCount>=2)setShowUpdatedBanner(true);}
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
+  const inputStyle={padding:"7px 12px",border:"1px solid #1f1d35",borderRadius:8,fontSize:13,background:"#0f0e1a",color:"#e0e7ff",outline:"none",cursor:"pointer"};
   return(
-    <div style={{flex:1,overflow:"auto",background:"#f8fafc"}}>
+    <div style={{flex:1,overflow:"auto",background:"#08070f"}}>
       <style>{GLOBAL_CSS}</style>
       {showUpdatedBanner&&(
-        <div style={{background:"linear-gradient(135deg,#10b981,#059669)",padding:"14px 24px",display:"flex",alignItems:"center",gap:16}}>
-          <span style={{fontSize:18}}>✅</span>
+        <div style={{background:"rgba(16,185,129,0.1)",borderBottom:"1px solid rgba(16,185,129,0.2)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 8px #10b981",flexShrink:0}}/>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#fff",fontSize:14}}>Cash flow updated!</div>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>Your corrections have been applied — head back to see the updated numbers.</div>
+            <div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Cash flow updated</div>
+            <div style={{color:"#4b5563",fontSize:12}}>Your corrections have been applied.</div>
           </div>
-          <button onClick={onGoToCashFlow} style={{padding:"8px 18px",background:"#fff",color:"#059669",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
-          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer"}}>×</button>
+          <button onClick={onGoToCashFlow} style={{padding:"7px 16px",background:"rgba(16,185,129,0.15)",color:"#10b981",border:"1px solid rgba(16,185,129,0.3)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
+          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"#374151",background:"none",border:"none",cursor:"pointer"}}>×</button>
         </div>
       )}
       <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
+        {/* Header */}
+        <div style={{marginBottom:20}}>
+          <h2 style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4,letterSpacing:"-0.02em"}}>Review Transactions</h2>
+          <p style={{fontSize:13,color:"#52525b",margin:0}}>Fix any miscategorised transactions to sharpen your forecast.</p>
+        </div>
+        {/* Filters */}
         <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search transactions..." style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:16,width:isMobile?"100%":220,outline:"none"}}/>
-          <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
+          <div style={{position:"relative",flex:isMobile?1:undefined}}>
+            <svg width="14" height="14" viewBox="0 0 20 20" fill="none" style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",pointerEvents:"none"}}><circle cx="9" cy="9" r="5" stroke="#52525b" strokeWidth="1.6"/><path d="M14 14l3 3" stroke="#52525b" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search..." style={{...inputStyle,paddingLeft:30,width:isMobile?"100%":190}}/>
+          </div>
+          <select value={filterAccount} onChange={e=>setFilterAccount(e.target.value)} style={inputStyle}>
             <option value="All">All accounts</option>
             {accounts.map(a=><option key={a} value={a}>{a}</option>)}
           </select>
-          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={{padding:"8px 14px",border:"1px solid #e5e7eb",borderRadius:8,fontSize:13,cursor:"pointer",background:"#fff"}}>
+          <select value={filterCat} onChange={e=>setFilterCat(e.target.value)} style={inputStyle}>
             <option value="All">All categories</option>
             {categories.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
-          <div style={{marginLeft:"auto",fontSize:13,color:"#6b7280"}}>
+          <div style={{marginLeft:"auto",fontSize:12,color:"#4b5563",whiteSpace:"nowrap"}}>
             {filtered.length} transaction{filtered.length!==1?"s":""}
             {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
           </div>
         </div>
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e5e7eb",overflow:"hidden"}}>
+        {/* Table */}
+        <div style={{background:"#0a0919",borderRadius:12,border:"1px solid #1f1d35",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
           {!isMobile&&(
-            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",background:"#1e1b4b",padding:"10px 16px"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DATE</div>
-              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5}}>DESCRIPTION</div>
-              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,textAlign:"right"}}>AMOUNT</div>
-              <div style={{fontSize:11,fontWeight:700,color:"#c7d2fe",letterSpacing:0.5,paddingLeft:16}}>CATEGORY</div>
+            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 180px",background:"linear-gradient(90deg,#1e1b4b,#1a1738)",padding:"10px 16px",borderBottom:"1px solid #2d2a6e"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DATE</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DESCRIPTION</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textAlign:"right"}}>AMOUNT</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",paddingLeft:16}}>CATEGORY</div>
             </div>
           )}
-          {filtered.map((t,i)=>(
-            isMobile ? (
-              <div key={i} style={{padding:"12px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa"}}>
+          {filtered.map((t,i)=>{
+            const rowBg=i%2===0?"rgba(255,255,255,0.012)":"rgba(255,255,255,0.005)";
+            const hoverBg="rgba(99,102,241,0.06)";
+            const amtColor=t.isIncome?"#10b981":"#e0e7ff";
+            const pillBg=`${catColors[t.category]||"#6366f1"}22`;
+            return isMobile ? (
+              <div key={i} style={{padding:"13px 16px",borderBottom:"1px solid #1a1830",background:rowBg}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                  <span style={{fontSize:11,color:"#9ca3af"}}>{fmtDate(t.date)} · {t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
-                  <span style={{fontSize:13,fontWeight:700,color:t.isIncome?"#059669":"#111827",fontVariantNumeric:"tabular-nums"}}>
+                  <span style={{fontSize:11,color:"#4b5563"}}>{fmtDate(t.date)} · <span style={{color:"#374151"}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span></span>
+                  <span style={{fontSize:13,fontWeight:700,color:amtColor,fontVariantNumeric:"tabular-nums"}}>
                     {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
                   </span>
                 </div>
-                <div style={{fontSize:13,color:"#111827",marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narrative}</div>
+                <div style={{fontSize:13,color:"#c7d2fe",marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narrative}</div>
                 <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
-                  style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",width:"100%"}}>
-                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                  style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",width:"100%"}}>
+                  {categories.map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
                 </select>
               </div>
             ) : (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 100px 180px",padding:"9px 16px",borderBottom:"1px solid #f3f4f6",background:i%2===0?"#fff":"#fafafa",alignItems:"center",transition:"background 0.1s"}}
-                onMouseEnter={e=>e.currentTarget.style.background="#f0f7ff"}
-                onMouseLeave={e=>e.currentTarget.style.background=i%2===0?"#fff":"#fafafa"}>
-                <div style={{fontSize:12,color:"#6b7280"}}>{fmtDate(t.date)}</div>
-                <div style={{fontSize:12,color:"#111827",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
-                  <span style={{fontSize:10,color:"#9ca3af",marginRight:6}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
+              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 180px",padding:"9px 16px",borderBottom:"1px solid #13112a",background:rowBg,alignItems:"center",transition:"background 0.1s",cursor:"default"}}
+                onMouseEnter={e=>e.currentTarget.style.background=hoverBg}
+                onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
+                <div style={{fontSize:11,color:"#4b5563",fontVariantNumeric:"tabular-nums"}}>{fmtDate(t.date)}</div>
+                <div style={{fontSize:12,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
+                  <span style={{fontSize:10,color:"#374151",marginRight:6,display:"inline-block",background:"rgba(255,255,255,0.04)",borderRadius:4,padding:"1px 5px"}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
                   {t.narrative}
                 </div>
-                <div style={{fontSize:12,fontWeight:600,color:t.isIncome?"#059669":"#111827",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
+                <div style={{fontSize:12,fontWeight:600,color:amtColor,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                   {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
                 </div>
                 <div style={{paddingLeft:16}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
-                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#e5e7eb"}`,background:`${catColors[t.category]||"#e5e7eb"}18`,color:catColors[t.category]||"#374151",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",width:"100%",maxWidth:160}}>
-                    {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",width:"100%",maxWidth:160}}>
+                    {categories.map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
                   </select>
                 </div>
               </div>
-            )
-          ))}
-          {filtered.length===0&&<div style={{padding:"40px",textAlign:"center",color:"#9ca3af",fontSize:13}}>No transactions match your filters.</div>}
+            );
+          })}
+          {filtered.length===0&&(
+            <div style={{padding:"56px 24px",textAlign:"center"}}>
+              <div style={{fontSize:32,marginBottom:12,opacity:0.3}}>🔍</div>
+              <div style={{fontSize:14,color:"#374151",fontWeight:600,marginBottom:4}}>No transactions found</div>
+              <div style={{fontSize:12,color:"#2d2a6e"}}>Try adjusting your filters</div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1767,29 +1788,29 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
-      <div style={{background:"#fff",borderBottom:"1px solid #e5e7eb",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
+      <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
-        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s"}}>
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
+        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
         </button>
-        <button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`3px solid ${PURPLE}`:"3px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?PURPLE:"#6b7280",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none" style={{marginRight:5,verticalAlign:"middle"}}><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
-          {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px"}}>!</span>}
+        <button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
+          {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
         </button>
-        <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.3)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+        <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           {isMobile?"⭐":"⭐ Leave a review"}
         </button>
-        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#6b7280",border:"none",background:"none",cursor:"pointer"}}>← Start over</button>}
+        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
       </div>
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
-        <div style={{background:"linear-gradient(135deg,#6366f1,#8b5cf6)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="rgba(255,255,255,0.8)" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="#a5b4fc" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#fff",fontSize:13}}>Double-check your categories</div>
-            <div style={{color:"rgba(255,255,255,0.8)",fontSize:12}}>AI isn't perfect — a quick review makes your cash flow much more accurate.</div>
+            <div style={{fontWeight:700,color:"#e0e7ff",fontSize:13}}>Double-check your categories</div>
+            <div style={{color:"#818cf8",fontSize:12}}>A quick review makes your forecast dramatically more accurate.</div>
           </div>
-          <button onClick={goToReview} style={{padding:"8px 18px",background:"#fff",color:PURPLE,border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
-          <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"rgba(255,255,255,0.7)",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
+          <button onClick={goToReview} style={{padding:"7px 16px",background:"rgba(99,102,241,0.25)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
+          <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
       {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions}/></OrientationGate>}
@@ -2192,17 +2213,17 @@ function getLastWorkingDay(year, month) {
     return tips.slice(0,5);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
-const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#374151",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.08:1,background:isOverBudget?"rgba(239,68,68,0.06)":isForecast?"rgba(99,102,241,0.025)":undefined,borderRight:isForecast?"1px dashed #ebebf8":"1px solid #f0f0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
-  const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#6366f1":"#111827",background:isForecast?"rgba(99,102,241,0.08)":"#f4f4f8",borderLeft:"2px solid #e0e0f0",borderRight:"2px solid #e0e0f0",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#9ca3af",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.07:1,background:isOverBudget?"rgba(239,68,68,0.08)":isForecast?"rgba(99,102,241,0.04)":"transparent",borderRight:isForecast?"1px dashed #2d2a6e":"1px solid #1a1830",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+  const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#818cf8":"#c7d2fe",background:isForecast?"rgba(99,102,241,0.12)":"rgba(255,255,255,0.04)",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
 
   function LabelCell({label,account}){
     const tip=ROW_TOOLTIPS[label];
     return(
-      <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default"}}
+      <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default",color:"#9ca3af"}}
         onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
         onMouseLeave={()=>setTooltip(null)}>
         {label}
-        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#9ca3af",verticalAlign:"super"}}>?</span>}
+        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span>}
       </td>
     );
   }
@@ -2217,11 +2238,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
     const budget=budgets[key];
-    const rowColor=isIncome?"#f0fdf4":isRepayment?"#faf5ff":"#fff";
-    const textColor=isIncome?"#059669":isRepayment?"#7c3aed":"#111827";
+    const rowColor=isIncome?"rgba(16,185,129,0.04)":isRepayment?"rgba(124,58,237,0.05)":"transparent";
+    const textColor=isIncome?"#34d399":isRepayment?"#a78bfa":"#c7d2fe";
     return(
-      <tr className="abound-row" style={{opacity:hidden?0.3:1,borderBottom:"1px solid #f3f4f6",background:rowColor,cursor:"default"}}>
-        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af",whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
+      <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:"1px solid #13112a",background:rowColor,cursor:"default"}}>
+        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#374151",whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
         <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
@@ -2232,10 +2253,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#d1d5db":isIncome?"#059669":isRepayment?"#7c3aed":"#374151",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
             onClick={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}
             onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}>
-            {v>0?<span style={{borderBottom:"1px dashed #d1d5db"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
+            {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
@@ -2253,15 +2274,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
         <td style={{padding:"4px 8px",textAlign:"center",minWidth:64}}>
           {isIncome ? null : editingBudget===key
-            ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"2px 5px",outline:"none"}}/>
+            ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"2px 5px",outline:"none",background:"#0f0e1a",color:"#e0e7ff"}}/>
             :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-              <span data-budget-cell onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#d1d5db",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
+              <span data-budget-cell onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#2d2a6e",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
               {budget&&forecasts.some(v=>v>budget)&&<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>OVER</span>}
             </div>
           }
         </td>
         <td style={{padding:"3px 6px",textAlign:"center"}}>
-          <button onClick={()=>setHiddenCats(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;})} style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:"1px solid #e5e7eb",background:hidden?"#fef2f2":"#f9fafb",color:hidden?"#ef4444":"#9ca3af",cursor:"pointer"}}>
+          <button onClick={()=>setHiddenCats(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;})} style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${hidden?"#374151":"#1f1d35"}`,background:hidden?"rgba(239,68,68,0.1)":"rgba(255,255,255,0.03)",color:hidden?"#ef4444":"#374151",cursor:"pointer"}}>
             {hidden?"show":"hide"}
           </button>
         </td>
@@ -2318,23 +2339,23 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.15)",borderRight:"1px solid #3730a3"}}/>)}
           <td style={{background:"rgba(99,102,241,0.15)",borderLeft:"2px solid #3730a3"}}/><td colSpan={2}/>
         </tr>
-        {!collapsedAccounts.has(account)&&<tr className="abound-row" style={{background:"#fafafe",borderBottom:"1px solid #ececf8"}}>
-          <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#9ca3af"}}/>
-          <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#374151",cursor:"help"}}
+        {!collapsedAccounts.has(account)&&<tr className="abound-row" style={{background:"rgba(255,255,255,0.018)",borderBottom:"1px solid #1a1830"}}>
+          <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:"#2d2a6e"}}/>
+          <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#6b7280",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(ROW_TOOLTIPS["Opening Balance"],r.left,r.bottom+6);}}
             onMouseLeave={()=>setTooltip(null)}>
-            Opening Balance <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span>
+            Opening Balance <span style={{fontSize:9,color:"#2d2a6e",verticalAlign:"super"}}>?</span>
           </td>
-          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
-          <td style={{borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb",background:"#f9fafb"}}/>
-          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#d1d5db":bal>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
-          <td style={{borderLeft:"2px solid #e5e7eb",background:"rgba(99,102,241,0.02)"}}/><td/><td/>
+          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#2d2a6e":bal>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          <td style={{borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?"#2d2a6e":bal>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          <td style={{borderLeft:"2px solid #2d2a6e"}}/><td/><td/>
         </tr>}
         {!collapsedAccounts.has(account)&&incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {!collapsedAccounts.has(account)&&spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {!collapsedAccounts.has(account)&&<CatRow key="Card Repayment" cat="Card Repayment" account={account}/>}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
-          <tr className="abound-row" style={{background:"#fffbeb",borderBottom:"1px solid #fde68a"}}>
+          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
             <td/><td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706"}}>Planned expenses</td>
             {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
             <td style={tdTot(false)}>—</td>
@@ -2356,24 +2377,24 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/><td/>
           </tr>
         )}
-        <tr className="abound-row" data-tour="totalspend" style={{background:"#f0f0f8",borderBottom:"1px solid #ddddf0"}}>
-          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#374151",letterSpacing:"0.02em",cursor:"help"}}
+        <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
+          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
-          {accActuals.map((v,i)=><td key={i} style={tdAmt("#111827",false,true)}>{fmtMoney(v)}</td>)}
+            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+          {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
           {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
           <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
-        <tr className="abound-row" style={{background:"#f7f7fb",borderBottom:"2px solid #e2e2ef"}}>
-          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.02em",cursor:"help"}}
+        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
+          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#c4c4cc",verticalAlign:"super"}}>?</span></td>
-          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
-          <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#059669":"#ef4444",background:"rgba(99,102,241,0.03)",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
-          <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#059669":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
       </>
@@ -2536,7 +2557,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:"20px 24px"}}>
+      <div style={{flex:1,overflow:"auto",padding:"20px 24px",background:"#08070f"}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -2585,20 +2606,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           return(
             <div style={{display:"flex",gap:8,marginBottom:20}}>
               {cards.map((c,i)=>(
-                <div key={i} style={{flex:1,background:"#fff",borderRadius:10,padding:"12px 14px",border:"1px solid #f0f0f0",boxShadow:"0 1px 2px rgba(0,0,0,0.03),0 4px 12px rgba(0,0,0,0.04)",transition:"box-shadow 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 16px rgba(0,0,0,0.08)"}
-                  onMouseLeave={e=>e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.03),0 4px 12px rgba(0,0,0,0.04)"}>
-                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:6}}>
-                    <span style={{fontSize:10,fontWeight:600,color:"#a1a1aa",letterSpacing:"0.05em",textTransform:"uppercase"}}>{c.label}</span>
-                  </div>
+                <div key={i} style={{flex:1,background:"#0d0c1e",borderRadius:10,padding:"12px 14px",border:"1px solid #1f1d35",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",transition:"border-color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor="#2d2a6e"}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor="#1f1d35"}>
+                  <div style={{fontSize:10,fontWeight:600,color:"#374151",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{c.label}</div>
                   <div style={{fontSize:isMobile?17:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
-                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#a1a1aa",fontWeight:500}}>{c.sub}</div>
+                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#374151",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
             </div>
           );
         })()}
-       <div style={{background:"#fff",borderRadius:10,border:"1px solid #f0f0f0",overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 1px 2px rgba(0,0,0,0.03),0 4px 16px rgba(0,0,0,0.05)"}}>
+       <div style={{background:"#0a0919",borderRadius:10,border:"1px solid #1f1d35",overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.4)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
               <tr data-tour="actual" style={{background:"#0f0c2e"}}>
@@ -2619,29 +2638,29 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(165,180,252,0.5)",textAlign:"right",background:"#111827",borderLeft:"2px solid #374151",borderRight:"2px solid #374151",whiteSpace:"nowrap"}}>FCST</th>
                 <th style={{background:"#1e1b4b"}} colSpan={2}/>
               </tr>
-              <tr data-tour="forecast" style={{background:"#f8fafc"}}>
-                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc",maxWidth:130}}/><th style={{background:"#f8fafc",width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#374151",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
-                <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
+              <tr data-tour="forecast" style={{background:"#080712"}}>
+                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#080712",maxWidth:130}}/><th style={{background:"#080712",width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #1a1830",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:"rgba(99,102,241,0.04)",borderRight:isLast?"none":"1px solid #e8eaf0",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
+                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(129,140,248,${op})`,textAlign:"right",background:"rgba(99,102,241,0.06)",borderRight:isLast?"none":"1px dashed #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
                 })}
-                <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
-                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"center",whiteSpace:"nowrap"}}>BUDGET</th>
-                <th/>
+                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#374151",textAlign:"center",whiteSpace:"nowrap",background:"#080712"}}>BUDGET</th>
+                <th style={{background:"#080712"}}/>
               </tr>
-              <tr style={{background:"#f8fafc",borderBottom:"2px solid #e5e7eb"}}>
-                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#f8fafc",maxWidth:130}}/><th style={{background:"#f8fafc",width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #efefef",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
-                <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/>
+              <tr style={{background:"#060611",borderBottom:"1px solid #2d2a6e"}}>
+                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#060611",maxWidth:130}}/><th style={{background:"#060611",width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#2d2a6e",textAlign:"right",borderRight:"1px solid #1a1830",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
+                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.35,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(156,163,175,${op})`,textAlign:"right",background:"rgba(99,102,241,0.04)",borderRight:isLast?"none":"1px solid #e8eaf0",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
+                  return<th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.6})`,textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:isLast?"none":"1px dashed #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
                 })}
-                <th style={{background:"#f3f4f6",borderLeft:"2px solid #e5e7eb",borderRight:"2px solid #e5e7eb"}}/><th/><th/>
+                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/><th style={{background:"#060611"}}/><th style={{background:"#060611"}}/>
               </tr>
             </thead>
             <tbody>
@@ -2703,42 +2722,44 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       </div>
 
       {/* AI Advisor sidebar */}
-      <div style={{width:aiOpen?300:44,flexShrink:0,background:"#fafbfc",borderLeft:"1px solid #e8eaf0",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",pointerEvents:"none"}}/>
-        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"13px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #e8eaf0",whiteSpace:"nowrap",flexShrink:0}}>
+      <div style={{width:aiOpen?300:44,flexShrink:0,background:"#09081a",borderLeft:"1px solid #1f1d35",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+        <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",pointerEvents:"none"}}/>
+        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"13px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #1f1d35",whiteSpace:"nowrap",flexShrink:0}}>
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>
-          {aiOpen&&<span style={{flex:1,textAlign:"left",fontSize:13,fontWeight:700,color:"#111827"}}>Insights</span>}
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d={aiOpen?"M14 8l-4 4-4-4":"M6 12l4-4 4 4"} stroke="#9ca3af" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          {aiOpen&&<span style={{flex:1,textAlign:"left",fontSize:13,fontWeight:700,color:"#c7d2fe"}}>Insights</span>}
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d={aiOpen?"M14 8l-4 4-4-4":"M6 12l4-4 4 4"} stroke="#4b5563" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </button>
         {aiOpen&&(
           <div style={{padding:"12px",display:"flex",flexDirection:"column",gap:8,overflow:"auto",flex:1}}>
             {aiTyping?(
-              <div style={{display:"flex",gap:5,padding:"16px",background:"#fff",borderRadius:10,alignItems:"center",border:"1px solid #e8eaf0"}}>
-                <span style={{fontSize:11,color:"#9ca3af",marginRight:4}}>Analysing your data</span>
+              <div style={{display:"flex",gap:5,padding:"16px",background:"rgba(99,102,241,0.06)",borderRadius:10,alignItems:"center",border:"1px solid #2d2a6e"}}>
+                <span style={{fontSize:11,color:"#6366f1",marginRight:4}}>Analysing your data</span>
                 {[0,1,2].map(i=>(
                   <div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>
                 ))}
               </div>
             ):(
               insights.map((ins,i)=>(
-                <div key={i} style={{background:"#fff",borderRadius:10,border:"1px solid #e8eaf0",borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"box-shadow 0.2s",animation:`fadeUp 0.4s ease ${i*100}ms both`,boxShadow:aiExpanded===i?"0 2px 12px rgba(0,0,0,0.07)":"none"}}>
+                <div key={i} style={{background:"#0d0c1e",borderRadius:10,border:"1px solid #1f1d35",borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"border-color 0.2s",animation:`fadeUp 0.4s ease ${i*100}ms both`}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=`${ins.color}88`}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor="#1f1d35"}>
                   <div style={{padding:"11px 13px",cursor:"pointer",display:"flex",gap:8,alignItems:"flex-start"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
                     <div style={{marginTop:1,flexShrink:0}}><InsightIcon type={ins.icon} color={ins.color}/></div>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:700,color:"#111827",marginBottom:2,lineHeight:1.3}}>{ins.title}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#e0e7ff",marginBottom:2,lineHeight:1.3}}>{ins.title}</div>
                       <div style={{fontSize:11,color:"#6b7280",lineHeight:1.5}}>{ins.body}</div>
                     </div>
-                    <svg width="10" height="10" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:2}}><path d={aiExpanded===i?"M5 13l5-5 5 5":"M5 8l5 5 5-5"} stroke="#9ca3af" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="10" height="10" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:2}}><path d={aiExpanded===i?"M5 13l5-5 5 5":"M5 8l5 5 5-5"} stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </div>
                   {aiExpanded===i&&ins.detail&&(
-                    <div style={{padding:"0 13px 12px",borderTop:"1px solid #f3f4f6",paddingTop:10}}>
+                    <div style={{padding:"10px 13px 12px",borderTop:"1px solid #1a1830"}}>
                       <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.7}}>{ins.detail}</p>
                     </div>
                   )}
                 </div>
               ))
             )}
-            <div style={{marginTop:4,padding:"10px 12px",background:"#f3f4f6",borderRadius:8,fontSize:10,color:"#9ca3af",lineHeight:1.5,textAlign:"center"}}>
+            <div style={{marginTop:4,padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #13112a",fontSize:10,color:"#2d2a6e",lineHeight:1.5,textAlign:"center"}}>
               Insights update automatically as you edit categories
             </div>
           </div>
@@ -2813,7 +2834,7 @@ export default function App() {
   }
 
   return (
-    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:["hero","upload","sort","categorise","session-complete"].includes(screen)?"#08070f":"#f8fafc",minHeight:"100vh",minWidth:"100vw",position:"relative"}}>
+    <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#08070f",minHeight:"100vh",minWidth:"100vw",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
       {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")} onResume={handleResume}/>}
       {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}

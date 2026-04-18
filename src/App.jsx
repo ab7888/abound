@@ -1958,6 +1958,12 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [outlierPromptDone, setOutlierPromptDone] = useState(false);
   const [isDark, setIsDark] = useState(true);
+  const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
+  useEffect(()=>{
+    if(!showThemeTip)return;
+    const t=setTimeout(()=>{setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");},4000);
+    return()=>clearTimeout(t);
+  },[showThemeTip]);
   const T = isDark ? {
     bg:"#08070f",card:"#0d0c1e",border:"#1f1d35",border2:"#2d2a6e",
     tableBg:"#0a0919",theadA:"#1e1b4b",theadB:"#0f0c2e",theadC:"#080712",theadD:"#060611",
@@ -1996,7 +2002,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"actual-cell"},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
@@ -2108,12 +2114,12 @@ function getLastWorkingDay(year, month) {
           }
         } else if(ROLLING_CATS.includes(cat)){
           const last6=actualVals.slice(-6);
-          const forecastVal=rollingAvgFiltered(last6);
+          const forecastVal=last6.reduce((a,b)=>a+b,0)/6;
           out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         } else {
-          // Custom categories: fixed rolling average of last 6 actual weeks
+          // Custom categories: mean of last 6 actual weeks (blanks count as 0)
           const last6=actualVals.slice(-6);
-          const forecastVal=rollingAvgFiltered(last6);
+          const forecastVal=last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1);
           out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         }
       });
@@ -2272,13 +2278,32 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           );
         })}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
-        <td style={{padding:"4px 8px",textAlign:"center",minWidth:64}}>
+        <td style={{padding:"3px 6px",minWidth:96}}>
           {isIncome ? null : editingBudget===key
-            ?<input autoFocus type="number" defaultValue={budget||""} onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}} style={{width:58,fontSize:11,border:`1px solid ${PURPLE}`,borderRadius:4,padding:"2px 5px",outline:"none",background:"#0f0e1a",color:"#e0e7ff"}}/>
-            :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
-              <span data-budget-cell onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",fontSize:11,color:budget?PURPLE:"#2d2a6e",borderBottom:"1px dashed currentColor"}}>{budget?`£${budget}`:"set"}</span>
-              {budget&&forecasts.some(v=>v>budget)&&<span style={{fontSize:9,color:"#ef4444",fontWeight:700}}>OVER</span>}
-            </div>
+            ?<input autoFocus type="number" defaultValue={budget||""} placeholder="£/wk" onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}}
+               onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
+               style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"3px 6px",outline:"none",background:"#0f0e1a",color:"#e0e7ff"}}/>
+            : budget ? (()=>{
+                const avgAct=totalAct/Math.max(actualWeeks.length,1);
+                const pct=Math.min((avgAct/budget)*100,120);
+                const over=avgAct>budget;
+                const diff=Math.abs(avgAct-budget);
+                return(
+                  <div onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",padding:"2px 4px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:3}}>
+                      <span style={{fontSize:10,fontWeight:700,color:over?"#ef4444":"#10b981"}}>{over?"▲":"▼"} £{Math.round(avgAct)}/wk</span>
+                      <span style={{fontSize:9,color:"#6366f1",opacity:0.8}}>£{budget}</span>
+                    </div>
+                    <div style={{height:3,background:"rgba(255,255,255,0.07)",borderRadius:99,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:over?"#ef4444":"#10b981",borderRadius:99,transition:"width 0.3s"}}/>
+                    </div>
+                    <div style={{fontSize:9,color:over?"#ef4444":"#6b7280",marginTop:2,textAlign:"right"}}>
+                      {over?`£${Math.round(diff)}/wk over`:`£${Math.round(diff)}/wk left`}
+                    </div>
+                  </div>
+                );
+              })()
+            :<button data-budget-cell onClick={()=>setEditingBudget(key)} style={{width:"100%",padding:"4px 0",fontSize:10,color:"#4b5563",border:"1px dashed #2d2a6e",borderRadius:5,background:"none",cursor:"pointer",letterSpacing:"0.04em"}}>+ set budget</button>
           }
         </td>
         <td style={{padding:"3px 6px",textAlign:"center"}}>
@@ -2571,8 +2596,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               value:lastActualBal!=null?`£${Math.round(lastActualBal).toLocaleString()}`:"—",
               sub:"current balance",
               color:"#f8fafc",
-              accent:"#374151",
-              valColor:"#111827",
+              accent:"#6b7280",
+              valColor:"#e0e7ff",
               icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="16" height="11" rx="2" stroke="#9ca3af" strokeWidth="1.5"/><path d="M2 9h16" stroke="#9ca3af" strokeWidth="1.5"/><circle cx="6" cy="13" r="1" fill="#9ca3af"/></svg>
             },
             {
@@ -2614,13 +2639,21 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
-              <button onClick={()=>setIsDark(d=>!d)} title={isDark?"Switch to light mode":"Switch to dark mode"}
-                style={{flexShrink:0,width:34,height:34,borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
-                {isDark
-                  ? <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
-                  : <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M17 10.5A7 7 0 1 1 9.5 3c-.5 2.5.5 6 3.5 7.5 2 1 3.5.5 4 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                }
-              </button>
+              <div style={{position:"relative",flexShrink:0}}>
+                <button onClick={()=>{setIsDark(d=>!d);setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");}} title={isDark?"Switch to light mode":"Switch to dark mode"}
+                  style={{width:34,height:34,borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                  {isDark
+                    ? <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
+                    : <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M17 10.5A7 7 0 1 1 9.5 3c-.5 2.5.5 6 3.5 7.5 2 1 3.5.5 4 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  }
+                </button>
+                {showThemeTip&&(
+                  <div style={{position:"absolute",top:"calc(100% + 8px)",right:0,whiteSpace:"nowrap",background:"#6366f1",color:"#fff",fontSize:11,fontWeight:600,padding:"5px 10px",borderRadius:7,boxShadow:"0 4px 16px rgba(99,102,241,0.4)",animation:"tooltipIn 0.2s ease both",pointerEvents:"none",zIndex:9999}}>
+                    Toggle light / dark mode
+                    <div style={{position:"absolute",top:-4,right:11,width:8,height:8,background:"#6366f1",transform:"rotate(45deg)"}}/>
+                  </div>
+                )}
+              </div>
             </div>
           );
         })()}
@@ -2645,29 +2678,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>FCST</th>
                 <th style={{background:T.theadA}} colSpan={2}/>
               </tr>
-              <tr data-tour="forecast" style={{background:T.theadC}}>
-                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:T.theadC,maxWidth:130}}/><th style={{background:T.theadC,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
-                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
-                {forecastWeeks.map((w,i)=>{
-                  const op=Math.max(0.45,1-i*0.11);
-                  const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
-                })}
-                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
-                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadC}}>BUDGET</th>
-                <th style={{background:T.theadC}}/>
-              </tr>
-              <tr style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
-                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130}}/><th style={{background:T.theadD,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:T.border2,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
+              <tr data-tour="forecast" style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
+                <th style={{padding:"3px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130,fontSize:9,fontWeight:700,color:T.dimText,textAlign:"left"}}>↑ Mon&nbsp;&nbsp;&nbsp;Sun ↑</th><th style={{background:T.theadD,width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>)}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.35,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.6})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
+                  return<th key={w.key} style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.7})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>;
                 })}
-                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/><th style={{background:T.theadD}}/><th style={{background:T.theadD}}/>
+                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
+                <th data-tour="budget" style={{padding:"3px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadD}}>BUDGET</th>
+                <th style={{background:T.theadD}}/>
               </tr>
             </thead>
             <tbody>

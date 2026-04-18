@@ -1447,36 +1447,30 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
           )}
         </div>
-        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gridAutoRows:"1fr",gap:14}}>
+        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",alignContent:"start",gap:12}}>
           {spendCats.map((cat,i)=>{
             const color=catColor(cat,i),isHovered=hoveredCat===cat;
             const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             const isDefault=DEFAULT_CATEGORIES.includes(cat);
             return(
               <div key={cat} onDragOver={e=>{e.preventDefault();setHoveredCat(cat);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
-                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}66`}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.015)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between",position:"relative",boxShadow:isHovered?`0 0 28px ${color}33`:"none"}}>
-                {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:8,right:10,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32}}>{getBucketIcon(cat,isHovered?"#fff":color,26)}</div>
-                  <div style={{fontSize:15,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center"}}>{cat}</div>
-                  {isHovered&&<div style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>drop here</div>}
-                </div>
-                <div style={{width:"100%",borderTop:`1px solid ${color}33`,paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:totalCount>0?color:"#2d2a6e"}}>
-                  {totalCount>0?`${totalCount} transaction${totalCount>1?"s":""}`:isHovered?"drop here →":"empty"}
+                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}55`}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",boxShadow:isHovered?`0 0 24px ${color}33`:"none"}}>
+                {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:6,right:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
+                <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon(cat,isHovered?"#fff":color,24)}</div>
+                <div style={{fontSize:13,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.3}}>{cat}</div>
+                <div style={{fontSize:10,fontWeight:600,color:totalCount>0?color:"#2d2a6e",background:totalCount>0?`${color}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${totalCount>0?`${color}44`:"#1f1d35"}`}}>
+                  {totalCount>0?`${totalCount} txn${totalCount>1?"s":""}`:isHovered?"drop here":"empty"}
                 </div>
               </div>
             );
           })}
           {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
             <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
-              style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:16,padding:"20px 16px 16px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",minHeight:140,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,flex:1,justifyContent:"center"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,opacity:isHovered?1:0.35}}><svg viewBox="0 0 20 20" width="26" height="26" fill="none"><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
-                <div style={{fontSize:15,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center"}}>Not sure</div>
-                <div style={{fontSize:11,color:"#2d2a6e",textAlign:"center"}}>stays in Other Payments</div>
-              </div>
-              <div style={{width:"100%",borderTop:"1px solid #1f1d35",paddingTop:10,textAlign:"center",fontSize:11,fontWeight:700,color:count>0?"#6b7280":"#2d2a6e"}}>
-                {count>0?`${count} transaction${count>1?"s":""}`:isHovered?"drop here →":"empty"}
+              style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,opacity:isHovered?1:0.35,marginTop:2}}><svg viewBox="0 0 20 20" width="24" height="24" fill="none"><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
+              <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center",lineHeight:1.3}}>Not sure</div>
+              <div style={{fontSize:10,fontWeight:600,color:count>0?"#6b7280":"#2d2a6e",background:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:"1px solid #1f1d35"}}>
+                {count>0?`${count} txn${count>1?"s":""}`:isHovered?"drop here":"stays in Other Payments"}
               </div>
             </div>
           );})()}
@@ -1963,6 +1957,20 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const [ctxMenu, setCtxMenu] = useState(null);
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [outlierPromptDone, setOutlierPromptDone] = useState(false);
+  const [isDark, setIsDark] = useState(true);
+  const T = isDark ? {
+    bg:"#08070f",card:"#0d0c1e",border:"#1f1d35",border2:"#2d2a6e",
+    tableBg:"#0a0919",theadA:"#1e1b4b",theadB:"#0f0c2e",theadC:"#080712",theadD:"#060611",
+    text:"#fff",dimText:"#9ca3af",sidebar:"#09081a",summaryRow:"rgba(255,255,255,0.015)",
+    cashBalRow:"#111827",forecastArea:"#1e1b5e",forecastCell:"rgba(99,102,241,0.06)",
+    borderLeft4:"2px solid #374151",totBg:"#111827",
+  } : {
+    bg:"#f0f4f8",card:"#ffffff",border:"#e2e8f0",border2:"#c7d2fe",
+    tableBg:"#ffffff",theadA:"#ede9fe",theadB:"#f5f3ff",theadC:"#f8f7ff",theadD:"#f1f5f9",
+    text:"#1e1b4b",dimText:"#6b7280",sidebar:"#f8fafc",summaryRow:"rgba(0,0,0,0.018)",
+    cashBalRow:"#f0f4f8",forecastArea:"#ede9fe",forecastCell:"rgba(99,102,241,0.04)",
+    borderLeft4:"2px solid #c7d2fe",totBg:"#f5f3ff",
+  };
 
   useEffect(()=>{
     if(cashFlowTourShown) return;
@@ -1988,11 +1996,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
 
   const TOUR_STEPS = [
     {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:null,cursorTarget:"actual-cell"},
-    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:null},
+    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual",cursorTarget:"actual-cell"},
+    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
-    {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:null,scrollTo:"budget-cell"},
+    {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
     {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
   ];
 
@@ -2099,22 +2107,14 @@ function getLastWorkingDay(year, month) {
             });
           }
         } else if(ROLLING_CATS.includes(cat)){
-          const window=[...actualVals];const result=[];
-          for(let i=0;i<forecastWeeks.length;i++){
-            const last6=window.slice(-6);
-            const forecastVal=rollingAvgFiltered(last6);
-            result.push(forecastVal);window.push(forecastVal);
-          }
-          out[acc][cat]=result;
+          const last6=actualVals.slice(-6);
+          const forecastVal=rollingAvgFiltered(last6);
+          out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         } else {
-          // Custom categories: rolling 6-week average spend
-          const window=[...actualVals];const result=[];
-          for(let i=0;i<forecastWeeks.length;i++){
-            const last6=window.slice(-6);
-            const forecastVal=rollingAvgFiltered(last6);
-            result.push(forecastVal);window.push(forecastVal);
-          }
-          out[acc][cat]=result;
+          // Custom categories: fixed rolling average of last 6 actual weeks
+          const last6=actualVals.slice(-6);
+          const forecastVal=rollingAvgFiltered(last6);
+          out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         }
       });
     });
@@ -2321,8 +2321,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
     return(
       <>
-        <tr style={{background:"linear-gradient(90deg,#1a1740,#1e1b4b 40%,#231f5a)"}}>
-          <td colSpan={2} style={{padding:"10px 16px",fontSize:11,fontWeight:800,color:"#c7d2fe",letterSpacing:"0.06em",textTransform:"uppercase"}}>
+        <tr style={{background:isDark?"linear-gradient(90deg,#1a1740,#1e1b4b 40%,#231f5a)":"linear-gradient(90deg,#ede9fe,#e0e7ff 40%,#ddd6fe)"}}>
+          <td colSpan={2} style={{padding:"10px 16px",fontSize:11,fontWeight:800,color:isDark?"#c7d2fe":"#4338ca",letterSpacing:"0.06em",textTransform:"uppercase"}}>
             <span style={{display:"inline-flex",alignItems:"center",gap:8}}>
               <span style={{width:3,height:14,borderRadius:2,background:"#6366f1",display:"inline-block"}}/>
               {account}
@@ -2404,7 +2404,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   const currentStep = tourStep!==null ? TOUR_STEPS[tourStep] : null;
 
   return(
-    <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative"}}>
+    <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative",background:T.bg,transition:"background 0.25s"}}>
       <style>{GLOBAL_CSS}</style>
 
       {/* Plan-a-purchase overlay — rendered here (not inside CatRow) so typing doesn't unmount it */}
@@ -2557,7 +2557,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:"20px 24px",background:"#08070f"}}>
+      <div style={{flex:1,overflow:"auto",padding:"20px 24px",background:T.bg,transition:"background 0.25s"}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -2604,87 +2604,94 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             },
           ];
           return(
-            <div style={{display:"flex",gap:8,marginBottom:20}}>
+            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-start"}}>
               {cards.map((c,i)=>(
-                <div key={i} style={{flex:1,background:"#0d0c1e",borderRadius:10,padding:"12px 14px",border:"1px solid #1f1d35",boxShadow:"0 4px 20px rgba(0,0,0,0.3)",transition:"border-color 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor="#2d2a6e"}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor="#1f1d35"}>
-                  <div style={{fontSize:10,fontWeight:600,color:"#374151",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{c.label}</div>
+                <div key={i} style={{flex:1,background:T.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${T.border}`,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",transition:"border-color 0.15s"}}
+                  onMouseEnter={e=>e.currentTarget.style.borderColor=T.border2}
+                  onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
+                  <div style={{fontSize:10,fontWeight:600,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{c.label}</div>
                   <div style={{fontSize:isMobile?17:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
-                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#374151",fontWeight:500}}>{c.sub}</div>
+                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
+              <button onClick={()=>setIsDark(d=>!d)} title={isDark?"Switch to light mode":"Switch to dark mode"}
+                style={{flexShrink:0,width:34,height:34,borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                {isDark
+                  ? <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
+                  : <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M17 10.5A7 7 0 1 1 9.5 3c-.5 2.5.5 6 3.5 7.5 2 1 3.5.5 4 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                }
+              </button>
             </div>
           );
         })()}
-       <div style={{background:"#0a0919",borderRadius:10,border:"1px solid #1f1d35",overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.4)"}}>
+       <div style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
-              <tr data-tour="actual" style={{background:"#0f0c2e"}}>
-                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:"#1e1b4b",whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
+              <tr data-tour="actual" style={{background:T.theadB}}>
+                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
-                  <span style={{fontSize:12,fontWeight:800,color:"#fff",verticalAlign:"middle"}}>Cash Flow</span>
+                  <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
-                <th style={{background:"#1e1b4b",borderRight:"1px solid #2d2a6e",width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>Actual</th>)}
-                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"#9ca3af",textAlign:"right",background:"#111827",borderLeft:"2px solid #374151",borderRight:"2px solid #374151",whiteSpace:"nowrap"}}>6WK</th>
+                <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>AVG</th>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(165,180,252,${op})`,textAlign:"right",background:"#1e1b5e",borderRight:isLast?"none":"1px solid #2d2a6e",whiteSpace:"nowrap"}}>
-                    Forecast
+                  return<th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastArea,borderRight:isLast?"none":`1px solid ${T.border2}`,whiteSpace:"nowrap"}}>
+                    {fmt(w.date)}
                   </th>;
                 })}
-                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(165,180,252,0.5)",textAlign:"right",background:"#111827",borderLeft:"2px solid #374151",borderRight:"2px solid #374151",whiteSpace:"nowrap"}}>FCST</th>
-                <th style={{background:"#1e1b4b"}} colSpan={2}/>
+                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>FCST</th>
+                <th style={{background:T.theadA}} colSpan={2}/>
               </tr>
-              <tr data-tour="forecast" style={{background:"#080712"}}>
-                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:"#080712",maxWidth:130}}/><th style={{background:"#080712",width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:"#9ca3af",textAlign:"right",borderRight:"1px solid #1a1830",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
-                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+              <tr data-tour="forecast" style={{background:T.theadC}}>
+                <th style={{padding:"5px 12px",position:"sticky",left:0,zIndex:3,background:T.theadC,maxWidth:130}}/><th style={{background:T.theadC,width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(129,140,248,${op})`,textAlign:"right",background:"rgba(99,102,241,0.06)",borderRight:isLast?"none":"1px dashed #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
+                  return<th key={w.key} style={{padding:"5px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>{fmt(w.date)}</th>;
                 })}
-                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
-                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:"#374151",textAlign:"center",whiteSpace:"nowrap",background:"#080712"}}>BUDGET</th>
-                <th style={{background:"#080712"}}/>
+                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
+                <th data-tour="budget" style={{padding:"5px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadC}}>BUDGET</th>
+                <th style={{background:T.theadC}}/>
               </tr>
-              <tr style={{background:"#060611",borderBottom:"1px solid #2d2a6e"}}>
-                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:"#060611",maxWidth:130}}/><th style={{background:"#060611",width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:"#2d2a6e",textAlign:"right",borderRight:"1px solid #1a1830",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
-                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+              <tr style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
+                <th style={{padding:"2px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130}}/><th style={{background:T.theadD,width:0,padding:0}}/>
+                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:T.border2,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>)}
+                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.35,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.6})`,textAlign:"right",background:"rgba(99,102,241,0.05)",borderRight:isLast?"none":"1px dashed #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
+                  return<th key={w.key} style={{padding:"2px 10px 6px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.6})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>{fmt(w.sunday)}</th>;
                 })}
-                <th style={{background:"#060611",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/><th style={{background:"#060611"}}/><th style={{background:"#060611"}}/>
+                <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/><th style={{background:T.theadD}}/><th style={{background:T.theadD}}/>
               </tr>
             </thead>
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
               {/* Cash Balance row */}
-              <tr data-tour="cashbalance" style={{background:"#111827",borderTop:"2px solid #6366f1"}}>
+              <tr data-tour="cashbalance" style={{background:T.cashBalRow,borderTop:"2px solid #6366f1"}}>
                 <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
                   CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
                 </td>
                 {combinedClosingBalances.actual.map((v,i)=>(
-                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#374151":v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1f1d35",fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.07)":v!==null?"rgba(239,68,68,0.07)":"transparent"}}>
+                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#374151":v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.border}`,fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.07)":v!==null?"rgba(239,68,68,0.07)":"transparent"}}>
                     {v===null?"—":fmtMoney(v)}
                   </td>
                 ))}
-                <td style={{padding:"9px 10px",background:"#080712",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e"}}/>
+                <td style={{padding:"9px 10px",background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {combinedClosingBalances.forecast.map((v,i)=>(
-                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.1)":"rgba(99,102,241,0.12)",borderRight:"1px solid #2d2a6e",fontVariantNumeric:"tabular-nums"}}>
+                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.1)":"rgba(99,102,241,0.12)",borderRight:`1px solid ${T.border2}`,fontVariantNumeric:"tabular-nums"}}>
                     {v===null?"—":fmtMoney(v)}
                   </td>
                 ))}
-                <td style={{background:"rgba(99,102,241,0.12)",borderLeft:"2px solid #2d2a6e"}}/>
-                <td style={{background:"#0f0e1a"}} colSpan={2}/>
+                <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/>
+                <td style={{background:T.bg}} colSpan={2}/>
               </tr>
             </tbody>
           </table>
@@ -2722,7 +2729,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       </div>
 
       {/* AI Advisor sidebar */}
-      <div style={{width:aiOpen?300:44,flexShrink:0,background:"#09081a",borderLeft:"1px solid #1f1d35",transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
+      <div style={{width:aiOpen?300:44,flexShrink:0,background:T.sidebar,borderLeft:`1px solid ${T.border}`,transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
         <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",pointerEvents:"none"}}/>
         <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"13px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:"1px solid #1f1d35",whiteSpace:"nowrap",flexShrink:0}}>
           <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>

@@ -249,27 +249,30 @@ async function readPdfFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s+\d{2,4})/;
+  // Matches dates at start of text: dd/mm/yy, dd-mm-yyyy, dd Jan 24, 01-Jan-2024, etc.
+  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s*\d{2,4})/;
+  // Matches plain money values: 1,234.56 or -1234.56 (strip £ before testing)
   const moneyRx = /^-?[\d,]+\.\d{2}$/;
+  const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF|FPS|STO|CPT|TFI|INT)$/i;
   const rows = [];
 
-  // Track paid-in / paid-out column x-positions across all pages
-  let paidInX = null, paidOutX = null;
+  // Column x-positions for debit/credit detection — persist across pages
+  let creditX = null, debitX = null; // "paid in" / "money in" = credit; "paid out" / "money out" = debit
 
   for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const textContent = await page.getTextContent();
 
-    // Keep full item data including x-position
     const items = textContent.items
       .map(item => ({
         text: item.str.trim(),
-        x: item.transform[4],
-        y: Math.round(item.transform[5] / 3) * 3,
+        x: Math.round(item.transform[4]),
+        y: Math.round(item.transform[5] / 4) * 4, // 4px snap for better line grouping
+        w: item.width,
       }))
       .filter(i => i.text.length > 0);
 
-    // Group into lines by y
+    // Group into lines by y-coordinate
     const lineMap = {};
     items.forEach(item => {
       if (!lineMap[item.y]) lineMap[item.y] = [];
@@ -278,84 +281,96 @@ async function readPdfFile(file) {
 
     const lines = Object.values(lineMap)
       .map(lineItems => lineItems.sort((a, b) => a.x - b.x))
-      .sort((a, b) => b[0].y - a[0].y); // top to bottom
+      .sort((a, b) => b[0].y - a[0].y); // descending y = top to bottom
 
     for (const lineItems of lines) {
       const lineText = lineItems.map(i => i.text).join(' ');
+      const lower = lineText.toLowerCase();
 
-      // Detect header row: look for "paid in" and "paid out" keywords
-      // (they may be separate items: "Paid" + "in", or combined "Paid in")
-      const lowerText = lineText.toLowerCase();
-      if (lowerText.includes('paid in') || lowerText.includes('paid out')) {
-        // Find x-positions of the column headers
-        let piX = null, poX = null;
-        // Scan items for the words
-        for (let i = 0; i < lineItems.length; i++) {
-          const t = lineItems[i].text.toLowerCase();
-          const next = lineItems[i+1]?.text.toLowerCase() || '';
-          if (t === 'paid' && next === 'in')  { piX = lineItems[i].x; }
-          if (t === 'paid' && next === 'out') { poX = lineItems[i].x; }
-          if (t === 'paid in')  piX = lineItems[i].x;
-          if (t === 'paid out') poX = lineItems[i].x;
-          if (t === 'in'  && lineItems[i-1]?.text.toLowerCase() === 'paid') piX = lineItems[i].x;
-          if (t === 'out' && lineItems[i-1]?.text.toLowerCase() === 'paid') poX = lineItems[i].x;
+      // Detect column headers for credit/debit columns
+      // Handles: "Paid in / Paid out", "Money in / Money out", "Credit / Debit", "In / Out"
+      const hasCredit = lower.includes('paid in') || lower.includes('money in') || lower.includes('credit') || /\bin\b/.test(lower);
+      const hasDebit  = lower.includes('paid out') || lower.includes('money out') || lower.includes('debit') || /\bout\b/.test(lower);
+      if (hasCredit && hasDebit) {
+        let cX = null, dX = null;
+        const joinedItems = lineItems.map((it, i) => ({...it, next: lineItems[i+1]?.text.toLowerCase()||'', prev: lineItems[i-1]?.text.toLowerCase()||''}));
+        for (const it of joinedItems) {
+          const t = it.text.toLowerCase();
+          if (t === 'paid in' || t === 'money in' || (t === 'in' && (it.prev === 'paid' || it.prev === 'money')))  cX = it.x;
+          if (t === 'paid out' || t === 'money out' || (t === 'out' && (it.prev === 'paid' || it.prev === 'money'))) dX = it.x;
+          if (t === 'paid' && it.next === 'in')  cX = it.x;
+          if (t === 'paid' && it.next === 'out') dX = it.x;
+          if (t === 'money' && it.next === 'in')  cX = it.x;
+          if (t === 'money' && it.next === 'out') dX = it.x;
+          if (t === 'credit' && (lower.includes('debit') || lower.includes('out'))) cX = it.x;
+          if (t === 'debit'  && (lower.includes('credit') || lower.includes('in'))) dX = it.x;
         }
-        if (piX !== null) paidInX = piX;
-        if (poX !== null) paidOutX = poX;
+        if (cX !== null) creditX = cX;
+        if (dX !== null) debitX = dX;
         continue;
       }
 
-      // Skip non-transaction lines
-      if (!dateRx.test(lineText)) continue;
-
+      // Skip lines that don't start with a date-like token
+      if (!dateRx.test(lineText.trimStart())) continue;
       const dateMatch = lineText.match(dateRx);
       if (!dateMatch) continue;
       const dateStr = dateMatch[0];
 
-      // Find money items on this line
-      const moneyItems = lineItems.filter(item => moneyRx.test(item.text.replace(/[£,]/g, '')));
+      // Collect money amounts on this line
+      const moneyItems = lineItems.filter(it => moneyRx.test(it.text.replace(/[£$,]/g, '')));
       if (moneyItems.length === 0) continue;
 
-      // Last = balance, second-to-last = transaction amount
-      const balItem = moneyItems[moneyItems.length - 1];
-      const txnItem = moneyItems.length >= 2 ? moneyItems[moneyItems.length - 2] : moneyItems[0];
-      const rawAmt  = parseFloat(txnItem.text.replace(/[£,]/g, ''));
+      // If the amount itself is negative (explicit sign), trust it directly
+      const lastMoney = moneyItems[moneyItems.length - 1];
+      const secondLast = moneyItems.length >= 2 ? moneyItems[moneyItems.length - 2] : null;
 
-      // Determine sign using column x-positions if available
-      let signedAmt = rawAmt;
-      if (paidInX !== null && paidOutX !== null) {
-        const distIn  = Math.abs(txnItem.x - paidInX);
-        const distOut = Math.abs(txnItem.x - paidOutX);
-        // Closer to Paid out column = debit = negative
-        if (distOut < distIn) signedAmt = -Math.abs(rawAmt);
-        else signedAmt = Math.abs(rawAmt);
-      } else if (rawAmt > 0) {
-        // No column detection — try balance direction as fallback
-        // (if balance went down it was a debit)
-        const balAmt = parseFloat(balItem.text.replace(/[£,]/g, ''));
-        if (!isNaN(balAmt) && rows.length > 0) {
-          const prevBal = parseFloat(rows[rows.length-1].Balance);
-          if (!isNaN(prevBal) && balAmt < prevBal) signedAmt = -Math.abs(rawAmt);
+      // Determine which item is the transaction amount vs balance
+      // Convention: rightmost is usually balance, second-from-right is amount
+      const txnItem = secondLast || lastMoney;
+      const balItem = secondLast ? lastMoney : null;
+
+      const rawStr = txnItem.text.replace(/[£$,]/g, '');
+      const rawAmt = parseFloat(rawStr);
+      if (isNaN(rawAmt) || rawAmt === 0) continue;
+
+      let signedAmt = rawAmt; // may already be negative if PDF contains minus sign
+
+      if (rawAmt > 0) {
+        // Try column-position detection first
+        if (creditX !== null && debitX !== null) {
+          const distCredit = Math.abs(txnItem.x - creditX);
+          const distDebit  = Math.abs(txnItem.x - debitX);
+          signedAmt = distDebit < distCredit ? -rawAmt : rawAmt;
+        } else if (balItem) {
+          // Fall back: if balance dropped, it was a debit
+          const balAmt = parseFloat(balItem.text.replace(/[£$,]/g, ''));
+          if (!isNaN(balAmt) && rows.length > 0) {
+            const prevBal = parseFloat(rows[rows.length - 1].Balance);
+            if (!isNaN(prevBal) && balAmt < prevBal - 0.005) signedAmt = -rawAmt;
+          }
+        } else {
+          // Last resort: check if line contains "DR" or ends with "D" indicator
+          if (/\bDR\b/.test(lineText) || /\bdebit\b/i.test(lineText)) signedAmt = -rawAmt;
         }
       }
 
-      // Description = everything between date and first money item, excluding Type codes
-      const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF)$/i;
+      // Description = text between date and first money item, stripped of type codes
       const firstMoneyX = moneyItems[0].x;
-      const betweenItems = lineItems.filter(i => {
-        const afterDate = i.x > lineItems[0].x + (dateStr.length * 3);
-        const beforeMoney = i.x < firstMoneyX - 5;
-        const isType = TRANSACTION_TYPES.test(i.text.trim());
-        return afterDate && beforeMoney && !isType;
-      });
-      const description = betweenItems.map(i => i.text).join(' ').trim();
+      const dateEndX = lineItems[0].x + dateStr.length * 5; // rough estimate
+      const descItems = lineItems.filter(it =>
+        it.x > dateEndX - 10 &&
+        it.x < firstMoneyX - 4 &&
+        !TRANSACTION_TYPES.test(it.text.trim()) &&
+        !dateRx.test(it.text)
+      );
+      const description = descItems.map(i => i.text).join(' ').trim();
       if (!description || description.length < 2) continue;
 
       rows.push({
         Date:        dateStr,
         Description: description,
         Amount:      String(signedAmt),
-        Balance:     balItem.text.replace(/[£,]/g, ''),
+        Balance:     balItem ? balItem.text.replace(/[£$,]/g, '') : '',
       });
     }
   }
@@ -403,58 +418,27 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const unknown = withLookup.filter(t=>t.category===null);
   onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
   if (unknown.length===0) { onProgress({type:"done"}); return withLookup; }
-    const cats = allCats.join(", ");
-  const batchSize = 80;
-  const claudeResults = [];
-  const totalBatches = Math.ceil(unknown.length/batchSize);
-  for (let i=0; i<unknown.length; i+=batchSize) {
-    const batchNum = Math.floor(i/batchSize)+1;
-    onProgress({type:"progress", batchNum, totalBatches, pct:30+Math.round((batchNum/totalBatches)*65)});
-    const batch = unknown.slice(i, i+batchSize);
-    const lines = batch.map((t,j)=>`${j}: ${t.narrative} | £${t.amount.toFixed(2)}`).join("\n");
-    const prompt = `You are a UK personal finance assistant categorising bank transactions.
-
-Categories available: ${cats}
-
-Rules:
-- TFL, Transport for London, TFL.GOV.UK, Oyster, Citymapper, Uber, Bolt, Trainline, National Rail, any airline, parking = "Travel"
-- Any supermarket, grocery, restaurant, cafe, pub, takeaway, food delivery = "Food"
-- Netflix, Spotify, Apple, Amazon Prime, Disney+, any gym, streaming, subscription = "Memberships"
-- Energy, water, broadband, phone, council tax DDs = "Rent"
-- Rent payments, mortgage = "Rent"
-- Salary, wages, payroll, BACS credits = "Salary"
-- ATM or cash withdrawals = "Other Payments"
-${multipleAccounts ? `- Credit card repayments = "${INTERCOMPANY_CATEGORY}"` : ""}
-- When unsure, pick the most likely category
-
-Transactions (index: narrative | amount):
-${lines}
-
-Respond ONLY with a JSON array of ${batch.length} category strings. No explanation, no markdown.`;
-    try {
-      const controller = new AbortController();
-      const timer = setTimeout(()=>controller.abort(), 13000);
-      const res = await fetch("/api/categorise", {
-  method:"POST", signal:controller.signal,
-  headers:{"Content-Type":"application/json"},
-  body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
-});
-      clearTimeout(timer);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      const text = data.content?.[0]?.text||"[]";
-      const parsed = JSON.parse(text.replace(/```json|```/g,"").trim());
-      claudeResults.push(...batch.map((t,j)=>({...t, category:allCats.includes(parsed[j])?parsed[j]:"Other Payments"})));
-    } catch(err) {
-      console.error("Claude batch failed:", err.message);
-      claudeResults.push(...batch.map(t=>({...t,category:"Other Payments"})));
+  // Rule-based second pass: try first-word map, then partial keyword match
+  const ruleResults = unknown.map(t => {
+    const n = t.narrative.toLowerCase().trim();
+    const firstWord = n.split(/\s+/)[0];
+    if (FIRST_WORD_MAP[firstWord] && allCats.includes(FIRST_WORD_MAP[firstWord])) {
+      return {...t, category: FIRST_WORD_MAP[firstWord]};
     }
-  }
+    // Try matching any word in the narrative against first words of merchant lists
+    const words = n.split(/\s+/);
+    for (const w of words) {
+      if (w.length >= 4 && FIRST_WORD_MAP[w] && allCats.includes(FIRST_WORD_MAP[w])) {
+        return {...t, category: FIRST_WORD_MAP[w]};
+      }
+    }
+    return {...t, category: "Other Payments"};
+  });
   onProgress({type:"done"});
-  const claudeMap = new Map(claudeResults.map(t=>[t.narrative+t.date+t.amount, t.category]));
+  const ruleMap = new Map(ruleResults.map(t=>[t.narrative+t.date+t.amount, t.category]));
   return withLookup.map(t=>{
     if (t.category!==null) return t;
-    return {...t, category:claudeMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
+    return {...t, category:ruleMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
   });
 }
 
@@ -1029,7 +1013,7 @@ function UploadScreen({onDone}) {
         onDragLeave={()=>setDragging(false)}
         onDrop={onDrop}
         style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}/>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} onClick={e=>e.stopPropagation()} style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {loaded
@@ -1463,7 +1447,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
           )}
         </div>
-        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:14,alignContent:"start"}}>
+        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gridAutoRows:"1fr",gap:14}}>
           {spendCats.map((cat,i)=>{
             const color=catColor(cat,i),isHovered=hoveredCat===cat;
             const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
@@ -1956,6 +1940,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const [events, setEvents] = useState([]);
   const [editingEvent, setEditingEvent] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
+  const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
+  const [outlierPromptDone, setOutlierPromptDone] = useState(false);
 
   useEffect(()=>{
     if(cashFlowTourShown) return;
@@ -2028,6 +2014,27 @@ function getLastWorkingDay(year, month) {
     return d.getDate();
   }
   
+  const detectedOutliers = useMemo(()=>{
+    const ROLLING_DETECT=["Food","Travel","Other Payments",...categories.filter(c=>!DEFAULT_CATEGORIES.includes(c)&&c!=="Salary"&&c!=="Card Repayment")];
+    const result=[];
+    ROLLING_DETECT.forEach(cat=>{
+      const weekVals=actualWeeks.map(w=>({
+        key:w.key,
+        label:`${fmt(w.date)} – ${fmt(w.sunday)}`,
+        val:accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0),
+      }));
+      const nonZero=weekVals.filter(w=>w.val>0);
+      if(nonZero.length<2) return;
+      const sorted=[...nonZero].sort((a,b)=>a.val-b.val);
+      const median=sorted[Math.floor(sorted.length/2)].val;
+      if(median<20) return; // ignore tiny-spend categories
+      nonZero.forEach(w=>{
+        if(w.val>median*2) result.push({cat,weekKey:w.key,weekLabel:w.label,amount:w.val,typicalAmt:median});
+      });
+    });
+    return result;
+  },[actualWeeks,weeklyByAccountCat,accounts,categories]);
+
   const forecastData = useMemo(()=>{
     const out={};
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
@@ -2039,7 +2046,8 @@ function getLastWorkingDay(year, month) {
     accounts.forEach(acc=>{
       out[acc]={};
       forecastCats.forEach(cat=>{
-        const actualVals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
+        const excl=excludedWeeks[cat]||new Set();
+        const actualVals=actualWeeks.map(w=>excl.has(w.key)?0:Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
         const avg=rollingAvg(actualVals);
         if(EXACT_CATS.includes(cat)){
           // Project each unique recurring transaction to the same day-of-month in future weeks
@@ -2077,11 +2085,20 @@ function getLastWorkingDay(year, month) {
             result.push(forecastVal);window.push(forecastVal);
           }
           out[acc][cat]=result;
-        } else {out[acc][cat]=Array(forecastWeeks.length).fill(avg);}
+        } else {
+          // Custom categories: rolling 6-week average spend
+          const window=[...actualVals];const result=[];
+          for(let i=0;i<forecastWeeks.length;i++){
+            const last6=window.slice(-6);
+            const forecastVal=rollingAvgFiltered(last6);
+            result.push(forecastVal);window.push(forecastVal);
+          }
+          out[acc][cat]=result;
+        }
       });
     });
     return out;
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks]);
 
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
@@ -2227,23 +2244,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account===account;
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),position:"relative",cursor:"pointer"}}
-              onClick={()=>!isEditing&&setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:""})}>
-              {isEditing&&(
-                <div style={{position:"absolute",top:0,left:0,zIndex:50,background:"#1e1b38",border:"1px solid #6366f1",borderRadius:8,padding:"8px 10px",minWidth:180,boxShadow:"0 4px 20px rgba(0,0,0,0.5)"}}>
-                  <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:6}}>ONE-OFF EXPENSE</div>
-                  <input autoFocus placeholder="What is it?" value={editingEvent.label} onChange={e=>setEditingEvent(ev=>({...ev,label:e.target.value}))}
-                    style={{width:"100%",marginBottom:5,padding:"4px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:5,color:"#fff",fontSize:12,outline:"none"}}/>
-                  <div style={{display:"flex",gap:5}}>
-                    <input placeholder="£ amount" type="number" value={editingEvent.amount} onChange={e=>setEditingEvent(ev=>({...ev,amount:e.target.value}))}
-                      style={{flex:1,padding:"4px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:5,color:"#fff",fontSize:12,outline:"none"}}/>
-                    <button onClick={e=>{e.stopPropagation();const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}}
-                      style={{padding:"4px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>Add</button>
-                    <button onClick={e=>{e.stopPropagation();setEditingEvent(null);}}
-                      style={{padding:"4px 8px",background:"none",color:"#6b7280",border:"1px solid #2d2a6e",borderRadius:5,fontSize:11,cursor:"pointer"}}>×</button>
-                  </div>
-                </div>
-              )}
+            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:"pointer"}}
+              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
               {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
             </td>
           );
@@ -2383,6 +2385,64 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* Plan-a-purchase overlay — rendered here (not inside CatRow) so typing doesn't unmount it */}
+      {editingEvent&&(
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:9994}} onClick={()=>setEditingEvent(null)}/>
+          <div style={{position:"fixed",top:editingEvent.y,left:editingEvent.x,zIndex:9995,background:"#1e1b38",border:"1px solid #6366f1",borderRadius:10,padding:"10px 12px",minWidth:200,boxShadow:"0 6px 28px rgba(0,0,0,0.6)",animation:"tooltipIn 0.12s ease both"}}
+            onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:7,letterSpacing:"0.06em"}}>ONE-OFF EXPENSE</div>
+            <input autoFocus placeholder="What is it? (e.g. New phone)" value={editingEvent.label} onChange={e=>setEditingEvent(ev=>({...ev,label:e.target.value}))}
+              onKeyDown={e=>{if(e.key==="Escape")setEditingEvent(null);}}
+              style={{width:"100%",marginBottom:6,padding:"5px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:6,color:"#fff",fontSize:12,outline:"none"}}/>
+            <div style={{display:"flex",gap:5}}>
+              <input placeholder="£ amount" type="number" min="0" value={editingEvent.amount} onChange={e=>setEditingEvent(ev=>({...ev,amount:e.target.value}))}
+                onKeyDown={e=>{if(e.key==="Enter"){const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}if(e.key==="Escape")setEditingEvent(null);}}
+                style={{flex:1,padding:"5px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:6,color:"#fff",fontSize:12,outline:"none"}}/>
+              <button onClick={()=>{const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}}
+                style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Add</button>
+              <button onClick={()=>setEditingEvent(null)}
+                style={{padding:"5px 9px",background:"none",color:"#6b7280",border:"1px solid #2d2a6e",borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Outlier week detection card */}
+      {!outlierPromptDone&&detectedOutliers.length>0&&(
+        <div style={{position:"fixed",bottom:24,right:24,zIndex:900,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"16px 18px",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.5)",animation:"slideInUp 0.35s cubic-bezier(0.16,1,0.3,1) both"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#fff",lineHeight:1.3}}>Looks like you've had an expensive period</div>
+            <button onClick={()=>setOutlierPromptDone(true)} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:10,lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+          <p style={{fontSize:12,color:"#9ca3af",marginBottom:12,lineHeight:1.5}}>These weeks look unusually high — possibly a holiday or one-off. Excluding them gives you a more accurate forecast.</p>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+            {detectedOutliers.map((o,i)=>{
+              const isExcluded=excludedWeeks[o.cat]?.has(o.weekKey);
+              return(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:"rgba(99,102,241,0.06)",borderRadius:7,border:`1px solid ${isExcluded?"#6366f1":"#2d2a6e"}`}}>
+                  <div style={{flex:1}}>
+                    <span style={{fontSize:11,fontWeight:600,color:isExcluded?"#a5b4fc":"#c7d2fe"}}>{o.cat}</span>
+                    <span style={{fontSize:10,color:"#6b7280",marginLeft:6}}>{o.weekLabel}</span>
+                    <div style={{fontSize:10,color:"#6b7280",marginTop:1}}>£{Math.round(o.amount).toLocaleString()} <span style={{color:"#4b5563"}}>vs typical £{Math.round(o.typicalAmt).toLocaleString()}</span></div>
+                  </div>
+                  <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);if(isExcluded){s.delete(o.weekKey);}else{s.add(o.weekKey);}next[o.cat]=s;return next;})}
+                    style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${isExcluded?"#6366f1":"#374151"}`,background:isExcluded?"rgba(99,102,241,0.2)":"transparent",color:isExcluded?"#a5b4fc":"#6b7280",cursor:"pointer",whiteSpace:"nowrap"}}>
+                    {isExcluded?"Excluded ✓":"Exclude"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{setExcludedWeeks(prev=>{const next={...prev};detectedOutliers.forEach(o=>{const s=new Set(next[o.cat]||[]);s.add(o.weekKey);next[o.cat]=s;});return next;});setOutlierPromptDone(true);}}
+              style={{flex:1,padding:"8px 12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Exclude all</button>
+            <button onClick={()=>setOutlierPromptDone(true)}
+              style={{padding:"8px 12px",background:"none",color:"#6b7280",border:"1px solid #2d2a6e",borderRadius:8,fontSize:12,cursor:"pointer"}}>Keep as-is</button>
+          </div>
+        </div>
+      )}
 
       {/* Right-click category menu */}
       {ctxMenu&&(

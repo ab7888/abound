@@ -420,39 +420,38 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
     : userCategories;
   const spendCats = allCats.filter(c=>c!=="Salary"&&c!=="Card Repayment");
 
-  const withLookup = transactions.map(t => {
+  // Step 1: income routing only — reliable, no ambiguity
+  const withIncome = transactions.map(t => {
     if (t.isIncome && t.account==="Main Account") return {...t, category:"Salary"};
     if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
-    const cat = merchantLookup(t.narrative);
-    return {...t, category: cat||null};
+    return {...t, category:null};
   });
-  const known = withLookup.filter(t=>t.category!==null);
-  const unknown = withLookup.filter(t=>t.category===null);
-  onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
-  if (unknown.length===0) { onProgress({type:"done"}); return withLookup; }
+  const toClassify = withIncome.filter(t=>t.category===null);
+  onProgress({type:"lookup_done", known:withIncome.length-toClassify.length, unknown:toClassify.length, pct:10});
+  if (toClassify.length===0) { onProgress({type:"done"}); return withIncome; }
 
   const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
   const results = new Map();
 
   if (apiKey) {
+    // Claude first for every spend transaction
     const BATCH = 30;
-    const batches = Array.from({length:Math.ceil(unknown.length/BATCH)},(_,i)=>unknown.slice(i*BATCH,(i+1)*BATCH));
+    const batches = Array.from({length:Math.ceil(toClassify.length/BATCH)},(_,i)=>toClassify.slice(i*BATCH,(i+1)*BATCH));
     for (let bi=0; bi<batches.length; bi++) {
       const batch = batches[bi];
-      onProgress({type:"progress", pct:30+Math.round((bi/batches.length)*65), batchNum:bi+1, totalBatches:batches.length});
+      onProgress({type:"progress", pct:10+Math.round(((bi+1)/batches.length)*85), batchNum:bi+1, totalBatches:batches.length});
       try {
-        const prompt = `You are categorising UK bank transactions. Available categories: ${spendCats.join(", ")}.
+        const prompt = `You are categorising UK bank transactions. You MUST assign every transaction to exactly one of these categories: ${spendCats.join(", ")}.
 
-Guidelines:
-- Supermarkets/restaurants/cafes/takeaways/food delivery → Food
-- TfL/trains/Uber/Bolt/flights/parking/fuel → Travel
-- Rent/mortgage/utilities → Rent
-- Netflix/Spotify/gym/subscriptions/apps → Memberships
-- ATM/cash → Other Payments
-- Credit card payments → Card Repayment (only if narrative clearly says so)
-- Everything else → Other Payments
+Category rules:
+- Food: supermarkets (Tesco, Sainsbury's, Aldi, Lidl, Waitrose, M&S Food, Asda, Morrisons, Co-op), restaurants, cafes, coffee shops, takeaways, Deliveroo, Just Eat, Uber Eats, any food/drink purchase
+- Travel: TfL, Oyster, Uber, Bolt, trains (Trainline, National Rail, Avanti, GWR, etc.), flights (EasyJet, Ryanair, BA, etc.), parking, petrol stations, fuel
+- Rent: rent payments, mortgage, letting agents, property management
+- Memberships: Netflix, Spotify, Apple Music, Amazon Prime, Disney+, gym memberships, any recurring subscription, software, apps, iCloud, Google One
+- Other Payments: everything else — shops, health (Specsavers, dentist, pharmacy, Boots), clothing, electronics, ATM withdrawals, transfers, anything not fitting the above
 
-Respond with ONLY a JSON array of category strings, one per transaction, same order as input. No explanation, no markdown.
+Every transaction MUST get a category. Never return null or unknown. If unsure, use Other Payments.
+Respond with ONLY a valid JSON array of strings, one category per transaction, same order as input.
 
 Transactions:
 ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`).join("\n")}`;
@@ -460,7 +459,7 @@ ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`
         const res = await fetch("https://api.anthropic.com/v1/messages",{
           method:"POST",
           headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
-          body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
+          body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:800,messages:[{role:"user",content:prompt}]})
         });
         if (!res.ok) throw new Error(`${res.status}`);
         const data = await res.json();
@@ -470,18 +469,21 @@ ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`
         const cats = JSON.parse(match[0]);
         batch.forEach((t,i)=>{
           const cat = cats[i];
-          results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat:"Other Payments");
+          // Valid category from Claude → use it; otherwise fall back to local rules
+          results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat : merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats));
         });
       } catch(_) {
-        batch.forEach(t=>results.set(t.narrative+t.date+t.amount, ruleBasedCat(t.narrative, allCats)));
+        // Claude failed for this batch — local rules as safety net
+        batch.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
       }
     }
   } else {
-    unknown.forEach(t=>results.set(t.narrative+t.date+t.amount, ruleBasedCat(t.narrative, allCats)));
+    // No API key — merchant lookup then keyword rules
+    toClassify.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
   }
 
   onProgress({type:"done"});
-  return withLookup.map(t=>{
+  return withIncome.map(t=>{
     if (t.category!==null) return t;
     return {...t, category:results.get(t.narrative+t.date+t.amount)||"Other Payments"};
   });

@@ -404,10 +404,22 @@ function hasAnyBalance(txns) {
 }
 
 // ─── AI Categorisation ────────────────────────────────────────────────────────
+function ruleBasedCat(narrative, allCats) {
+  const n = narrative.toLowerCase().trim();
+  const firstWord = n.split(/\s+/)[0];
+  if (FIRST_WORD_MAP[firstWord] && allCats.includes(FIRST_WORD_MAP[firstWord])) return FIRST_WORD_MAP[firstWord];
+  for (const w of n.split(/\s+/)) {
+    if (w.length >= 4 && FIRST_WORD_MAP[w] && allCats.includes(FIRST_WORD_MAP[w])) return FIRST_WORD_MAP[w];
+  }
+  return "Other Payments";
+}
+
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
+  const spendCats = allCats.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+
   const withLookup = transactions.map(t => {
     if (t.isIncome && t.account==="Main Account") return {...t, category:"Salary"};
     if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
@@ -418,27 +430,60 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const unknown = withLookup.filter(t=>t.category===null);
   onProgress({type:"lookup_done", known:known.length, unknown:unknown.length, pct:30});
   if (unknown.length===0) { onProgress({type:"done"}); return withLookup; }
-  // Rule-based second pass: try first-word map, then partial keyword match
-  const ruleResults = unknown.map(t => {
-    const n = t.narrative.toLowerCase().trim();
-    const firstWord = n.split(/\s+/)[0];
-    if (FIRST_WORD_MAP[firstWord] && allCats.includes(FIRST_WORD_MAP[firstWord])) {
-      return {...t, category: FIRST_WORD_MAP[firstWord]};
-    }
-    // Try matching any word in the narrative against first words of merchant lists
-    const words = n.split(/\s+/);
-    for (const w of words) {
-      if (w.length >= 4 && FIRST_WORD_MAP[w] && allCats.includes(FIRST_WORD_MAP[w])) {
-        return {...t, category: FIRST_WORD_MAP[w]};
+
+  const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
+  const results = new Map();
+
+  if (apiKey) {
+    const BATCH = 30;
+    const batches = Array.from({length:Math.ceil(unknown.length/BATCH)},(_,i)=>unknown.slice(i*BATCH,(i+1)*BATCH));
+    for (let bi=0; bi<batches.length; bi++) {
+      const batch = batches[bi];
+      onProgress({type:"progress", pct:30+Math.round((bi/batches.length)*65), batchNum:bi+1, totalBatches:batches.length});
+      try {
+        const prompt = `You are categorising UK bank transactions. Available categories: ${spendCats.join(", ")}.
+
+Guidelines:
+- Supermarkets/restaurants/cafes/takeaways/food delivery → Food
+- TfL/trains/Uber/Bolt/flights/parking/fuel → Travel
+- Rent/mortgage/utilities → Rent
+- Netflix/Spotify/gym/subscriptions/apps → Memberships
+- ATM/cash → Other Payments
+- Credit card payments → Card Repayment (only if narrative clearly says so)
+- Everything else → Other Payments
+
+Respond with ONLY a JSON array of category strings, one per transaction, same order as input. No explanation, no markdown.
+
+Transactions:
+${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`).join("\n")}`;
+
+        const res = await fetch("https://api.anthropic.com/v1/messages",{
+          method:"POST",
+          headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+          body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:600,messages:[{role:"user",content:prompt}]})
+        });
+        if (!res.ok) throw new Error(`${res.status}`);
+        const data = await res.json();
+        const text = data.content[0].text.trim();
+        const match = text.match(/\[[\s\S]*\]/);
+        if (!match) throw new Error("no json");
+        const cats = JSON.parse(match[0]);
+        batch.forEach((t,i)=>{
+          const cat = cats[i];
+          results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat:"Other Payments");
+        });
+      } catch(_) {
+        batch.forEach(t=>results.set(t.narrative+t.date+t.amount, ruleBasedCat(t.narrative, allCats)));
       }
     }
-    return {...t, category: "Other Payments"};
-  });
+  } else {
+    unknown.forEach(t=>results.set(t.narrative+t.date+t.amount, ruleBasedCat(t.narrative, allCats)));
+  }
+
   onProgress({type:"done"});
-  const ruleMap = new Map(ruleResults.map(t=>[t.narrative+t.date+t.amount, t.category]));
   return withLookup.map(t=>{
     if (t.category!==null) return t;
-    return {...t, category:ruleMap.get(t.narrative+t.date+t.amount)||"Other Payments"};
+    return {...t, category:results.get(t.narrative+t.date+t.amount)||"Other Payments"};
   });
 }
 
@@ -1013,7 +1058,7 @@ function UploadScreen({onDone}) {
         onDragLeave={()=>setDragging(false)}
         onDrop={onDrop}
         style={{display:"block",border:loaded?"1px solid #4338ca":dragging?"1px solid #6366f1":"1px dashed #2d2a6e",borderRadius:12,padding:"18px",cursor:"pointer",background:loaded?"rgba(99,102,241,0.06)":dragging?"rgba(99,102,241,0.04)":"rgba(255,255,255,0.02)",transition:"all 0.2s",marginBottom:10,boxShadow:loaded?"0 0 0 1px rgba(99,102,241,0.15)":"none",WebkitTapHighlightColor:"transparent"}}>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} onClick={e=>e.stopPropagation()} style={{position:"fixed",top:-9999,left:-9999,opacity:0,pointerEvents:"none"}}/>
+        <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.pdf" onChange={onFileChange} onClick={e=>e.stopPropagation()} style={{position:"fixed",top:-9999,left:-9999,width:1,height:1,opacity:0}}/>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
           <div style={{width:34,height:34,borderRadius:8,background:loaded?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.04)",border:`1px solid ${loaded?"#4338ca":"#2d2a6e"}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
             {loaded
@@ -1173,7 +1218,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       });
       setCategorised(result);
       setDone(true);
-      const apiKey = import.meta.env.VITE_ANTHROPIC_KEY;
+      const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
       const sugg = await computeCategorySuggestions(result, baseCats, apiKey);
       setSuggestions(sugg);
       setTimeout(()=>setStep("review"),1200);
@@ -1777,11 +1822,58 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState(()=>localStorage.getItem("anthropic_api_key")||"");
+  const [apiKeySaved, setApiKeySaved] = useState(false);
   const isMobile = useIsMobile();
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
+  function saveApiKey(){
+    const k=apiKeyInput.trim();
+    if(k){localStorage.setItem("anthropic_api_key",k);}else{localStorage.removeItem("anthropic_api_key");}
+    setApiKeySaved(true);setTimeout(()=>setApiKeySaved(false),2000);
+  }
+  const hasKey=!!localStorage.getItem("anthropic_api_key");
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
+
+      {/* Settings modal */}
+      {showSettings&&(
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(8,7,15,0.7)",backdropFilter:"blur(4px)"}} onClick={()=>setShowSettings(false)}/>
+          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:9001,background:"#13112a",border:"1px solid #2d2a6e",borderRadius:16,padding:"28px 28px 24px",width:420,maxWidth:"90vw",boxShadow:"0 24px 80px rgba(0,0,0,0.6)",animation:"tooltipIn 0.2s ease both"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>Settings</div>
+              <button onClick={()=>setShowSettings(false)} style={{fontSize:20,color:"#4b5563",background:"none",border:"none",cursor:"pointer",lineHeight:1}}>×</button>
+            </div>
+            <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",textTransform:"uppercase"}}>Anthropic API Key</div>
+            <div style={{fontSize:12,color:"#6b7280",marginBottom:12,lineHeight:1.6}}>
+              Used for AI-powered transaction categorisation. Get yours at{" "}
+              <span style={{color:"#818cf8"}}>console.anthropic.com</span>.
+              {hasKey&&<span style={{marginLeft:6,color:"#10b981",fontWeight:600}}>✓ Key saved</span>}
+            </div>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <input
+                type="password"
+                placeholder="sk-ant-api03-..."
+                value={apiKeyInput}
+                onChange={e=>setApiKeyInput(e.target.value)}
+                onKeyDown={e=>{if(e.key==="Enter")saveApiKey();}}
+                style={{flex:1,padding:"9px 12px",background:"#0a0919",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none",fontFamily:"monospace"}}
+              />
+              <button onClick={saveApiKey} style={{padding:"9px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
+                {apiKeySaved?"Saved ✓":"Save"}
+              </button>
+            </div>
+            {apiKeyInput&&<button onClick={()=>{setApiKeyInput("");localStorage.removeItem("anthropic_api_key");}} style={{fontSize:11,color:"#4b5563",background:"none",border:"none",cursor:"pointer",padding:0}}>Remove key</button>}
+            <div style={{marginTop:20,padding:"12px 14px",background:"rgba(16,185,129,0.05)",border:"1px solid rgba(16,185,129,0.15)",borderRadius:8}}>
+              <div style={{fontSize:11,color:"#6ee7b7",fontWeight:600,marginBottom:4}}>Your key never leaves your device</div>
+              <div style={{fontSize:11,color:"#374151",lineHeight:1.5}}>Stored only in your browser's localStorage. Sent directly to Anthropic — never to any server.</div>
+            </div>
+          </div>
+        </>
+      )}
+
       <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
@@ -1794,7 +1886,10 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           {isMobile?"⭐":"⭐ Leave a review"}
         </button>
-        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
+        <button onClick={()=>setShowSettings(true)} title="Settings" style={{marginLeft:8,width:32,height:32,borderRadius:7,border:`1px solid ${hasKey?"#10b981":"#1f1d35"}`,background:hasKey?"rgba(16,185,129,0.08)":"none",color:hasKey?"#10b981":"#374151",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.1 4.1l1.4 1.4M14.5 14.5l1.4 1.4M4.1 15.9l1.4-1.4M14.5 5.5l1.4-1.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+        </button>
+        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:6,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
       </div>
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>

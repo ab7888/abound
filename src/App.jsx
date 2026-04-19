@@ -414,6 +414,26 @@ function ruleBasedCat(narrative, allCats) {
   return "Other Payments";
 }
 
+function normalizeMerchant(narrative) {
+  const cleaned = narrative.toLowerCase()
+    .replace(/\b(limited|ltd|plc|uk|gb|gbr|group|holdings?|international|intl|direct|debit|payment|bacs|faster|charge|fee)\b/g," ")
+    .replace(/[0-9*#@&.,'\-_]/g," ").replace(/\s+/g," ").trim();
+  const stopWords = new Set(["the","and","for","via","ref","dbt","crd","pay","app","www","http","from","with"]);
+  const words = cleaned.split(" ").filter(w=>w.length>=3&&!stopWords.has(w));
+  return words.slice(0,2).join(" ");
+}
+
+async function callClaude(apiKey, prompt, maxTokens=800) {
+  const res = await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+    body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]})
+  });
+  if(!res.ok) throw new Error(`${res.status}`);
+  const data = await res.json();
+  return data.content[0].text.trim();
+}
+
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
@@ -433,52 +453,76 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
   const results = new Map();
 
-  if (apiKey) {
-    // Claude first for every spend transaction
-    const BATCH = 30;
-    const batches = Array.from({length:Math.ceil(toClassify.length/BATCH)},(_,i)=>toClassify.slice(i*BATCH,(i+1)*BATCH));
-    for (let bi=0; bi<batches.length; bi++) {
-      const batch = batches[bi];
-      onProgress({type:"progress", pct:10+Math.round(((bi+1)/batches.length)*85), batchNum:bi+1, totalBatches:batches.length});
-      try {
-        const prompt = `You are categorising UK bank transactions. You MUST assign every transaction to exactly one of these categories: ${spendCats.join(", ")}.
+  const MAIN_PROMPT = (batch, cats) =>
+`You are categorising UK bank transactions. Assign every transaction to EXACTLY one of: ${cats.join(", ")}.
 
-Category rules:
-- Food: supermarkets (Tesco, Sainsbury's, Aldi, Lidl, Waitrose, M&S Food, Asda, Morrisons, Co-op), restaurants, cafes, coffee shops, takeaways, Deliveroo, Just Eat, Uber Eats, any food/drink purchase
-- Travel: TfL, Oyster, Uber, Bolt, trains (Trainline, National Rail, Avanti, GWR, etc.), flights (EasyJet, Ryanair, BA, etc.), parking, petrol stations, fuel
-- Rent: rent payments, mortgage, letting agents, property management
-- Memberships: Netflix, Spotify, Apple Music, Amazon Prime, Disney+, gym memberships, any recurring subscription, software, apps, iCloud, Google One
-- Other Payments: everything else — shops, health (Specsavers, dentist, pharmacy, Boots), clothing, electronics, ATM withdrawals, transfers, anything not fitting the above
+Rules (be strict — phone/broadband/mobile contracts are Memberships, NOT Other Payments):
+- Food: supermarkets (Tesco, Sainsbury's, Asda, Morrisons, Aldi, Lidl, Waitrose, M&S Food, Co-op, Iceland), restaurants, cafes, Pret, Costa, Starbucks, McDonald's, KFC, Nando's, Greggs, takeaways, Deliveroo, Just Eat, Uber Eats
+- Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
+- Rent: rent, mortgage, letting agents, estate agents, property management companies
+- Memberships: ALL phone contracts & mobile bills (EE, O2, Vodafone, Three/3, Sky Mobile, Virgin Mobile, iD Mobile, Lebara, giffgaff, Smarty), broadband/TV/internet (BT, Virgin Media, Sky, TalkTalk, Plusnet, Hyperoptic, Zen), streaming (Netflix, Spotify, Apple Music, Disney+, Amazon Prime, YouTube Premium, Apple TV), gym (PureGym, David Lloyd, The Gym, Anytime Fitness), any subscription or recurring service, iCloud, Google One, Adobe, Microsoft 365
+- Other Payments: everything else including shops, health & opticians (Specsavers, Vision Express, Boots, Superdrug, Lloyds Pharmacy), clothing (ASOS, Zara, H&M, Next, Primark), electronics, Amazon purchases, ATM withdrawals, bank transfers
 
-Every transaction MUST get a category. Never return null or unknown. If unsure, use Other Payments.
-Respond with ONLY a valid JSON array of strings, one category per transaction, same order as input.
+Every transaction MUST get a category — no nulls, no unknowns. If genuinely unsure → Other Payments.
+Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
 
 Transactions:
 ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`).join("\n")}`;
 
-        const res = await fetch("https://api.anthropic.com/v1/messages",{
-          method:"POST",
-          headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
-          body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:800,messages:[{role:"user",content:prompt}]})
-        });
-        if (!res.ok) throw new Error(`${res.status}`);
-        const data = await res.json();
-        const text = data.content[0].text.trim();
+  if (apiKey) {
+    const BATCH = 30;
+    const batches = Array.from({length:Math.ceil(toClassify.length/BATCH)},(_,i)=>toClassify.slice(i*BATCH,(i+1)*BATCH));
+    for (let bi=0; bi<batches.length; bi++) {
+      const batch = batches[bi];
+      onProgress({type:"progress", pct:10+Math.round(((bi+1)/batches.length)*70), batchNum:bi+1, totalBatches:batches.length});
+      try {
+        const text = await callClaude(apiKey, MAIN_PROMPT(batch, spendCats));
         const match = text.match(/\[[\s\S]*\]/);
-        if (!match) throw new Error("no json");
+        if(!match) throw new Error("no json");
         const cats = JSON.parse(match[0]);
         batch.forEach((t,i)=>{
           const cat = cats[i];
-          // Valid category from Claude → use it; otherwise fall back to local rules
-          results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat : merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats));
+          results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat:merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats));
         });
       } catch(_) {
-        // Claude failed for this batch — local rules as safety net
         batch.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
       }
     }
+
+    // Auto-category detection: find repeated merchants stuck in Other Payments
+    onProgress({type:"progress", pct:82, batchNum:batches.length, totalBatches:batches.length});
+    const otherTxns = toClassify.filter(t=>results.get(t.narrative+t.date+t.amount)==="Other Payments");
+    const groups = {};
+    otherTxns.forEach(t=>{
+      const key = normalizeMerchant(t.narrative);
+      if(!key||key.length<3) return;
+      if(!groups[key]) groups[key]=[];
+      groups[key].push(t);
+    });
+    const clusters = Object.entries(groups).filter(([,txns])=>txns.length>=3);
+    if(clusters.length>0) {
+      try {
+        const namingPrompt =
+`For each cluster of UK bank transactions below, suggest a short friendly spending category name (2-3 words, title case, e.g. "Healthcare", "Online Shopping", "Pet Care", "ATM Withdrawals").
+
+${clusters.map(([key,txns],i)=>`${i+1}. Key: "${key}" | ${txns.length} transactions | Examples: ${[...new Set(txns.map(t=>t.narrative))].slice(0,3).join(" / ")}`).join("\n")}
+
+Respond ONLY with a JSON array of ${clusters.length} strings, one name per cluster.`;
+        const nameText = await callClaude(apiKey, namingPrompt, 300);
+        const nameMatch = nameText.match(/\[[\s\S]*\]/);
+        if(!nameMatch) throw new Error("no json");
+        const names = JSON.parse(nameMatch[0]);
+        const newCatsList = [];
+        clusters.forEach(([,txns],i)=>{
+          const catName = (names[i]&&typeof names[i]==="string"&&names[i].trim()) || "Other Payments";
+          if(catName==="Other Payments") return;
+          newCatsList.push({name:catName, count:txns.length, examples:[...new Set(txns.map(t=>t.narrative))].slice(0,2)});
+          txns.forEach(t=>results.set(t.narrative+t.date+t.amount, catName));
+        });
+        if(newCatsList.length>0) onProgress({type:"new_categories", categories:newCatsList});
+      } catch(_) {}
+    }
   } else {
-    // No API key — merchant lookup then keyword rules
     toClassify.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
   }
 
@@ -1198,21 +1242,32 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [editingCat, setEditingCat] = useState(null);
   const [editVal, setEditVal] = useState("");
   const [step, setStep] = useState("loading");
-  const [logLines, setLogLines] = useState([{text:"Starting merchant lookup...",done:false,active:true}]);
+  const [logLines, setLogLines] = useState([{text:"Starting AI categorisation...",done:false,active:true}]);
   const [suggestions, setSuggestions] = useState([]);
   const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
+  const [autoCats, setAutoCats] = useState([]);
   useEffect(()=>{
     (async()=>{
       const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
         if(update?.type==="lookup_done"){
-          setPct(30); setMessage(`Matched ${update.known} via lookup`);
+          setPct(10);
           setLogLines([
-            {text:`Matched ${update.known} transactions via merchant lookup`,done:true,active:false},
-            {text:`Sending ${update.unknown} to Claude for analysis...`,done:false,active:true},
+            {text:`Income & salary routed (${update.known} transactions)`,done:true,active:false},
+            {text:`Sending ${update.unknown} transactions to Claude...`,done:false,active:true},
           ]);
         } else if(update?.type==="progress"){
           setPct(update.pct);
-          setLogLines(l=>[...l.slice(0,-1),{...l[l.length-1],done:true,active:false},{text:`Processing batch ${update.batchNum} of ${update.totalBatches}...`,done:false,active:true}]);
+          const isDetecting = update.pct>=82;
+          setLogLines(l=>[...l.slice(0,-1),{...l[l.length-1],done:true,active:false},
+            {text:isDetecting?"Detecting spending patterns...":`Categorising batch ${update.batchNum} of ${update.totalBatches}...`,done:false,active:true}]);
+        } else if(update?.type==="new_categories"){
+          setAutoCats(update.categories);
+          setCategories(prev=>{
+            const toAdd=update.categories.map(c=>c.name).filter(n=>!prev.includes(n));
+            return [...prev,...toAdd];
+          });
+          setLogLines(l=>[...l.slice(0,-1),{...l[l.length-1],done:true,active:false},
+            {text:`Created ${update.categories.length} new category${update.categories.length>1?"ies":""} from your spend`,done:false,active:true}]);
         } else if(update?.type==="done"){
           setPct(100);
           setLogLines(l=>[...l.map(x=>({...x,done:true,active:false})),{text:"All categorised ✓",done:true,active:false}]);
@@ -1249,6 +1304,22 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       <div style={{position:"fixed",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.025) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
 
       <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"16px 16px 120px":"40px 24px 120px",position:"relative",zIndex:1}}>
+
+        {/* Auto-created categories notice */}
+        {autoCats.length>0&&(
+          <div style={{marginBottom:20,padding:"14px 16px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderLeft:"3px solid #10b981",borderRadius:10,animation:"fadeUp 0.4s ease both"}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#34d399",marginBottom:6}}>✦ New categories created from your spend</div>
+            <div style={{fontSize:12,color:"#6b7280",marginBottom:10,lineHeight:1.5}}>We spotted recurring merchants in your transactions and created these categories automatically. You can rename or remove them below.</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+              {autoCats.map((c,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.25)",borderRadius:20}}>
+                  <span style={{fontSize:12,fontWeight:600,color:"#34d399"}}>{c.name}</span>
+                  <span style={{fontSize:11,color:"#6b7280"}}>{c.count} txns</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32,animation:"fadeUp 0.5s ease both"}}>

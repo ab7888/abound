@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import logo from "./logo.png";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Salary", "Other Payments"];
+const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Other Payments"];
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
@@ -105,6 +105,19 @@ const MERCHANT_MAP = {
     "thames water","severn trent","anglian water","yorkshire water","united utilities","southern water",
     "british gas","eon","e.on","edf","octopus","bulb","ovo","npower","scottish power","sse",
     "virgin media","talktalk","vodafone","council tax","rates","water rates","tv licence","broadband"
+  ],
+  "Online Shopping": [
+    "amazon","ebay","etsy","asos","next","very","shein","boohoo","prettylittlething","missguided",
+    "aliexpress","wish","depop","vinted","argos","currys","john lewis","johnlewis","jd sports","jdsports",
+    "sports direct","nike","adidas","net-a-porter","farfetch","revolve","made.com","wayfair","dunelm",
+    "the range","wilko","b&q","homebase","ikea","matalan","tkmaxx","primark","topshop","zara","h&m",
+    "gap","new look","river island","dorothy perkins","burton","marks and spencer","m&s"
+  ],
+  Healthcare: [
+    "specsavers","vision express","boots","superdrug","lloyds pharmacy","well pharmacy","day lewis",
+    "boots pharmacy","chemist","optician","opticians","dentist","dental","nhs","bupa","vitality",
+    "nuffield","benenden","axa health","private gp","physio","physiotherapy","pharmacy","pharmacist",
+    "skin","dermatologist","gp","counselling","psychologist","hearing"
   ],
   Salary: [
     "salary","payroll","wages","pay","income","bacs","faster payment received",
@@ -456,13 +469,15 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const MAIN_PROMPT = (batch, cats) =>
 `You are categorising UK bank transactions. Assign every transaction to EXACTLY one of: ${cats.join(", ")}.
 
-Rules (be strict — phone/broadband/mobile contracts are Memberships, NOT Other Payments):
+Rules (be strict — follow these exactly):
 - Food: supermarkets (Tesco, Sainsbury's, Asda, Morrisons, Aldi, Lidl, Waitrose, M&S Food, Co-op, Iceland), restaurants, cafes, Pret, Costa, Starbucks, McDonald's, KFC, Nando's, Greggs, takeaways, Deliveroo, Just Eat, Uber Eats
 - Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
 - Rent: rent, mortgage, letting agents, estate agents, property management companies
-- Memberships: ALL phone contracts & mobile bills (EE, O2, Vodafone, Three/3, Sky Mobile, Virgin Mobile, iD Mobile, Lebara, giffgaff, Smarty), broadband/TV/internet (BT, Virgin Media, Sky, TalkTalk, Plusnet, Hyperoptic, Zen), streaming (Netflix, Spotify, Apple Music, Disney+, Amazon Prime, YouTube Premium, Apple TV), gym (PureGym, David Lloyd, The Gym, Anytime Fitness), any subscription or recurring service, iCloud, Google One, Adobe, Microsoft 365
+- Memberships: ALL phone contracts & mobile bills (EE, O2, Vodafone, Three/3, Sky Mobile, Virgin Mobile, iD Mobile, Lebara, giffgaff, Smarty), broadband/TV/internet (BT, Virgin Media, Sky, TalkTalk, Plusnet, Hyperoptic, Zen), streaming (Netflix, Spotify, Apple Music, Disney+, Amazon Prime, YouTube Premium, Apple TV), gym memberships (PureGym, David Lloyd, The Gym, Anytime Fitness), any subscription or recurring service, iCloud, Google One, Adobe, Microsoft 365
+- Online Shopping: Amazon purchases (NOT Amazon Prime/Fresh), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, Topshop, IKEA, B&Q, Wayfair, Dunelm, any online retail purchase, clothing bought online
+- Healthcare: Boots (pharmacy/retail), Superdrug, Specsavers, Vision Express, any pharmacy/chemist, optician, dentist, NHS charges, private GP, physio, BUPA, health insurance, counselling
 - Card Repayment: outgoing payments TO a credit card from a bank account — look for narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", "PAYMENT RECV'D", "PAYMENT THANK YOU", or any "PAYMENT TO [CARD NAME]"
-- Other Payments: everything else including shops, health & opticians (Specsavers, Vision Express, Boots, Superdrug, Lloyds Pharmacy), clothing (ASOS, Zara, H&M, Next, Primark), electronics, Amazon purchases, ATM withdrawals, bank transfers
+- Other Payments: everything else — ATM withdrawals, bank transfers, anything not clearly matching the above
 
 Every transaction MUST get a category — no nulls, no unknowns. If genuinely unsure → Other Payments.
 Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
@@ -1913,58 +1928,12 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
-  const [showSettings, setShowSettings] = useState(false);
   const [reviewEditCount, setReviewEditCount] = useState(0);
-  const [apiKeyInput, setApiKeyInput] = useState(()=>localStorage.getItem("anthropic_api_key")||"");
-  const [apiKeySaved, setApiKeySaved] = useState(false);
   const isMobile = useIsMobile();
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
-  function saveApiKey(){
-    const k=apiKeyInput.trim();
-    if(k){localStorage.setItem("anthropic_api_key",k);}else{localStorage.removeItem("anthropic_api_key");}
-    setApiKeySaved(true);setTimeout(()=>setApiKeySaved(false),2000);
-  }
-  const hasKey=!!localStorage.getItem("anthropic_api_key");
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
-
-      {/* Settings modal */}
-      {showSettings&&(
-        <>
-          <div style={{position:"fixed",inset:0,zIndex:9000,background:"rgba(8,7,15,0.7)",backdropFilter:"blur(4px)"}} onClick={()=>setShowSettings(false)}/>
-          <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:9001,background:"#13112a",border:"1px solid #2d2a6e",borderRadius:16,padding:"28px 28px 24px",width:420,maxWidth:"90vw",boxShadow:"0 24px 80px rgba(0,0,0,0.6)",animation:"tooltipIn 0.2s ease both"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-              <div style={{fontSize:16,fontWeight:800,color:"#fff"}}>Settings</div>
-              <button onClick={()=>setShowSettings(false)} style={{fontSize:20,color:"#4b5563",background:"none",border:"none",cursor:"pointer",lineHeight:1}}>×</button>
-            </div>
-            <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",textTransform:"uppercase"}}>Anthropic API Key</div>
-            <div style={{fontSize:12,color:"#6b7280",marginBottom:12,lineHeight:1.6}}>
-              Used for AI-powered transaction categorisation. Get yours at{" "}
-              <span style={{color:"#818cf8"}}>console.anthropic.com</span>.
-              {hasKey&&<span style={{marginLeft:6,color:"#10b981",fontWeight:600}}>✓ Key saved</span>}
-            </div>
-            <div style={{display:"flex",gap:8,marginBottom:8}}>
-              <input
-                type="password"
-                placeholder="sk-ant-api03-..."
-                value={apiKeyInput}
-                onChange={e=>setApiKeyInput(e.target.value)}
-                onKeyDown={e=>{if(e.key==="Enter")saveApiKey();}}
-                style={{flex:1,padding:"9px 12px",background:"#0a0919",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none",fontFamily:"monospace"}}
-              />
-              <button onClick={saveApiKey} style={{padding:"9px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>
-                {apiKeySaved?"Saved ✓":"Save"}
-              </button>
-            </div>
-            {apiKeyInput&&<button onClick={()=>{setApiKeyInput("");localStorage.removeItem("anthropic_api_key");}} style={{fontSize:11,color:"#4b5563",background:"none",border:"none",cursor:"pointer",padding:0}}>Remove key</button>}
-            <div style={{marginTop:20,padding:"12px 14px",background:"rgba(16,185,129,0.05)",border:"1px solid rgba(16,185,129,0.15)",borderRadius:8}}>
-              <div style={{fontSize:11,color:"#6ee7b7",fontWeight:600,marginBottom:4}}>Your key never leaves your device</div>
-              <div style={{fontSize:11,color:"#374151",lineHeight:1.5}}>Stored only in your browser's localStorage. Sent directly to Anthropic — never to any server.</div>
-            </div>
-          </div>
-        </>
-      )}
 
       <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
@@ -1978,10 +1947,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           {isMobile?"⭐":"⭐ Leave a review"}
         </button>
-        <button onClick={()=>setShowSettings(true)} title="Settings" style={{marginLeft:8,width:32,height:32,borderRadius:7,border:`1px solid ${hasKey?"#10b981":"#1f1d35"}`,background:hasKey?"rgba(16,185,129,0.08)":"none",color:hasKey?"#10b981":"#374151",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-          <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="2.5" stroke="currentColor" strokeWidth="1.5"/><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.1 4.1l1.4 1.4M14.5 14.5l1.4 1.4M4.1 15.9l1.4-1.4M14.5 5.5l1.4-1.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
-        </button>
-        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:6,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
+        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
       </div>
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
@@ -2207,6 +2173,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     if(!els.length) return null;
     let top=Infinity, left=Infinity, right=-Infinity, bottom=-Infinity;
     els.forEach(el=>{const r=el.getBoundingClientRect();top=Math.min(top,r.top);left=Math.min(left,r.left);right=Math.max(right,r.right);bottom=Math.max(bottom,r.bottom);});
+    // For column highlights (actual/forecast), extend down to the bottom of the table
+    if(currentStep.highlight==="actual"||currentStep.highlight==="forecast"){
+      const tableEl=document.querySelector("[data-tour-table]");
+      if(tableEl){const tr=tableEl.getBoundingClientRect();bottom=tr.bottom;}
+    }
     return {top:top-6, left:left-6, width:right-left+12, height:bottom-top+12};
   };
   
@@ -2268,17 +2239,17 @@ function getLastWorkingDay(year, month) {
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
     const MONTHLY_CATS=["Salary"];
-    const EXACT_CATS=["Rent","Memberships","Card Repayment"];
-    const ROLLING_CATS=["Food","Travel","Other Payments"];
+    const EXACT_CATS=["Rent","Memberships"];
+    const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
     const forecastCats=[...new Set([...categories, INTERCOMPANY_CATEGORY])];
+    // First pass: all categories except Card Repayment
     accounts.forEach(acc=>{
       out[acc]={};
-      forecastCats.forEach(cat=>{
+      forecastCats.filter(cat=>cat!=="Card Repayment").forEach(cat=>{
         const excl=excludedWeeks[cat]||new Set();
         const actualVals=actualWeeks.map(w=>excl.has(w.key)?0:Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0));
         const avg=rollingAvg(actualVals);
         if(EXACT_CATS.includes(cat)){
-          // Project each unique recurring transaction to the same day-of-month in future weeks
           const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat);
           const byNarrative={};
           catTxns.forEach(t=>{if(!byNarrative[t.narrative]||t.date>byNarrative[t.narrative].date)byNarrative[t.narrative]=t;});
@@ -2295,7 +2266,6 @@ function getLastWorkingDay(year, month) {
           if(avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{
             out[acc][cat]=forecastWeeks.map(w=>{
-              // Check every day in the week — does it contain the last working day of its month?
               const d=new Date(w.date);
               while(d<=w.sunday){
                 const lwd=getLastWorkingDay(d.getFullYear(),d.getMonth());
@@ -2310,12 +2280,48 @@ function getLastWorkingDay(year, month) {
           const forecastVal=last6.reduce((a,b)=>a+b,0)/6;
           out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         } else {
-          // Custom categories: mean of last 6 actual weeks (blanks count as 0)
           const last6=actualVals.slice(-6);
           const forecastVal=last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1);
           out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
         }
       });
+    });
+    // Second pass: Card Repayment — amount = sum of CC spend over the 4 weeks up to repayment date
+    const ccAccs=accounts.filter(a=>a!=="Main Account");
+    const ccSpendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    accounts.forEach(acc=>{
+      const catTxns=transactions.filter(t=>t.account===acc&&t.category==="Card Repayment");
+      if(!catTxns.length){out[acc]["Card Repayment"]=Array(forecastWeeks.length).fill(0);return;}
+      // Which accounts' spend contributes to this repayment?
+      const spendAccs=acc==="Main Account"?ccAccs:[acc];
+      // Precompute weekly CC spend: actual weeks + forecast weeks
+      const spendActualByWeek=actualWeeks.map(w=>spendAccs.reduce((s,sa)=>ccSpendCats.reduce((s2,cat)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[sa]?.[cat]||0),s),0));
+      const spendFcstByWeek=forecastWeeks.map((_,i)=>spendAccs.reduce((s,sa)=>ccSpendCats.reduce((s2,cat)=>s2+(out[sa]?.[cat]?.[i]||0),s),0));
+      // Get repayment day-of-month from most recent transaction per narrative
+      const byNarrative={};
+      catTxns.forEach(t=>{if(!byNarrative[t.narrative]||t.date>byNarrative[t.narrative].date)byNarrative[t.narrative]=t;});
+      const result=Array(forecastWeeks.length).fill(0);
+      Object.values(byNarrative).forEach(lastTxn=>{
+        const dom=lastTxn.date.getDate();
+        forecastWeeks.forEach((w,i)=>{
+          const d=new Date(w.date);
+          while(d<=w.sunday){
+            if(d.getDate()===dom){
+              // Sum 4 weeks of CC spend ending at this forecast week
+              let sum=0;
+              for(let off=0;off<4;off++){
+                const fi=i-off;
+                if(fi>=0) sum+=spendFcstByWeek[fi];
+                else{const ai=actualWeeks.length+fi;if(ai>=0)sum+=spendActualByWeek[ai];}
+              }
+              result[i]=Math.round(Math.abs(sum));
+              break;
+            }
+            d.setDate(d.getDate()+1);
+          }
+        });
+      });
+      out[acc]["Card Repayment"]=result;
     });
     return out;
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks]);
@@ -2513,11 +2519,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
     // Always include Card Repayment in spend, even if not in categories (single account case)
     const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
-    // For credit card accounts, only show categories that actually have spend there
-    const spendCatsLocal=isMainAcc ? allSpendCats : allSpendCats.filter(cat=>{
-      const hasActual=actualWeeks.some(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0)>0);
-      const hasForecast=(forecastData[account]?.[cat]||[]).some(v=>(v||0)>0);
-      return hasActual||hasForecast;
+    // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
+    const spendCatsLocal=allSpendCats.filter(cat=>{
+      const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);
+      const totalForecast=(forecastData[account]?.[cat]||[]).reduce((s,v)=>s+(v||0),0);
+      return totalActual>=5||totalForecast>=5;
     });
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
@@ -2805,7 +2811,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
-              <div style={{position:"relative",flexShrink:0}}>
+              <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{isDark?"Light mode":"Dark mode"}</div>
                 <button onClick={()=>{setIsDark(d=>!d);setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");}} title={isDark?"Switch to light mode":"Switch to dark mode"}
                   style={{width:34,height:34,borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
                   {isDark
@@ -2823,7 +2830,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
           );
         })()}
-       <div style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
               <tr style={{background:T.theadB}}>
@@ -3023,40 +3030,53 @@ Give 2-3 specific, actionable pieces of advice tailored to their goals and spend
               {/* Step 3: Expensive period toggle */}
               {investigationStep>=2&&(
                 <div style={{padding:"18px 20px",borderBottom:investigationStep>=3?"1px solid #1f1d35":"none"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 3 · SPENDING PATTERNS</div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>Was this a more expensive period than usual?</div>
-                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.6}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8}}>STEP 3 · SPENDING PATTERNS</div>
+                  <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff",marginBottom:6}}>Was this a more expensive period than usual?</div>
+                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 16px",lineHeight:1.6}}>
                     {hasOutliers
-                      ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} in your data. If this was a one-off (holiday, big purchase), you can exclude those weeks so your forecast reflects your normal spend.`
+                      ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} in your data. If it was a one-off (holiday, big purchase), marking it keeps your forecast accurate — it won't be included in future averages.`
                       :"Your spending looks consistent week-on-week — no unusual spikes detected. Your forecast already reflects your typical patterns."}
                   </p>
                   {hasOutliers&&(
-                    <div style={{marginBottom:14}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                    <div style={{marginBottom:16}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
                         {detectedOutliers.map((o,i)=>{
                           const isExcl=excludedWeeks[o.cat]?.has(o.weekKey);
                           return(
-                            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(99,102,241,0.06)",borderRadius:8,border:`1px solid ${isExcl?"#6366f1":"#2d2a6e"}`}}>
-                              <div style={{flex:1}}>
-                                <span style={{fontSize:11,fontWeight:600,color:"#c7d2fe"}}>{o.cat}</span>
-                                <span style={{fontSize:10,color:"#6b7280",marginLeft:8}}>{o.weekLabel} · £{Math.round(o.amount).toLocaleString()} vs typical £{Math.round(o.typicalAmt).toLocaleString()}</span>
+                            <div key={i} style={{borderRadius:10,border:`1.5px solid ${isExcl?"#6366f1":"#2d2a6e"}`,background:isExcl?"rgba(99,102,241,0.08)":"rgba(255,255,255,0.02)",overflow:"hidden",transition:"all 0.2s"}}>
+                              <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                                <div style={{flex:1}}>
+                                  <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:3}}>{o.cat}</div>
+                                  <div style={{fontSize:11,color:"#6b7280"}}>{o.weekLabel} &nbsp;·&nbsp; <span style={{color:"#f87171"}}>£{Math.round(o.amount).toLocaleString()}</span> spent vs typical <span style={{color:"#6b7280"}}>£{Math.round(o.typicalAmt).toLocaleString()}</span></div>
+                                </div>
+                                {isExcl&&<div style={{fontSize:11,color:"#10b981",fontWeight:700}}>✓ Marked as one-off</div>}
                               </div>
-                              <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);isExcl?s.delete(o.weekKey):s.add(o.weekKey);next[o.cat]=s;return next;})}
-                                style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:5,border:`1px solid ${isExcl?"#6366f1":"#374151"}`,background:isExcl?"rgba(99,102,241,0.2)":"transparent",color:isExcl?"#a5b4fc":"#6b7280",cursor:"pointer",whiteSpace:"nowrap"}}>
-                                {isExcl?"Excluded ✓":"Mark as one-off"}
-                              </button>
+                              {!isExcl&&(
+                                <div style={{borderTop:"1px solid #1f1d35",padding:"10px 14px",background:"rgba(99,102,241,0.04)"}}>
+                                  <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);s.add(o.weekKey);next[o.cat]=s;return next;})}
+                                    style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)"}}>
+                                    Yes, mark as one-off →
+                                  </button>
+                                  <button onClick={()=>setInvestigationStep(3)}
+                                    style={{marginLeft:10,padding:"8px 14px",background:"transparent",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:7,fontSize:12,cursor:"pointer"}}>
+                                    No, keep it
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
                       {anyExcluded&&(
-                        <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7"}}>
-                          Excluding those weeks has updated your forecast. Your projected 6-week balance now reflects your typical spending.
+                        <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:14}}>
+                          Forecast updated — those weeks are excluded from your averages.
                         </div>
                       )}
                     </div>
                   )}
-                  {investigationStep===2&&<button onClick={()=>setInvestigationStep(3)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Set your goals →</button>}
+                  <button onClick={()=>setInvestigationStep(3)} style={{padding:"9px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    {hasOutliers?(anyExcluded?"Set my goals →":"Skip & set goals →"):"Set my goals →"}
+                  </button>
                 </div>
               )}
 

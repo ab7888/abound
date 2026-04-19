@@ -2132,6 +2132,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   },[]);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
+  const [tourHighlightTick, setTourHighlightTick] = useState(0);
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
   function showTooltip(text, x, y) {
@@ -2202,10 +2203,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
 
   const getHighlightRect = () => {
     if(!tourVisible||!currentStep?.highlight) return null;
-    const el = document.querySelector(`[data-tour="${currentStep.highlight}"]`);
-    if(!el) return null;
-    const r = el.getBoundingClientRect();
-    return {top:r.top-6, left:r.left-6, width:r.width+12, height:r.height+12};
+    const els = document.querySelectorAll(`[data-tour="${currentStep.highlight}"]`);
+    if(!els.length) return null;
+    let top=Infinity, left=Infinity, right=-Infinity, bottom=-Infinity;
+    els.forEach(el=>{const r=el.getBoundingClientRect();top=Math.min(top,r.top);left=Math.min(left,r.left);right=Math.max(right,r.right);bottom=Math.max(bottom,r.bottom);});
+    return {top:top-6, left:left-6, width:right-left+12, height:bottom-top+12};
   };
   
 
@@ -2220,6 +2222,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
           ? document.querySelector("tbody tr.abound-row td:last-child button, tbody tr.abound-row [data-budget-cell]")
           : document.querySelector(`[data-tour="${target}"]`);
         el?.scrollIntoView({behavior:"smooth", block:"center"});
+        setTimeout(()=>setTourHighlightTick(t=>t+1), 700);
       }, 200);
     }
   }
@@ -2509,7 +2512,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
     // Always include Card Repayment in spend, even if not in categories (single account case)
-    const spendCatsLocal=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
+    // For credit card accounts, only show categories that actually have spend there
+    const spendCatsLocal=isMainAcc ? allSpendCats : allSpendCats.filter(cat=>{
+      const hasActual=actualWeeks.some(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0)>0);
+      const hasForecast=(forecastData[account]?.[cat]||[]).some(v=>(v||0)>0);
+      return hasActual||hasForecast;
+    });
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const accIncome=actualWeeks.map(w=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
@@ -2681,6 +2690,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       {/* Tour spotlight overlay */}
       {tourVisible&&currentStep&&(()=>{
+        void tourHighlightTick;
         const hr=getHighlightRect();
         return(
           <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
@@ -2816,32 +2826,32 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
        <div style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead>
-              <tr data-tour="actual" style={{background:T.theadB}}>
+              <tr style={{background:T.theadB}}>
                 <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>AVG</th>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastArea,borderRight:isLast?"none":`1px solid ${T.border2}`,whiteSpace:"nowrap"}}>
+                  return<th key={w.key} data-tour="forecast" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastArea,borderRight:isLast?"none":`1px solid ${T.border2}`,whiteSpace:"nowrap"}}>
                     {fmt(w.date)}
                   </th>;
                 })}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>FCST</th>
                 <th style={{background:T.theadA}} colSpan={2}/>
               </tr>
-              <tr data-tour="forecast" style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
+              <tr style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
                 <th style={{padding:"3px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130,fontSize:9,fontWeight:700,color:T.dimText,textAlign:"left"}}>↑ Mon&nbsp;&nbsp;&nbsp;Sun ↑</th><th style={{background:T.theadD,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>)}
+                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>)}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.35,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
-                  return<th key={w.key} style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.7})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>;
+                  return<th key={w.key} data-tour="forecast" style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.7})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>;
                 })}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 <th data-tour="budget" style={{padding:"3px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadD}}>BUDGET</th>

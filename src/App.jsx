@@ -27,6 +27,8 @@ const GLOBAL_CSS = `
   @keyframes scanline { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
   @keyframes glow { 0%,100%{box-shadow:0 0 8px rgba(99,102,241,0.3)} 50%{box-shadow:0 0 28px rgba(99,102,241,0.7)} }
   @keyframes slideInUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
+  @keyframes slideInRight { from{opacity:0;transform:translateX(32px)} to{opacity:1;transform:translateX(0)} }
+  @keyframes cashBalPulse { 0%,100%{box-shadow:none} 30%{box-shadow:0 0 0 3px rgba(99,102,241,0.6),0 0 32px rgba(99,102,241,0.4)} 60%{box-shadow:0 0 0 2px rgba(99,102,241,0.4),0 0 20px rgba(99,102,241,0.25)} }
   @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-4px);opacity:1} }
   @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
   @keyframes spotlightIn { from{opacity:0;transform:tr@keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
@@ -2111,6 +2113,9 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [ctxMenu, setCtxMenu] = useState(null);
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [investigationStep, setInvestigationStep] = useState(0);
+  const [investigationOpen, setInvestigationOpen] = useState(true);
+  const [highlightCashBal, setHighlightCashBal] = useState(false);
+  const highlightCashBalTimer = useRef(null);
   const [goalsText, setGoalsText] = useState("");
   const [goalsAdvice, setGoalsAdvice] = useState("");
   const [goalsLoading, setGoalsLoading] = useState(false);
@@ -2868,7 +2873,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <tbody>
               {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
               {/* Cash Balance row */}
-              <tr data-tour="cashbalance" style={{background:T.cashBalRow,borderTop:"2px solid #6366f1"}}>
+              <tr data-tour="cashbalance" style={{background:T.cashBalRow,borderTop:"2px solid #6366f1",transition:"box-shadow 0.3s",animation:highlightCashBal?"cashBalPulse 1.2s ease-in-out 2":"none"}}>
                 <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
@@ -2922,195 +2927,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           );
         })()}
 
-        {/* Investigation panel — shown after user reviews 2+ transactions */}
-        {reviewEditCount>=2&&(()=>{
-          const today=new Date();
-          const endOfMonth=new Date(today.getFullYear(),today.getMonth()+1,0);
-          // Find the actual week closest to end of month
-          const eomActualIdx=actualWeeks.reduce((best,w,i)=>{const diff=Math.abs(w.date-endOfMonth);return best===-1||diff<Math.abs(actualWeeks[best].date-endOfMonth)?i:best;},-1);
-          const eomActualBal=eomActualIdx>=0?combinedClosingBalances.actual[eomActualIdx]:null;
-          // Find forecast week closest to end of month
-          const eomFcIdx=forecastWeeks.reduce((best,w,i)=>{const diff=Math.abs(w.date-endOfMonth);return best===-1||diff<Math.abs(forecastWeeks[best].date-endOfMonth)?i:best;},-1);
-          const eomFcBal=eomFcIdx>=0?combinedClosingBalances.forecast[eomFcIdx]:null;
-          const eomBal=eomFcBal!==null&&eomFcBal!==undefined?eomFcBal:eomActualBal;
-          const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
-          const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
-
-          // Outlier toggle — re-use detectedOutliers
-          const hasOutliers=detectedOutliers.length>0;
-          const anyExcluded=detectedOutliers.some(o=>excludedWeeks[o.cat]?.has(o.weekKey));
-
-          const apiKey=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
-
-          async function fetchGoalsAdvice(){
-            if(!goalsText.trim()||!apiKey)return;
-            setGoalsLoading(true);setGoalsAdvice("");
-            try{
-              const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
-              const sixWeekBal=forecastEndBal!==null&&forecastEndBal!==undefined?Math.round(forecastEndBal):null;
-              const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
-              const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
-- Weekly spend average: £${weeklySpend}
-- Projected balance in 6 weeks: ${sixWeekBal!==null?"£"+sixWeekBal.toLocaleString():"unknown"}
-- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
-
-Their financial goals: "${goalsText}"
-
-Give 2-3 specific, actionable pieces of advice tailored to their goals and spending data. Be warm, direct, and concrete. Max 120 words. No bullet points — write as flowing sentences.`;
-              const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
-              if(!res.ok)throw new Error();
-              const data=await res.json();
-              setGoalsAdvice(data.content[0].text.trim());
-            }catch(_){setGoalsAdvice("Couldn't load advice right now. Check your API key in Settings.");}
-            setGoalsLoading(false);
-          }
-
-          const steps=[
-            {id:0,label:"Your end-of-month balance"},
-            {id:1,label:"Your 6-week outlook"},
-            {id:2,label:"Was this an expensive period?"},
-            {id:3,label:"Your financial goals"},
-          ];
-
-          return(
-            <div style={{margin:"20px 0 0",borderRadius:14,border:"1px solid #2d2a6e",background:"rgba(99,102,241,0.04)",overflow:"hidden",animation:"fadeUp 0.4s ease both"}}>
-              <div style={{background:"linear-gradient(135deg,#1e1b4b,#13112a)",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid #2d2a6e"}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px rgba(99,102,241,0.6)"}}/>
-                <span style={{fontSize:13,fontWeight:800,color:"#e0e7ff",letterSpacing:"-0.01em"}}>Your Financial Analysis</span>
-                <div style={{marginLeft:"auto",display:"flex",gap:6}}>
-                  {steps.map((s,i)=>(
-                    <button key={s.id} onClick={()=>setInvestigationStep(s.id)}
-                      style={{width:22,height:22,borderRadius:"50%",border:`1.5px solid ${investigationStep>=s.id?"#6366f1":"#2d2a6e"}`,background:investigationStep>=s.id?"#6366f1":"transparent",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
-                      {investigationStep>s.id?"✓":s.id+1}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Step 1: End of month balance */}
-              <div style={{padding:"18px 20px",borderBottom:investigationStep>=1?"1px solid #1f1d35":"none"}}>
-                <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 1 · END OF MONTH</div>
-                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
-                  <span style={{fontSize:28,fontWeight:800,color:eomBal!==null?(eomBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums"}}>
-                    {eomBal!==null?`${eomBal>=0?"":"−"}£${Math.round(Math.abs(eomBal)).toLocaleString()}`:"—"}
-                  </span>
-                  <span style={{fontSize:13,color:"#6b7280"}}>projected by end of {today.toLocaleDateString("en-GB",{month:"long"})}</span>
-                </div>
-                <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>
-                  {eomBal===null?"Upload includes actuals beyond end of month — balance shown above."
-                    :eomBal>=0
-                      ?`You're on track to finish the month in the green. That's a solid foundation — any surplus now is money that can work harder for you.`
-                      :`You're projected to finish the month in the negative. It's worth looking at which categories are eating into your balance this month.`}
-                </p>
-                {investigationStep===0&&<button onClick={()=>setInvestigationStep(1)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>See 6-week outlook →</button>}
-              </div>
-
-              {/* Step 2: 6-week forecast */}
-              {investigationStep>=1&&(
-                <div style={{padding:"18px 20px",borderBottom:investigationStep>=2?"1px solid #1f1d35":"none"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 2 · 6-WEEK FORECAST</div>
-                  <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
-                    <span style={{fontSize:28,fontWeight:800,color:forecastEndBal!==null?(forecastEndBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums"}}>
-                      {forecastEndBal!==null?`${forecastEndBal>=0?"":"−"}£${Math.round(Math.abs(forecastEndBal)).toLocaleString()}`:"—"}
-                    </span>
-                    <span style={{fontSize:13,color:"#6b7280"}}>balance in 6 weeks</span>
-                  </div>
-                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>
-                    {forecastEndBal===null?"Not enough forecast data yet."
-                      :forecastEndBal>=0
-                        ?(lastActualBal!==null&&forecastEndBal>lastActualBal
-                            ?`Your balance is forecast to grow by £${Math.round(forecastEndBal-lastActualBal).toLocaleString()} over the next 6 weeks. If that holds, you're in a strong position to start building towards a goal.`
-                            :`Your balance is holding steady over 6 weeks. Spending and income look balanced — keep it up.`)
-                        :`Your balance is forecast to go negative over the next 6 weeks. This is worth addressing now — even small cuts to your biggest spending categories can shift this significantly.`}
-                  </p>
-                  {investigationStep===1&&<button onClick={()=>setInvestigationStep(2)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Dig into spending →</button>}
-                </div>
-              )}
-
-              {/* Step 3: Expensive period toggle */}
-              {investigationStep>=2&&(
-                <div style={{padding:"18px 20px",borderBottom:investigationStep>=3?"1px solid #1f1d35":"none"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8}}>STEP 3 · SPENDING PATTERNS</div>
-                  <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff",marginBottom:6}}>Was this a more expensive period than usual?</div>
-                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 16px",lineHeight:1.6}}>
-                    {hasOutliers
-                      ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} in your data. If it was a one-off (holiday, big purchase), marking it keeps your forecast accurate — it won't be included in future averages.`
-                      :"Your spending looks consistent week-on-week — no unusual spikes detected. Your forecast already reflects your typical patterns."}
-                  </p>
-                  {hasOutliers&&(
-                    <div style={{marginBottom:16}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:14}}>
-                        {detectedOutliers.map((o,i)=>{
-                          const isExcl=excludedWeeks[o.cat]?.has(o.weekKey);
-                          return(
-                            <div key={i} style={{borderRadius:10,border:`1.5px solid ${isExcl?"#6366f1":"#2d2a6e"}`,background:isExcl?"rgba(99,102,241,0.08)":"rgba(255,255,255,0.02)",overflow:"hidden",transition:"all 0.2s"}}>
-                              <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
-                                <div style={{flex:1}}>
-                                  <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:3}}>{o.cat}</div>
-                                  <div style={{fontSize:11,color:"#6b7280"}}>{o.weekLabel} &nbsp;·&nbsp; <span style={{color:"#f87171"}}>£{Math.round(o.amount).toLocaleString()}</span> spent vs typical <span style={{color:"#6b7280"}}>£{Math.round(o.typicalAmt).toLocaleString()}</span></div>
-                                </div>
-                                {isExcl&&<div style={{fontSize:11,color:"#10b981",fontWeight:700}}>✓ Marked as one-off</div>}
-                              </div>
-                              {!isExcl&&(
-                                <div style={{borderTop:"1px solid #1f1d35",padding:"10px 14px",background:"rgba(99,102,241,0.04)"}}>
-                                  <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);s.add(o.weekKey);next[o.cat]=s;return next;})}
-                                    style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)"}}>
-                                    Yes, mark as one-off →
-                                  </button>
-                                  <button onClick={()=>setInvestigationStep(3)}
-                                    style={{marginLeft:10,padding:"8px 14px",background:"transparent",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:7,fontSize:12,cursor:"pointer"}}>
-                                    No, keep it
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {anyExcluded&&(
-                        <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:14}}>
-                          Forecast updated — those weeks are excluded from your averages.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <button onClick={()=>setInvestigationStep(3)} style={{padding:"9px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    {hasOutliers?(anyExcluded?"Set my goals →":"Skip & set goals →"):"Set my goals →"}
-                  </button>
-                </div>
-              )}
-
-              {/* Step 4: Financial goals + Claude advice */}
-              {investigationStep>=3&&(
-                <div style={{padding:"18px 20px"}}>
-                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 4 · YOUR GOALS</div>
-                  <div style={{fontSize:14,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>What are you working towards?</div>
-                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>Tell us your financial goal and we'll give you specific advice based on your actual spending data.</p>
-                  <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. Save for a house deposit, pay off my credit card, build a 3-month emergency fund..." rows={3}
-                    style={{width:"100%",padding:"10px 12px",background:"#0a0919",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:12,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.5,marginBottom:10,boxSizing:"border-box"}}/>
-                  <button onClick={fetchGoalsAdvice} disabled={!goalsText.trim()||goalsLoading}
-                    style={{padding:"9px 20px",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsText.trim()?"pointer":"default",marginBottom:goalsAdvice||goalsLoading?12:0,transition:"all 0.2s"}}>
-                    {goalsLoading?"Thinking...":"Get personalised advice →"}
-                  </button>
-                  {goalsLoading&&(
-                    <div style={{display:"flex",gap:5,alignItems:"center",padding:"12px 0"}}>
-                      <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
-                      {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
-                    </div>
-                  )}
-                  {goalsAdvice&&!goalsLoading&&(
-                    <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:"1px solid #2d2a6e",borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:"#c7d2fe",lineHeight:1.7,animation:"fadeUp 0.3s ease both"}}>
-                      {goalsAdvice}
-                    </div>
-                  )}
-                  {!apiKey&&!goalsAdvice&&(
-                    <div style={{fontSize:11,color:"#4b5563",marginTop:4}}>Add an API key in Settings to unlock personalised advice.</div>
-                  )}
-                </div>
-              )}
-            </div>
-          );
-        })()}
       </div>
 
       {/* AI Advisor sidebar */}
@@ -3167,6 +2983,227 @@ Give 2-3 specific, actionable pieces of advice tailored to their goals and spend
           }
         </button>
       )}
+      {/* Investigation Panel — fixed right drawer */}
+      {reviewEditCount>=2&&(()=>{
+        const today=new Date();
+        const endOfMonth=new Date(today.getFullYear(),today.getMonth()+1,0);
+        const eomActualIdx=actualWeeks.reduce((best,w,i)=>{const d=Math.abs(w.date-endOfMonth);return best===-1||d<Math.abs(actualWeeks[best].date-endOfMonth)?i:best;},-1);
+        const eomActualBal=eomActualIdx>=0?combinedClosingBalances.actual[eomActualIdx]:null;
+        const eomFcIdx=forecastWeeks.reduce((best,w,i)=>{const d=Math.abs(w.date-endOfMonth);return best===-1||d<Math.abs(forecastWeeks[best].date-endOfMonth)?i:best;},-1);
+        const eomFcBal=eomFcIdx>=0?combinedClosingBalances.forecast[eomFcIdx]:null;
+        const eomBal=eomFcBal!==null&&eomFcBal!==undefined?eomFcBal:eomActualBal;
+        const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
+        const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+        const hasOutliers=detectedOutliers.length>0;
+        const anyExcluded=detectedOutliers.some(o=>excludedWeeks[o.cat]?.has(o.weekKey));
+        const apiKey=import.meta.env.VITE_ANTHROPIC_KEY||"";
+
+        function markOneOff(cat,weekKey){
+          setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[cat]||[]);s.add(weekKey);next[cat]=s;return next;});
+          const cashBalEl=document.querySelector('[data-tour="cashbalance"]');
+          if(cashBalEl) cashBalEl.scrollIntoView({behavior:"smooth",block:"center"});
+          setHighlightCashBal(true);
+          if(highlightCashBalTimer.current) clearTimeout(highlightCashBalTimer.current);
+          highlightCashBalTimer.current=setTimeout(()=>setHighlightCashBal(false),3000);
+        }
+
+        async function fetchGoalsAdvice(){
+          if(!goalsText.trim()||!apiKey)return;
+          setGoalsLoading(true);setGoalsAdvice("");
+          try{
+            const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
+            const sixWeekBal=forecastEndBal!==null&&forecastEndBal!==undefined?Math.round(forecastEndBal):null;
+            const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
+            const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
+- Weekly spend average: £${weeklySpend}
+- Projected balance in 6 weeks: ${sixWeekBal!==null?"£"+sixWeekBal.toLocaleString():"unknown"}
+- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
+
+Their financial goals: "${goalsText}"
+
+Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
+            const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
+            if(!res.ok)throw new Error();
+            const data=await res.json();
+            setGoalsAdvice(data.content[0].text.trim());
+          }catch(_){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
+          setGoalsLoading(false);
+        }
+
+        const drawerW=isMobile?"100%":370;
+        const steps=[
+          {id:0,label:"End of month"},
+          {id:1,label:"6-week outlook"},
+          {id:2,label:"One-offs"},
+          {id:3,label:"Goals"},
+        ];
+        return(
+          <>
+            {/* Collapsed tab */}
+            {!investigationOpen&&(
+              <button onClick={()=>setInvestigationOpen(true)}
+                style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>
+                ANALYSIS
+              </button>
+            )}
+
+            {/* Drawer */}
+            <div style={{position:"fixed",right:investigationOpen?0:(isMobile?"-100%":-370),top:isMobile?"auto":57,bottom:0,left:isMobile?0:"auto",width:drawerW,background:"#0a0919",borderLeft:"1px solid #2d2a6e",zIndex:800,display:"flex",flexDirection:"column",transition:"right 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:investigationOpen?"-12px 0 48px rgba(0,0,0,0.5)":"none",overflow:"hidden"}}>
+              {/* Drawer header */}
+              <div style={{background:"linear-gradient(135deg,#1e1b4b,#13112a)",padding:"13px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid #2d2a6e",flexShrink:0}}>
+                <div style={{width:7,height:7,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px rgba(99,102,241,0.7)"}}/>
+                <span style={{fontSize:13,fontWeight:800,color:"#e0e7ff",flex:1,letterSpacing:"-0.01em"}}>Financial Analysis</span>
+                {/* Step dots */}
+                <div style={{display:"flex",gap:5}}>
+                  {steps.map((s,i)=>(
+                    <button key={s.id} onClick={()=>setInvestigationStep(s.id)} title={s.label}
+                      style={{width:20,height:20,borderRadius:"50%",border:`1.5px solid ${investigationStep>=s.id?"#6366f1":"#2d2a6e"}`,background:investigationStep>=s.id?"#6366f1":"transparent",color:"#fff",fontSize:9,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",flexShrink:0}}>
+                      {investigationStep>s.id?"✓":s.id+1}
+                    </button>
+                  ))}
+                </div>
+                <button onClick={()=>setInvestigationOpen(false)}
+                  style={{width:24,height:24,borderRadius:6,border:"1px solid #2d2a6e",background:"transparent",color:"#6b7280",fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginLeft:4}}>
+                  ×
+                </button>
+              </div>
+
+              {/* Scrollable steps */}
+              <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>
+
+                {/* Step 1: End of month */}
+                <div style={{padding:"18px 20px",borderBottom:investigationStep>=1?"1px solid #1a1830":"none"}}>
+                  <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 1 · End of month</div>
+                  <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+                    <span style={{fontSize:30,fontWeight:800,color:eomBal!==null?(eomBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
+                      {eomBal!==null?`${eomBal>=0?"":"−"}£${Math.round(Math.abs(eomBal)).toLocaleString()}`:"—"}
+                    </span>
+                    <span style={{fontSize:12,color:"#6b7280"}}>end of {today.toLocaleDateString("en-GB",{month:"long"})}</span>
+                  </div>
+                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.65}}>
+                    {eomBal===null?"Your actuals already extend past end of month."
+                      :eomBal>=0
+                        ?"You're on track to finish the month in the green. Any surplus now is money that can work harder for you."
+                        :"You're projected to finish the month in the negative. Check which categories are eating into your balance."}
+                  </p>
+                  {investigationStep===0&&(
+                    <button onClick={()=>setInvestigationStep(1)}
+                      style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
+                      See 6-week outlook →
+                    </button>
+                  )}
+                </div>
+
+                {/* Step 2: 6-week forecast */}
+                {investigationStep>=1&&(
+                  <div style={{padding:"18px 20px",borderBottom:investigationStep>=2?"1px solid #1a1830":"none"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 2 · 6-week forecast</div>
+                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+                      <span style={{fontSize:30,fontWeight:800,color:forecastEndBal!==null?(forecastEndBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
+                        {forecastEndBal!==null?`${forecastEndBal>=0?"":"−"}£${Math.round(Math.abs(forecastEndBal)).toLocaleString()}`:"—"}
+                      </span>
+                      <span style={{fontSize:12,color:"#6b7280"}}>in 6 weeks</span>
+                    </div>
+                    <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.65}}>
+                      {forecastEndBal===null?"Not enough forecast data yet."
+                        :forecastEndBal>=0
+                          ?(lastActualBal!==null&&forecastEndBal>lastActualBal
+                            ?`Up £${Math.round(forecastEndBal-lastActualBal).toLocaleString()} from today — you're in a strong position to start building towards a goal.`
+                            :"Your balance is holding steady. Spending and income look balanced.")
+                          :"Your balance is forecast to go negative. Even small cuts to your biggest categories can shift this."}
+                    </p>
+                    {investigationStep===1&&(
+                      <button onClick={()=>setInvestigationStep(2)}
+                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
+                        Dig into spending →
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Step 3: One-off weeks */}
+                {investigationStep>=2&&(
+                  <div style={{padding:"18px 20px",borderBottom:investigationStep>=3?"1px solid #1a1830":"none"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 3 · One-off spending</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#e0e7ff",marginBottom:6}}>Was anything a one-off?</div>
+                    <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.65}}>
+                      {hasOutliers
+                        ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} — things like holidays or a big one-time purchase. Marking them keeps your forecast accurate.`
+                        :"Your spending looks consistent — no unusual spikes detected."}
+                    </p>
+                    {hasOutliers&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
+                        {detectedOutliers.map((o,i)=>{
+                          const isExcl=excludedWeeks[o.cat]?.has(o.weekKey);
+                          return(
+                            <div key={i} style={{borderRadius:10,border:`1.5px solid ${isExcl?"#6366f1":"#2d2a6e"}`,background:isExcl?"rgba(99,102,241,0.08)":"rgba(255,255,255,0.02)",overflow:"hidden",transition:"all 0.2s"}}>
+                              <div style={{padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
+                                <div style={{flex:1}}>
+                                  <div style={{fontSize:12,fontWeight:700,color:"#e0e7ff",marginBottom:2}}>{o.cat}</div>
+                                  <div style={{fontSize:11,color:"#6b7280"}}>{o.weekLabel} · <span style={{color:"#f87171"}}>£{Math.round(o.amount).toLocaleString()}</span> vs typical £{Math.round(o.typicalAmt).toLocaleString()}</div>
+                                </div>
+                                {isExcl&&<div style={{fontSize:11,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ One-off</div>}
+                              </div>
+                              {!isExcl&&(
+                                <div style={{borderTop:"1px solid #1a1830",padding:"10px 14px",background:"rgba(99,102,241,0.05)",display:"flex",gap:8}}>
+                                  <button onClick={()=>markOneOff(o.cat,o.weekKey)}
+                                    style={{flex:1,padding:"8px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.4)"}}>
+                                    Yes, mark as one-off →
+                                  </button>
+                                  <button onClick={()=>setInvestigationStep(3)}
+                                    style={{padding:"8px 12px",background:"transparent",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:7,fontSize:12,cursor:"pointer",flexShrink:0}}>
+                                    No
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {hasOutliers&&anyExcluded&&(
+                      <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:14}}>
+                        Forecast updated — excluded from your averages.
+                      </div>
+                    )}
+                    <button onClick={()=>setInvestigationStep(3)}
+                      style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
+                      {hasOutliers?(anyExcluded?"Set my goals →":"Skip & set goals →"):"Set my goals →"}
+                    </button>
+                  </div>
+                )}
+
+                {/* Step 4: Goals + Claude advice */}
+                {investigationStep>=3&&(
+                  <div style={{padding:"18px 20px"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 4 · Your goals</div>
+                    <div style={{fontSize:14,fontWeight:800,color:"#e0e7ff",marginBottom:6}}>What are you working towards?</div>
+                    <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.65}}>Tell us your goal and we'll give you specific advice based on your actual spending data.</p>
+                    <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. Save for a house deposit, pay off my credit card, build a 3-month emergency fund..." rows={3}
+                      style={{width:"100%",padding:"10px 12px",background:"#06050f",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:12,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.5,marginBottom:10,boxSizing:"border-box"}}/>
+                    <button onClick={fetchGoalsAdvice} disabled={!goalsText.trim()||goalsLoading}
+                      style={{width:"100%",padding:"10px 0",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsText.trim()?"pointer":"default",marginBottom:goalsAdvice||goalsLoading?12:0,transition:"all 0.2s",boxShadow:goalsText.trim()?"0 2px 10px rgba(99,102,241,0.3)":"none"}}>
+                      {goalsLoading?"Thinking...":"Get personalised advice →"}
+                    </button>
+                    {goalsLoading&&(
+                      <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
+                        <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
+                        {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                      </div>
+                    )}
+                    {goalsAdvice&&!goalsLoading&&(
+                      <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:"1px solid #2d2a6e",borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:"#c7d2fe",lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
+                        {goalsAdvice}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {/* Tour reopen button */}
       <button onClick={reopenTour}
         title="Tour & tips"

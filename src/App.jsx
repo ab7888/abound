@@ -438,7 +438,7 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
-  const spendCats = allCats.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+  const spendCats = allCats.filter(c=>c!=="Salary");
 
   // Step 1: income routing only — reliable, no ambiguity
   const withIncome = transactions.map(t => {
@@ -461,6 +461,7 @@ Rules (be strict — phone/broadband/mobile contracts are Memberships, NOT Other
 - Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
 - Rent: rent, mortgage, letting agents, estate agents, property management companies
 - Memberships: ALL phone contracts & mobile bills (EE, O2, Vodafone, Three/3, Sky Mobile, Virgin Mobile, iD Mobile, Lebara, giffgaff, Smarty), broadband/TV/internet (BT, Virgin Media, Sky, TalkTalk, Plusnet, Hyperoptic, Zen), streaming (Netflix, Spotify, Apple Music, Disney+, Amazon Prime, YouTube Premium, Apple TV), gym (PureGym, David Lloyd, The Gym, Anytime Fitness), any subscription or recurring service, iCloud, Google One, Adobe, Microsoft 365
+- Card Repayment: outgoing payments TO a credit card from a bank account — look for narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", "PAYMENT RECV'D", "PAYMENT THANK YOU", or any "PAYMENT TO [CARD NAME]"
 - Other Payments: everything else including shops, health & opticians (Specsavers, Vision Express, Boots, Superdrug, Lloyds Pharmacy), clothing (ASOS, Zara, H&M, Next, Primark), electronics, Amazon purchases, ATM withdrawals, bank transfers
 
 Every transaction MUST get a category — no nulls, no unknowns. If genuinely unsure → Other Payments.
@@ -512,10 +513,17 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
         const nameMatch = nameText.match(/\[[\s\S]*\]/);
         if(!nameMatch) throw new Error("no json");
         const names = JSON.parse(nameMatch[0]);
+        const ALLOWED_AUTO = [
+          {match:/shop|retail|cloth|fashion|market|superstore|store|purchase/i, name:"Shopping"},
+          {match:/gym|fitness|sport|crossfit|pilates|yoga|leisure|active/i, name:"Gym"},
+          {match:/medic|pharma|health|chemist|clinic|dental|optical|prescription/i, name:"Medication"},
+        ];
         const newCatsList = [];
         clusters.forEach(([,txns],i)=>{
-          const catName = (names[i]&&typeof names[i]==="string"&&names[i].trim()) || "Other Payments";
-          if(catName==="Other Payments") return;
+          const raw = (names[i]&&typeof names[i]==="string"&&names[i].trim()) || "";
+          const allowed = ALLOWED_AUTO.find(a=>a.match.test(raw));
+          const catName = allowed ? allowed.name : null;
+          if(!catName) return;
           newCatsList.push({name:catName, count:txns.length, examples:[...new Set(txns.map(t=>t.narrative))].slice(0,2)});
           txns.forEach(t=>results.set(t.narrative+t.date+t.amount, catName));
         });
@@ -1582,6 +1590,16 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
               </div>
             );
           })}
+          {catRepaymentInCats&&(()=>{const crHovered=hoveredCat==="Card Repayment";const crColor="#ec4899";const crCount=(txnCountByCat["Card Repayment"]||0)+(bucketCounts["Card Repayment"]||0);return(
+            <div key="Card Repayment" onDragOver={e=>{e.preventDefault();setHoveredCat("Card Repayment");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Card Repayment");}}
+              style={{border:`2px ${crHovered?"solid":"dashed"} ${crHovered?crColor:`${crColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:crHovered?`${crColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:crHovered?`0 0 24px ${crColor}33`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon("Card Repayment",crHovered?"#fff":crColor,24)}</div>
+              <div style={{fontSize:13,fontWeight:700,color:crHovered?"#fff":crColor,textAlign:"center",lineHeight:1.3}}>Card Repayment</div>
+              <div style={{fontSize:10,fontWeight:600,color:crCount>0?crColor:"#2d2a6e",background:crCount>0?`${crColor}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${crCount>0?`${crColor}44`:"#1f1d35"}`}}>
+                {crCount>0?`${crCount} txn${crCount>1?"s":""}`:crHovered?"drop here":"empty"}
+              </div>
+            </div>
+          );})()}
           {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
             <div onDragOver={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
               style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
@@ -1729,7 +1747,7 @@ const MobileSort=()=>{
 }
 
 // ─── Review Screen ────────────────────────────────────────────────────────────
-function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
+function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onReviewEdit, reviewEditCount}) {
   const [editCount, setEditCount] = useState(0);
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const [filterCat, setFilterCat] = useState("All");
@@ -1737,23 +1755,23 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow}) {
   const [search, setSearch] = useState("");
   const isMobile = useIsMobile();
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});return list;},[transactions]);
-  const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>b.date-a.date),[transactions]);
+  const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount)),[transactions]);
   const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
-  function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(editCount>=2)setShowUpdatedBanner(true);}
+  function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(onReviewEdit)onReviewEdit();if(editCount>=1)setShowUpdatedBanner(true);}
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
   const inputStyle={padding:"7px 12px",border:"1px solid #1f1d35",borderRadius:8,fontSize:13,background:"#0f0e1a",color:"#e0e7ff",outline:"none",cursor:"pointer"};
   return(
     <div style={{flex:1,overflow:"auto",background:"#08070f"}}>
       <style>{GLOBAL_CSS}</style>
       {showUpdatedBanner&&(
-        <div style={{background:"rgba(16,185,129,0.1)",borderBottom:"1px solid rgba(16,185,129,0.2)",padding:"12px 24px",display:"flex",alignItems:"center",gap:16}}>
-          <div style={{width:8,height:8,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 8px #10b981",flexShrink:0}}/>
+        <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.12))",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"14px 24px",display:"flex",alignItems:"center",gap:16,animation:"slideInUp 0.3s ease both"}}>
+          <div style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px #6366f1",flexShrink:0}}/>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#6ee7b7",fontSize:13}}>Cash flow updated</div>
-            <div style={{color:"#4b5563",fontSize:12}}>Your corrections have been applied.</div>
+            <div style={{fontWeight:700,color:"#e0e7ff",fontSize:13}}>Good work — categories updated</div>
+            <div style={{color:"#818cf8",fontSize:12}}>Head back to Cash Flow for your personalised financial analysis.</div>
           </div>
-          <button onClick={onGoToCashFlow} style={{padding:"7px 16px",background:"rgba(16,185,129,0.15)",color:"#10b981",border:"1px solid rgba(16,185,129,0.3)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
-          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"#374151",background:"none",border:"none",cursor:"pointer"}}>×</button>
+          <button onClick={onGoToCashFlow} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.4)",flexShrink:0}}>View my analysis →</button>
+          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
       <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
@@ -1896,6 +1914,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [reviewEditCount, setReviewEditCount] = useState(0);
   const [apiKeyInput, setApiKeyInput] = useState(()=>localStorage.getItem("anthropic_api_key")||"");
   const [apiKeySaved, setApiKeySaved] = useState(false);
   const isMobile = useIsMobile();
@@ -1975,8 +1994,8 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions}/></OrientationGate>}
-      {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
+      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")}/></OrientationGate>}
+      {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount}/>}
     </div>
   );
 }
@@ -2076,7 +2095,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) {
+function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, reviewEditCount}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -2124,7 +2143,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns}) 
   const [editingEvent, setEditingEvent] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
-  const [outlierPromptDone, setOutlierPromptDone] = useState(false);
+  const [investigationStep, setInvestigationStep] = useState(0);
+  const [goalsText, setGoalsText] = useState("");
+  const [goalsAdvice, setGoalsAdvice] = useState("");
+  const [goalsLoading, setGoalsLoading] = useState(false);
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
   useEffect(()=>{
@@ -2623,40 +2645,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </>
       )}
 
-      {/* Outlier week detection card */}
-      {!outlierPromptDone&&detectedOutliers.length>0&&(
-        <div style={{position:"fixed",bottom:24,right:24,zIndex:900,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"16px 18px",maxWidth:340,boxShadow:"0 8px 40px rgba(0,0,0,0.5)",animation:"slideInUp 0.35s cubic-bezier(0.16,1,0.3,1) both"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-            <div style={{fontSize:13,fontWeight:700,color:"#fff",lineHeight:1.3}}>Looks like you've had an expensive period</div>
-            <button onClick={()=>setOutlierPromptDone(true)} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:10,lineHeight:1,flexShrink:0}}>×</button>
-          </div>
-          <p style={{fontSize:12,color:"#9ca3af",marginBottom:12,lineHeight:1.5}}>These weeks look unusually high — possibly a holiday or one-off. Excluding them gives you a more accurate forecast.</p>
-          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
-            {detectedOutliers.map((o,i)=>{
-              const isExcluded=excludedWeeks[o.cat]?.has(o.weekKey);
-              return(
-                <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",background:"rgba(99,102,241,0.06)",borderRadius:7,border:`1px solid ${isExcluded?"#6366f1":"#2d2a6e"}`}}>
-                  <div style={{flex:1}}>
-                    <span style={{fontSize:11,fontWeight:600,color:isExcluded?"#a5b4fc":"#c7d2fe"}}>{o.cat}</span>
-                    <span style={{fontSize:10,color:"#6b7280",marginLeft:6}}>{o.weekLabel}</span>
-                    <div style={{fontSize:10,color:"#6b7280",marginTop:1}}>£{Math.round(o.amount).toLocaleString()} <span style={{color:"#4b5563"}}>vs typical £{Math.round(o.typicalAmt).toLocaleString()}</span></div>
-                  </div>
-                  <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);if(isExcluded){s.delete(o.weekKey);}else{s.add(o.weekKey);}next[o.cat]=s;return next;})}
-                    style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${isExcluded?"#6366f1":"#374151"}`,background:isExcluded?"rgba(99,102,241,0.2)":"transparent",color:isExcluded?"#a5b4fc":"#6b7280",cursor:"pointer",whiteSpace:"nowrap"}}>
-                    {isExcluded?"Excluded ✓":"Exclude"}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-          <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{setExcludedWeeks(prev=>{const next={...prev};detectedOutliers.forEach(o=>{const s=new Set(next[o.cat]||[]);s.add(o.weekKey);next[o.cat]=s;});return next;});setOutlierPromptDone(true);}}
-              style={{flex:1,padding:"8px 12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Exclude all</button>
-            <button onClick={()=>setOutlierPromptDone(true)}
-              style={{padding:"8px 12px",background:"none",color:"#6b7280",border:"1px solid #2d2a6e",borderRadius:8,fontSize:12,cursor:"pointer"}}>Keep as-is</button>
-          </div>
-        </div>
-      )}
 
       {/* Right-click category menu */}
       {ctxMenu&&(
@@ -2913,6 +2901,183 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   : `Your balance is forecast to drop by £${Math.round(Math.abs(diff)).toLocaleString()} over 6 weeks.${topSpendCat?` Reducing ${topSpendCat.c} (£${weeklyTopSpend.toLocaleString()}/wk) would have the biggest impact.`:""}`
                 }
               </span>
+            </div>
+          );
+        })()}
+
+        {/* Investigation panel — shown after user reviews 2+ transactions */}
+        {reviewEditCount>=2&&(()=>{
+          const today=new Date();
+          const endOfMonth=new Date(today.getFullYear(),today.getMonth()+1,0);
+          // Find the actual week closest to end of month
+          const eomActualIdx=actualWeeks.reduce((best,w,i)=>{const diff=Math.abs(w.date-endOfMonth);return best===-1||diff<Math.abs(actualWeeks[best].date-endOfMonth)?i:best;},-1);
+          const eomActualBal=eomActualIdx>=0?combinedClosingBalances.actual[eomActualIdx]:null;
+          // Find forecast week closest to end of month
+          const eomFcIdx=forecastWeeks.reduce((best,w,i)=>{const diff=Math.abs(w.date-endOfMonth);return best===-1||diff<Math.abs(forecastWeeks[best].date-endOfMonth)?i:best;},-1);
+          const eomFcBal=eomFcIdx>=0?combinedClosingBalances.forecast[eomFcIdx]:null;
+          const eomBal=eomFcBal!==null&&eomFcBal!==undefined?eomFcBal:eomActualBal;
+          const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
+          const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+
+          // Outlier toggle — re-use detectedOutliers
+          const hasOutliers=detectedOutliers.length>0;
+          const anyExcluded=detectedOutliers.some(o=>excludedWeeks[o.cat]?.has(o.weekKey));
+
+          const apiKey=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
+
+          async function fetchGoalsAdvice(){
+            if(!goalsText.trim()||!apiKey)return;
+            setGoalsLoading(true);setGoalsAdvice("");
+            try{
+              const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
+              const sixWeekBal=forecastEndBal!==null&&forecastEndBal!==undefined?Math.round(forecastEndBal):null;
+              const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
+              const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
+- Weekly spend average: £${weeklySpend}
+- Projected balance in 6 weeks: ${sixWeekBal!==null?"£"+sixWeekBal.toLocaleString():"unknown"}
+- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
+
+Their financial goals: "${goalsText}"
+
+Give 2-3 specific, actionable pieces of advice tailored to their goals and spending data. Be warm, direct, and concrete. Max 120 words. No bullet points — write as flowing sentences.`;
+              const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
+              if(!res.ok)throw new Error();
+              const data=await res.json();
+              setGoalsAdvice(data.content[0].text.trim());
+            }catch(_){setGoalsAdvice("Couldn't load advice right now. Check your API key in Settings.");}
+            setGoalsLoading(false);
+          }
+
+          const steps=[
+            {id:0,label:"Your end-of-month balance"},
+            {id:1,label:"Your 6-week outlook"},
+            {id:2,label:"Was this an expensive period?"},
+            {id:3,label:"Your financial goals"},
+          ];
+
+          return(
+            <div style={{margin:"20px 0 0",borderRadius:14,border:"1px solid #2d2a6e",background:"rgba(99,102,241,0.04)",overflow:"hidden",animation:"fadeUp 0.4s ease both"}}>
+              <div style={{background:"linear-gradient(135deg,#1e1b4b,#13112a)",padding:"14px 18px",display:"flex",alignItems:"center",gap:10,borderBottom:"1px solid #2d2a6e"}}>
+                <div style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px rgba(99,102,241,0.6)"}}/>
+                <span style={{fontSize:13,fontWeight:800,color:"#e0e7ff",letterSpacing:"-0.01em"}}>Your Financial Analysis</span>
+                <div style={{marginLeft:"auto",display:"flex",gap:6}}>
+                  {steps.map((s,i)=>(
+                    <button key={s.id} onClick={()=>setInvestigationStep(s.id)}
+                      style={{width:22,height:22,borderRadius:"50%",border:`1.5px solid ${investigationStep>=s.id?"#6366f1":"#2d2a6e"}`,background:investigationStep>=s.id?"#6366f1":"transparent",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
+                      {investigationStep>s.id?"✓":s.id+1}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Step 1: End of month balance */}
+              <div style={{padding:"18px 20px",borderBottom:investigationStep>=1?"1px solid #1f1d35":"none"}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 1 · END OF MONTH</div>
+                <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
+                  <span style={{fontSize:28,fontWeight:800,color:eomBal!==null?(eomBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums"}}>
+                    {eomBal!==null?`${eomBal>=0?"":"−"}£${Math.round(Math.abs(eomBal)).toLocaleString()}`:"—"}
+                  </span>
+                  <span style={{fontSize:13,color:"#6b7280"}}>projected by end of {today.toLocaleDateString("en-GB",{month:"long"})}</span>
+                </div>
+                <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>
+                  {eomBal===null?"Upload includes actuals beyond end of month — balance shown above."
+                    :eomBal>=0
+                      ?`You're on track to finish the month in the green. That's a solid foundation — any surplus now is money that can work harder for you.`
+                      :`You're projected to finish the month in the negative. It's worth looking at which categories are eating into your balance this month.`}
+                </p>
+                {investigationStep===0&&<button onClick={()=>setInvestigationStep(1)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>See 6-week outlook →</button>}
+              </div>
+
+              {/* Step 2: 6-week forecast */}
+              {investigationStep>=1&&(
+                <div style={{padding:"18px 20px",borderBottom:investigationStep>=2?"1px solid #1f1d35":"none"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 2 · 6-WEEK FORECAST</div>
+                  <div style={{display:"flex",alignItems:"baseline",gap:10,marginBottom:8}}>
+                    <span style={{fontSize:28,fontWeight:800,color:forecastEndBal!==null?(forecastEndBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums"}}>
+                      {forecastEndBal!==null?`${forecastEndBal>=0?"":"−"}£${Math.round(Math.abs(forecastEndBal)).toLocaleString()}`:"—"}
+                    </span>
+                    <span style={{fontSize:13,color:"#6b7280"}}>balance in 6 weeks</span>
+                  </div>
+                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>
+                    {forecastEndBal===null?"Not enough forecast data yet."
+                      :forecastEndBal>=0
+                        ?(lastActualBal!==null&&forecastEndBal>lastActualBal
+                            ?`Your balance is forecast to grow by £${Math.round(forecastEndBal-lastActualBal).toLocaleString()} over the next 6 weeks. If that holds, you're in a strong position to start building towards a goal.`
+                            :`Your balance is holding steady over 6 weeks. Spending and income look balanced — keep it up.`)
+                        :`Your balance is forecast to go negative over the next 6 weeks. This is worth addressing now — even small cuts to your biggest spending categories can shift this significantly.`}
+                  </p>
+                  {investigationStep===1&&<button onClick={()=>setInvestigationStep(2)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Dig into spending →</button>}
+                </div>
+              )}
+
+              {/* Step 3: Expensive period toggle */}
+              {investigationStep>=2&&(
+                <div style={{padding:"18px 20px",borderBottom:investigationStep>=3?"1px solid #1f1d35":"none"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 3 · SPENDING PATTERNS</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>Was this a more expensive period than usual?</div>
+                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.6}}>
+                    {hasOutliers
+                      ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} in your data. If this was a one-off (holiday, big purchase), you can exclude those weeks so your forecast reflects your normal spend.`
+                      :"Your spending looks consistent week-on-week — no unusual spikes detected. Your forecast already reflects your typical patterns."}
+                  </p>
+                  {hasOutliers&&(
+                    <div style={{marginBottom:14}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                        {detectedOutliers.map((o,i)=>{
+                          const isExcl=excludedWeeks[o.cat]?.has(o.weekKey);
+                          return(
+                            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"rgba(99,102,241,0.06)",borderRadius:8,border:`1px solid ${isExcl?"#6366f1":"#2d2a6e"}`}}>
+                              <div style={{flex:1}}>
+                                <span style={{fontSize:11,fontWeight:600,color:"#c7d2fe"}}>{o.cat}</span>
+                                <span style={{fontSize:10,color:"#6b7280",marginLeft:8}}>{o.weekLabel} · £{Math.round(o.amount).toLocaleString()} vs typical £{Math.round(o.typicalAmt).toLocaleString()}</span>
+                              </div>
+                              <button onClick={()=>setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[o.cat]||[]);isExcl?s.delete(o.weekKey):s.add(o.weekKey);next[o.cat]=s;return next;})}
+                                style={{fontSize:10,fontWeight:700,padding:"3px 10px",borderRadius:5,border:`1px solid ${isExcl?"#6366f1":"#374151"}`,background:isExcl?"rgba(99,102,241,0.2)":"transparent",color:isExcl?"#a5b4fc":"#6b7280",cursor:"pointer",whiteSpace:"nowrap"}}>
+                                {isExcl?"Excluded ✓":"Mark as one-off"}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      {anyExcluded&&(
+                        <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7"}}>
+                          Excluding those weeks has updated your forecast. Your projected 6-week balance now reflects your typical spending.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {investigationStep===2&&<button onClick={()=>setInvestigationStep(3)} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>Set your goals →</button>}
+                </div>
+              )}
+
+              {/* Step 4: Financial goals + Claude advice */}
+              {investigationStep>=3&&(
+                <div style={{padding:"18px 20px"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:6}}>STEP 4 · YOUR GOALS</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>What are you working towards?</div>
+                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.6}}>Tell us your financial goal and we'll give you specific advice based on your actual spending data.</p>
+                  <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. Save for a house deposit, pay off my credit card, build a 3-month emergency fund..." rows={3}
+                    style={{width:"100%",padding:"10px 12px",background:"#0a0919",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:12,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.5,marginBottom:10,boxSizing:"border-box"}}/>
+                  <button onClick={fetchGoalsAdvice} disabled={!goalsText.trim()||goalsLoading}
+                    style={{padding:"9px 20px",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsText.trim()?"pointer":"default",marginBottom:goalsAdvice||goalsLoading?12:0,transition:"all 0.2s"}}>
+                    {goalsLoading?"Thinking...":"Get personalised advice →"}
+                  </button>
+                  {goalsLoading&&(
+                    <div style={{display:"flex",gap:5,alignItems:"center",padding:"12px 0"}}>
+                      <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
+                      {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                    </div>
+                  )}
+                  {goalsAdvice&&!goalsLoading&&(
+                    <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:"1px solid #2d2a6e",borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:"#c7d2fe",lineHeight:1.7,animation:"fadeUp 0.3s ease both"}}>
+                      {goalsAdvice}
+                    </div>
+                  )}
+                  {!apiKey&&!goalsAdvice&&(
+                    <div style={{fontSize:11,color:"#4b5563",marginTop:4}}>Add an API key in Settings to unlock personalised advice.</div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })()}

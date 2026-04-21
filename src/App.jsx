@@ -455,10 +455,15 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
     : userCategories;
   const spendCats = allCats.filter(c=>c!=="Salary");
 
+  const SALARY_SIGNALS = /salary|payroll|wages|pay day|payday|bacs credit|employer|wage slip/i;
   // Step 1: income routing only — reliable, no ambiguity
   const withIncome = transactions.map(t => {
-    if (t.isIncome && t.account==="Main Account") return {...t, category:"Salary"};
     if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
+    if (t.isIncome && t.account==="Main Account") {
+      // Only mark as Salary if narrative looks like payroll; rest go to Claude for classification
+      if (SALARY_SIGNALS.test(t.narrative)) return {...t, category:"Salary"};
+      return {...t, category:null}; // let Claude decide (refund, transfer, etc.)
+    }
     return {...t, category:null};
   });
   const toClassify = withIncome.filter(t=>t.category===null);
@@ -479,7 +484,8 @@ Rules (be strict — follow these exactly):
 - Online Shopping: Amazon purchases (NOT Amazon Prime/Fresh), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, Topshop, IKEA, B&Q, Wayfair, Dunelm, any online retail purchase, clothing bought online
 - Healthcare: Boots (pharmacy/retail), Superdrug, Specsavers, Vision Express, any pharmacy/chemist, optician, dentist, NHS charges, private GP, physio, BUPA, health insurance, counselling
 - Card Repayment: outgoing payments TO a credit card from a bank account — look for narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", "PAYMENT RECV'D", "PAYMENT THANK YOU", or any "PAYMENT TO [CARD NAME]"
-- Other Payments: everything else — ATM withdrawals, bank transfers, anything not clearly matching the above
+- Salary: incoming credits that are clearly a salary/wage payment — BACS credits from an employer, payroll deposits. NOT person-to-person transfers, refunds, or cashback
+- Other Payments: everything else — ATM withdrawals, bank transfers, payments to people, refunds, cashback, anything not clearly matching the above
 
 Every transaction MUST get a category — no nulls, no unknowns. If genuinely unsure → Other Payments.
 Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
@@ -2119,6 +2125,13 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [goalsText, setGoalsText] = useState("");
   const [goalsAdvice, setGoalsAdvice] = useState("");
   const [goalsLoading, setGoalsLoading] = useState(false);
+  const [forecastOverrides, setForecastOverrides] = useState([]); // {id,cat,newAmt,fromWeekKey,label}
+  const [addingOverride, setAddingOverride] = useState(false);
+  const [newOvCat, setNewOvCat] = useState("");
+  const [newOvAmt, setNewOvAmt] = useState("");
+  const [newOvFrom, setNewOvFrom] = useState("");
+  const [goalAmount, setGoalAmount] = useState("");
+  const [goalTargetDate, setGoalTargetDate] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
   useEffect(()=>{
@@ -2328,8 +2341,21 @@ function getLastWorkingDay(year, month) {
       });
       out[acc]["Card Repayment"]=result;
     });
+    // Third pass: user forecast overrides (salary changes, rent increases, etc.)
+    const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
+    forecastOverrides.forEach(ov=>{
+      const fromIdx=forecastWeeks.findIndex(w=>w.key>=ov.fromWeekKey);
+      if(fromIdx<0) return;
+      accounts.forEach(acc=>{
+        if(!out[acc]?.[ov.cat]) return;
+        const cur=out[acc][ov.cat];
+        for(let i=fromIdx;i<forecastWeeks.length;i++){
+          out[acc][ov.cat][i]=MONTHLY_OV_CATS.includes(ov.cat)?(cur[i]>0?ov.newAmt:0):ov.newAmt;
+        }
+      });
+    });
     return out;
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides]);
 
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
@@ -2984,7 +3010,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </button>
       )}
       {/* Investigation Panel — fixed right drawer */}
-      {reviewEditCount>=2&&(()=>{
+      {(()=>{
         const today=new Date();
         const endOfMonth=new Date(today.getFullYear(),today.getMonth()+1,0);
         const eomActualIdx=actualWeeks.reduce((best,w,i)=>{const d=Math.abs(w.date-endOfMonth);return best===-1||d<Math.abs(actualWeeks[best].date-endOfMonth)?i:best;},-1);
@@ -3112,6 +3138,36 @@ Give 2-3 simple, practical tips to help them reach their goal. Write like a help
                             :"Your balance is holding steady. Spending and income look balanced.")
                           :"Your balance is forecast to go negative. Even small cuts to your biggest categories can shift this."}
                     </p>
+                    {(()=>{
+                      const budgetItems=Object.entries(budgets).map(([key,budget])=>{
+                        const [acc,cat]=key.split("::");
+                        const avgAct=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)/Math.max(actualWeeks.length,1);
+                        return{key,cat,budget,avgAct,over:avgAct>budget};
+                      }).filter(x=>x.budget>0);
+                      if(!budgetItems.length) return null;
+                      const overCount=budgetItems.filter(x=>x.over).length;
+                      return(
+                        <div style={{marginBottom:14,padding:"10px 12px",background:"rgba(255,255,255,0.02)",border:"1px solid #1a1830",borderRadius:8}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.08em"}}>
+                            Budget health · {overCount>0?<span style={{color:"#ef4444"}}>{overCount} over</span>:<span style={{color:"#10b981"}}>all on track</span>}
+                          </div>
+                          {budgetItems.map(x=>{
+                            const pct=Math.min((x.avgAct/x.budget)*100,100);
+                            return(
+                              <div key={x.key} style={{marginBottom:6}}>
+                                <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                                  <span style={{fontSize:11,color:"#c7d2fe"}}>{x.cat}</span>
+                                  <span style={{fontSize:11,color:x.over?"#ef4444":"#10b981",fontWeight:700}}>£{Math.round(x.avgAct)}<span style={{color:"#4b5563",fontWeight:400}}> / £{x.budget}</span></span>
+                                </div>
+                                <div style={{height:3,background:"rgba(255,255,255,0.06)",borderRadius:99}}>
+                                  <div style={{height:"100%",width:`${pct}%`,background:x.over?"#ef4444":"#10b981",borderRadius:99}}/>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                     {investigationStep===1&&(
                       <button onClick={()=>setInvestigationStep(2)}
                         style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
@@ -3173,31 +3229,185 @@ Give 2-3 simple, practical tips to help them reach their goal. Write like a help
                   </div>
                 )}
 
-                {/* Step 4: Goals + Claude advice */}
-                {investigationStep>=3&&(
-                  <div style={{padding:"18px 20px"}}>
-                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 4 · Your goals</div>
-                    <div style={{fontSize:14,fontWeight:800,color:"#e0e7ff",marginBottom:6}}>What are you working towards?</div>
-                    <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 12px",lineHeight:1.65}}>Tell us your goal and we'll give you specific advice based on your actual spending data.</p>
-                    <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. Save for a house deposit, pay off my credit card, build a 3-month emergency fund..." rows={3}
-                      style={{width:"100%",padding:"10px 12px",background:"#06050f",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:12,resize:"vertical",outline:"none",fontFamily:"inherit",lineHeight:1.5,marginBottom:10,boxSizing:"border-box"}}/>
-                    <button onClick={fetchGoalsAdvice} disabled={!goalsText.trim()||goalsLoading}
-                      style={{width:"100%",padding:"10px 0",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsText.trim()?"pointer":"default",marginBottom:goalsAdvice||goalsLoading?12:0,transition:"all 0.2s",boxShadow:goalsText.trim()?"0 2px 10px rgba(99,102,241,0.3)":"none"}}>
-                      {goalsLoading?"Thinking...":"Get personalised advice →"}
-                    </button>
-                    {goalsLoading&&(
-                      <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
-                        <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
-                        {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                {/* Step 4: Plan — forecast changes + savings goal + advice */}
+                {investigationStep>=3&&(()=>{
+                  const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
+                  const isMonthly=cat=>MONTHLY_OV_CATS.includes(cat);
+
+                  // Savings goal trajectory
+                  const curBal=lastActualBal??0;
+                  const goalAmt=parseFloat(goalAmount)||0;
+                  const targetBal=curBal+goalAmt;
+                  const weeklyNets=forecastWeeks.map((_,i)=>{
+                    const inc=accounts.reduce((s,acc)=>s+(forecastData[acc]?.["Salary"]?.[i]||0),0);
+                    const sp=accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0);
+                    return inc-sp;
+                  });
+                  const avgWeeklyNet=weeklyNets.reduce((a,b)=>a+b,0)/Math.max(weeklyNets.length,1);
+                  const weeksToGoal=goalAmt>0&&avgWeeklyNet>0?Math.ceil(goalAmt/avgWeeklyNet):null;
+                  const projDate=weeksToGoal?new Date(Date.now()+weeksToGoal*7*86400000):null;
+                  const targetDate=goalTargetDate?new Date(goalTargetDate):null;
+                  const onTrack=projDate&&targetDate?projDate<=targetDate:null;
+                  const pctSaved=goalAmt>0?Math.min(Math.max((forecastEndBal!==null?forecastEndBal-curBal:0)/goalAmt*100,0),100):0;
+
+                  // Build Claude prompt with structured data
+                  async function fetchGoalsAdvice2(){
+                    if(!apiKey)return;
+                    setGoalsLoading(true);setGoalsAdvice("");
+                    try{
+                      const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
+                      const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
+                      const goalLine=goalAmt>0?`Savings goal: £${goalAmt.toLocaleString()}${targetDate?" by "+targetDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"}):""}. Projected to reach it in ${weeksToGoal?Math.ceil(weeksToGoal/4.33)+" months":"unknown — spending exceeds income"}.`:"No specific savings goal set.";
+                      const overrideLine=forecastOverrides.length?`Upcoming changes: ${forecastOverrides.map(o=>`${o.cat} → £${o.newAmt}${isMonthly(o.cat)?"/mo":"/wk"} from ${forecastWeeks.find(w=>w.key===o.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short"})||"soon"}`).join(", ")}.`:"";
+                      const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
+- Weekly spend average: £${weeklySpend}
+- Projected balance in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unknown"}
+- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
+- Weekly net savings rate: ${avgWeeklyNet>=0?"£"+Math.round(avgWeeklyNet):"−£"+Math.round(Math.abs(avgWeeklyNet))} per week
+- ${goalLine}${overrideLine?"\n- "+overrideLine:""}
+${goalsText.trim()?`\nTheir own words: "${goalsText}"`:""}
+
+Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
+                      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
+                      if(!res.ok)throw new Error();
+                      const data=await res.json();
+                      setGoalsAdvice(data.content[0].text.trim());
+                    }catch(_){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
+                    setGoalsLoading(false);
+                  }
+
+                  const inputStyle={padding:"7px 10px",background:"#06050f",border:"1px solid #2d2a6e",borderRadius:7,color:"#e0e7ff",fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
+
+                  return(
+                    <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:18}}>
+                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 4 · Your plan</div>
+
+                      {/* ── Forecast changes ── */}
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                          <span style={{fontSize:13,fontWeight:800,color:"#e0e7ff"}}>Upcoming changes</span>
+                          <button onClick={()=>{ setAddingOverride(v=>!v); setNewOvCat(categories[0]||"Salary"); setNewOvAmt(""); setNewOvFrom(forecastWeeks[0]?.key||""); }}
+                            style={{fontSize:11,padding:"4px 10px",background:addingOverride?"#2d2a6e":"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>
+                            {addingOverride?"Cancel":"+ Add change"}
+                          </button>
+                        </div>
+                        <p style={{fontSize:11,color:"#6b7280",margin:"0 0 10px",lineHeight:1.5}}>Tell us if your salary, rent, or spending is about to change — we'll update the forecast.</p>
+
+                        {forecastOverrides.length>0&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
+                            {forecastOverrides.map(ov=>(
+                              <div key={ov.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"rgba(99,102,241,0.06)",border:"1px solid #2d2a6e",borderRadius:7}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <span style={{fontSize:12,color:"#c7d2fe",fontWeight:600}}>{ov.cat}</span>
+                                  <span style={{fontSize:11,color:"#6b7280"}}> → £{ov.newAmt.toLocaleString()}{isMonthly(ov.cat)?"/mo":"/wk"} from {forecastWeeks.find(w=>w.key===ov.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short",day:"numeric"})||"now"}</span>
+                                </div>
+                                <button onClick={()=>setForecastOverrides(p=>p.filter(x=>x.id!==ov.id))} style={{color:"#4b5563",background:"none",border:"none",cursor:"pointer",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {addingOverride&&(
+                          <div style={{padding:"12px",background:"rgba(255,255,255,0.02)",border:"1px solid #2d2a6e",borderRadius:8,display:"flex",flexDirection:"column",gap:8}}>
+                            <div style={{display:"flex",gap:8}}>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Category</div>
+                                <select value={newOvCat} onChange={e=>setNewOvCat(e.target.value)} style={{...inputStyle,width:"100%",cursor:"pointer"}}>
+                                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                                </select>
+                              </div>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>New amount ({isMonthly(newOvCat)?"£/mo":"£/wk"})</div>
+                                <input type="number" value={newOvAmt} onChange={e=>setNewOvAmt(e.target.value)} placeholder="0" style={{...inputStyle,width:"100%"}}/>
+                              </div>
+                            </div>
+                            <div>
+                              <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Starting from week</div>
+                              <select value={newOvFrom} onChange={e=>setNewOvFrom(e.target.value)} style={{...inputStyle,width:"100%",cursor:"pointer"}}>
+                                {forecastWeeks.map(w=><option key={w.key} value={w.key}>{w.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</option>)}
+                              </select>
+                            </div>
+                            <button disabled={!newOvAmt||!newOvFrom} onClick={()=>{
+                              setForecastOverrides(p=>[...p,{id:Date.now(),cat:newOvCat,newAmt:parseFloat(newOvAmt),fromWeekKey:newOvFrom}]);
+                              setAddingOverride(false);setNewOvAmt("");
+                            }} style={{padding:"8px",background:newOvAmt&&newOvFrom?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:newOvAmt&&newOvFrom?"#fff":"#374151",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:newOvAmt&&newOvFrom?"pointer":"default"}}>
+                              Save change →
+                            </button>
+                          </div>
+                        )}
                       </div>
-                    )}
-                    {goalsAdvice&&!goalsLoading&&(
-                      <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:"1px solid #2d2a6e",borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:"#c7d2fe",lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
-                        {goalsAdvice}
+
+                      {/* ── Savings goal ── */}
+                      <div>
+                        <div style={{fontSize:13,fontWeight:800,color:"#e0e7ff",marginBottom:10}}>Savings goal</div>
+                        <div style={{display:"flex",gap:8,marginBottom:8}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Save an extra</div>
+                            <div style={{position:"relative"}}>
+                              <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#6b7280",fontSize:12}}>£</span>
+                              <input type="number" value={goalAmount} onChange={e=>setGoalAmount(e.target.value)} placeholder="5,000" style={{...inputStyle,width:"100%",paddingLeft:18}}/>
+                            </div>
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>By (optional)</div>
+                            <input type="month" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
+                          </div>
+                        </div>
+
+                        {goalAmt>0&&(()=>{
+                          const canSave=avgWeeklyNet>0;
+                          return(
+                            <div style={{padding:"12px",background:"rgba(99,102,241,0.05)",border:`1px solid ${onTrack===false?"rgba(239,68,68,0.3)":onTrack===true?"rgba(16,185,129,0.3)":"#2d2a6e"}`,borderRadius:8}}>
+                              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#6b7280",marginBottom:6}}>
+                                <span>Today: £{Math.round(curBal).toLocaleString()}</span>
+                                <span>Goal: £{Math.round(targetBal).toLocaleString()}</span>
+                              </div>
+                              <div style={{height:6,background:"rgba(255,255,255,0.06)",borderRadius:99,marginBottom:8,overflow:"hidden"}}>
+                                <div style={{height:"100%",width:`${pctSaved}%`,background:"linear-gradient(90deg,#6366f1,#8b5cf6)",borderRadius:99,transition:"width 0.5s"}}/>
+                              </div>
+                              {canSave?(
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                  <div>
+                                    <div style={{fontSize:12,fontWeight:700,color:onTrack===false?"#ef4444":onTrack===true?"#10b981":"#c7d2fe"}}>
+                                      {onTrack===true?"✓ On track":"✗ " + (onTrack===false?"Needs adjustment":"Projected:")}
+                                    </div>
+                                    <div style={{fontSize:11,color:"#6b7280"}}>
+                                      {projDate?.toLocaleDateString("en-GB",{month:"long",year:"numeric"})} · £{Math.round(Math.abs(avgWeeklyNet))}/wk net
+                                    </div>
+                                  </div>
+                                  <div style={{fontSize:20,fontWeight:800,color:"#6366f1"}}>{Math.ceil(weeksToGoal/4.33)}mo</div>
+                                </div>
+                              ):(
+                                <div style={{fontSize:12,color:"#ef4444"}}>Your spending exceeds income — saving isn't possible at current rates.</div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="Anything else? e.g. paying off a credit card, building an emergency fund..." rows={2}
+                          style={{...inputStyle,width:"100%",marginTop:8,resize:"vertical",lineHeight:1.5}}/>
                       </div>
-                    )}
-                  </div>
-                )}
+
+                      {/* ── Claude advice ── */}
+                      <div>
+                        <button onClick={fetchGoalsAdvice2} disabled={goalsLoading}
+                          style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
+                          {goalsLoading?"Thinking...":"Get personalised advice →"}
+                        </button>
+                        {goalsLoading&&(
+                          <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
+                            <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
+                            {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                          </div>
+                        )}
+                        {goalsAdvice&&!goalsLoading&&(
+                          <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:"1px solid #2d2a6e",borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:"#c7d2fe",lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
+                            {goalsAdvice}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           </>

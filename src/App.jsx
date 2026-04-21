@@ -2182,7 +2182,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
-    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes in the Review tab fixing any mistakes will make your forecast dramatically more accurate.",cta:"Review categories →",skip:null,isFinal:true,highlight:null},
+    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Got it →",skip:null,isFinal:true,isReviewPrompt:true,highlight:null},
   ];
 
   const getHighlightRect = () => {
@@ -2200,9 +2200,13 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   };
   
 
+  function finishTour(){
+    setTourVisible(false);setTourStep(null);
+    setTimeout(()=>setInvestigationOpen(true),350);
+  }
   function advanceTour(){
     const nextStep = tourStep===0 ? 1 : tourStep+1;
-    if(tourStep>=TOUR_STEPS.length-1){setTourVisible(false);setTourStep(null);if(onGoToReview)onGoToReview();return;}
+    if(tourStep>=TOUR_STEPS.length-1){finishTour();return;}
     setTourStep(nextStep);
     const target = TOUR_STEPS[nextStep]?.scrollTo;
     if(target){
@@ -2216,7 +2220,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     }
   }
   function closeTour(){setTourVisible(false);setTourStep(null);}
-  function reopenTour(){setTourStep(0);setTourVisible(true);}
+  function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
@@ -2763,14 +2767,37 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               {currentStep.body.split('\n\n').map((para,i)=>(
                 <p key={i} style={{fontSize:13,color:"#a1a1aa",lineHeight:1.7,margin:i===0?"0 0 10px":"10px 0 0"}}>{para}</p>
               ))}
-              <div style={{display:"flex",gap:8,marginTop:20}}>
+              {currentStep.isReviewPrompt&&(
+                <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:"1px solid #2d2a6e",background:"#0a0919"}}>
+                  <div style={{padding:"7px 12px",background:"#13112a",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",textTransform:"uppercase",borderBottom:"1px solid #1f1d35"}}>Review Categories</div>
+                  {[
+                    {name:"DELIVEROO*GH7K2",amt:"£24.50",cat:"Food",color:"#10b981",delay:0},
+                    {name:"AMAZON MKTPLACE",amt:"£67.99",cat:"Online Shopping",color:"#6366f1",delay:80},
+                    {name:"TFL TRAVEL CH",amt:"£38.20",cat:"Travel",color:"#06b6d4",delay:160},
+                    {name:"SPECSAVERS LTD",amt:"£15.00",cat:"Healthcare",color:"#f59e0b",delay:240},
+                    {name:"NETFLIX.COM",amt:"£10.99",cat:"Memberships",color:"#8b5cf6",delay:320},
+                  ].map(row=>(
+                    <div key={row.name} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:"1px solid #0d0b1e",gap:10,animation:`fadeUp 0.3s ease ${row.delay}ms both`}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:"#c7d2fe",fontFamily:"monospace",letterSpacing:"-0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</div>
+                        <div style={{fontSize:10,color:"#4b5563"}}>{row.amt}</div>
+                      </div>
+                      <div style={{fontSize:10,fontWeight:700,color:row.color,background:`${row.color}18`,padding:"2px 8px",borderRadius:99,flexShrink:0,border:`1px solid ${row.color}33`}}>{row.cat}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div style={{display:"flex",gap:8,marginTop:16}}>
                 <button onClick={advanceTour}
                   style={{flex:1,padding:"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)"}}
                   onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
                   onMouseLeave={e=>e.currentTarget.style.transform=""}>
                   {currentStep.cta}
                 </button>
-                {currentStep.skip&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
+                {currentStep.isReviewPrompt&&(
+                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:"11px 14px",background:"none",color:"#6366f1",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
+                )}
+                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
               </div>
               {tourStep>0&&(
                 <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:16}}>
@@ -3022,8 +3049,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
         const hasOutliers=detectedOutliers.length>0;
         const anyExcluded=detectedOutliers.some(o=>excludedWeeks[o.cat]?.has(o.weekKey));
-        const apiKey=import.meta.env.VITE_ANTHROPIC_KEY||"";
-
         function markOneOff(cat,weekKey){
           setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[cat]||[]);s.add(weekKey);next[cat]=s;return next;});
           const cashBalEl=document.querySelector('[data-tour="cashbalance"]');
@@ -3031,29 +3056,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           setHighlightCashBal(true);
           if(highlightCashBalTimer.current) clearTimeout(highlightCashBalTimer.current);
           highlightCashBalTimer.current=setTimeout(()=>setHighlightCashBal(false),3000);
-        }
-
-        async function fetchGoalsAdvice(){
-          if(!goalsText.trim()||!apiKey)return;
-          setGoalsLoading(true);setGoalsAdvice("");
-          try{
-            const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
-            const sixWeekBal=forecastEndBal!==null&&forecastEndBal!==undefined?Math.round(forecastEndBal):null;
-            const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
-            const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
-- Weekly spend average: £${weeklySpend}
-- Projected balance in 6 weeks: ${sixWeekBal!==null?"£"+sixWeekBal.toLocaleString():"unknown"}
-- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
-
-Their financial goals: "${goalsText}"
-
-Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
-            const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
-            if(!res.ok)throw new Error();
-            const data=await res.json();
-            setGoalsAdvice(data.content[0].text.trim());
-          }catch(_){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
-          setGoalsLoading(false);
         }
 
         const drawerW=isMobile?"100%":370;
@@ -3252,7 +3254,8 @@ Give 2-3 simple, practical tips to help them reach their goal. Write like a help
 
                   // Build Claude prompt with structured data
                   async function fetchGoalsAdvice2(){
-                    if(!apiKey)return;
+                    const key=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
+                    if(!key){setGoalsAdvice("Couldn't load advice right now. Please try again.");return;}
                     setGoalsLoading(true);setGoalsAdvice("");
                     try{
                       const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
@@ -3268,7 +3271,7 @@ Give 2-3 simple, practical tips to help them reach their goal. Write like a help
 ${goalsText.trim()?`\nTheir own words: "${goalsText}"`:""}
 
 Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
-                      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
+                      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
                       if(!res.ok)throw new Error();
                       const data=await res.json();
                       setGoalsAdvice(data.content[0].text.trim());

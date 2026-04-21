@@ -2552,7 +2552,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):categories.filter(c=>c==="Card Repayment");
     // For CC accounts Card Repayment is income, exclude from spend
-    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"&&(isMainAcc||c!=="Card Repayment")), INTERCOMPANY_CATEGORY])];
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
     // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
     const spendCatsLocal=allSpendCats.filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);

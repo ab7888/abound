@@ -2119,7 +2119,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [ctxMenu, setCtxMenu] = useState(null);
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [investigationStep, setInvestigationStep] = useState(0);
-  const [investigationOpen, setInvestigationOpen] = useState(true);
+  const [investigationOpen, setInvestigationOpen] = useState(false);
   const [highlightCashBal, setHighlightCashBal] = useState(false);
   const highlightCashBalTimer = useRef(null);
   const [goalsText, setGoalsText] = useState("");
@@ -2154,8 +2154,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   };
 
   useEffect(()=>{
-    if(cashFlowTourShown) return;
-    cashFlowTourShown = true;
+    setInvestigationOpen(false);
     const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
     return()=>clearTimeout(t);
   },[]);
@@ -2219,7 +2218,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 200);
     }
   }
-  function closeTour(){setTourVisible(false);setTourStep(null);}
+  function closeTour(){setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
@@ -2469,8 +2468,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
 
   function CatRow({cat,account}){
-    const isIncome=cat==="Salary";
-    const isRepayment=cat==="Card Repayment";
+    const isIncome=cat==="Salary"||(cat==="Card Repayment"&&account!=="Main Account");
+    const isRepayment=false;
     const key=`${account}::${cat}`;
     const hidden=hiddenCats.has(key);
     const actuals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0));
@@ -2551,9 +2550,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
   function AccountSection({account}){
     const isMainAcc=account==="Main Account";
-    const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):[];
-    // Always include Card Repayment in spend, even if not in categories (single account case)
-    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
+    const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):categories.filter(c=>c==="Card Repayment");
+    // For CC accounts Card Repayment is income, exclude from spend
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"&&(isMainAcc||c!=="Card Repayment")), INTERCOMPANY_CATEGORY])];
     // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
     const spendCatsLocal=allSpendCats.filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);
@@ -2562,8 +2561,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     });
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
-    const accIncome=actualWeeks.map(w=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
-    const accIncomeForecasts=forecastWeeks.map((_,i)=>categories.filter(c=>c==="Salary").reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+    const incomeCatList=isMainAcc?["Salary"]:["Card Repayment"];
+    const accIncome=actualWeeks.map(w=>incomeCatList.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
+    const accIncomeForecasts=forecastWeeks.map((_,i)=>incomeCatList.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
@@ -2898,7 +2898,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
                 {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:"#c7d2fe",textAlign:"right",background:"#1e1b4b",borderRight:"1px solid #2d2a6e",whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
-                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>AVG</th>
+                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>WK AVG</th>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;

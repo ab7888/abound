@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import logo from "./logo.png";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Other Payments"];
+const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Transfers", "Other Payments"];
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
@@ -85,7 +85,7 @@ const MERCHANT_MAP = {
   ],
   Memberships: [
     "netflix","spotify","apple","itunes","icloud","apple.com","appstore",
-    "amazon prime","amazon","prime video","disney","disney+","disneyplus",
+    "amazon prime","prime video","disney","disney+","disneyplus",
     "hbo","hulu","paramount","peacock","britbox","mubi","curzon","odeon","vue",
     "gymbox","puregym","virgin active","david lloyd","anytime fitness","planet fitness",
     "gym","fitness","crossfit","pilates","yoga","barry's","f45","orangetheory",
@@ -97,7 +97,22 @@ const MERCHANT_MAP = {
     "duolingo","masterclass","coursera","udemy","skillshare",
     "venmo","klarna","clearpay","laybuy",
     "dating","hinge","tinder","bumble","match","eharmony",
-    "headspace","calm","meditation","therapy","betterhelp","nhs app"
+    "headspace","calm","meditation","therapy","betterhelp","nhs app",
+    // Telecoms / mobile
+    "o2","three","giffgaff","id mobile","smarty","tesco mobile","lebara","lyca","sky mobile","bt mobile","talkmobile","virgin mobile",
+    // Insurance
+    "insurance","aviva","axa","direct line","directline","admiral","churchill","hastings direct",
+    "esure","elephant auto","saga","rac breakdown","green flag","aa breakdown","legal & general",
+    "legal and general","royal london","zurich","allianz","ageas","sun life","sunlife",
+    "nfu mutual","vitality health","bupa","cigna","aig life","one call","comparethemarket",
+    "confused.com","go compare","moneysupermarket","policy expert","simply business",
+    "pet plan","petplan","bought by many","waggel","animal friends",
+    "home protect","homeprotect","policy bee","lv insurance","lv=","sheila's wheels",
+    "elephant auto","hastings","zenith insurance","intact insurance",
+    // Road tax / vehicle
+    "dvla","vehicle tax","road tax","driver & vehicle","dvla licensing",
+    // Utilities treated as subscriptions
+    "water plus","affinity water","southern water direct"
   ],
   Rent: [
     "rent","landlord","letting","estate agent","rightmove","zoopla","openrent",
@@ -456,13 +471,24 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const spendCats = allCats.filter(c=>c!=="Salary");
 
   const SALARY_SIGNALS = /salary|payroll|wages|pay day|payday|bacs credit|employer|wage slip/i;
-  // Step 1: income routing only — reliable, no ambiguity
+  // Pattern: "FIRSTNAME LASTNAME, PAYMENT" — person-to-person bank transfer
+  const TRANSFER_RE = /^([A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+){1,3}),\s*payment/i;
+  const BUSINESS_WORDS = /\b(bank|building|society|card|finance|limited|ltd|plc|group|services|insurance|direct|national|barclays|lloyds|hsbc|natwest|halifax|santander|monzo|starling|revolut|amex|visa|mastercard|paypal|apple|google|amazon)\b/i;
+  function isPersonTransfer(narrative) {
+    const m = narrative.trim().match(TRANSFER_RE);
+    return !!(m && !BUSINESS_WORDS.test(m[1]));
+  }
+
+  // Step 1: income/transfer routing — reliable, no ambiguity
   const withIncome = transactions.map(t => {
+    // Person-to-person transfer (outgoing or incoming) — caught before income routing
+    if (isPersonTransfer(t.narrative)) return {...t, category:"Transfers"};
     if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
     if (t.isIncome && t.account==="Main Account") {
-      // Only mark as Salary if narrative looks like payroll; rest go to Claude for classification
       if (SALARY_SIGNALS.test(t.narrative)) return {...t, category:"Salary"};
-      return {...t, category:null}; // let Claude decide (refund, transfer, etc.)
+      // Large incoming credit on Main Account → most likely salary/wages with non-standard narrative
+      if (t.amount >= 500) return {...t, category:"Salary"};
+      return {...t, category:null}; // small credit — let Claude decide (refund, cashback, etc.)
     }
     return {...t, category:null};
   });
@@ -479,15 +505,16 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
 Rules (be strict — follow these exactly):
 - Food: supermarkets (Tesco, Sainsbury's, Asda, Morrisons, Aldi, Lidl, Waitrose, M&S Food, Co-op, Iceland), restaurants, cafes, Pret, Costa, Starbucks, McDonald's, KFC, Nando's, Greggs, takeaways, Deliveroo, Just Eat, Uber Eats
 - Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
-- Rent: rent, mortgage, letting agents, estate agents, property management companies
-- Memberships: ALL phone contracts & mobile bills (EE, O2, Vodafone, Three/3, Sky Mobile, Virgin Mobile, iD Mobile, Lebara, giffgaff, Smarty), broadband/TV/internet (BT, Virgin Media, Sky, TalkTalk, Plusnet, Hyperoptic, Zen), streaming (Netflix, Spotify, Apple Music, Disney+, Amazon Prime, YouTube Premium, Apple TV), gym memberships (PureGym, David Lloyd, The Gym, Anytime Fitness), any subscription or recurring service, iCloud, Google One, Adobe, Microsoft 365
-- Online Shopping: Amazon purchases (NOT Amazon Prime/Fresh), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, Topshop, IKEA, B&Q, Wayfair, Dunelm, any online retail purchase, clothing bought online
-- Healthcare: Boots (pharmacy/retail), Superdrug, Specsavers, Vision Express, any pharmacy/chemist, optician, dentist, NHS charges, private GP, physio, BUPA, health insurance, counselling
-- Card Repayment: outgoing payments TO a credit card from a bank account — look for narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", "PAYMENT RECV'D", "PAYMENT THANK YOU", or any "PAYMENT TO [CARD NAME]"
-- Salary: incoming credits that are clearly a salary/wage payment — BACS credits from an employer, payroll deposits. NOT person-to-person transfers, refunds, or cashback
-- Other Payments: everything else — ATM withdrawals, bank transfers, payments to people, refunds, cashback, anything not clearly matching the above
+- Rent: rent, mortgage, letting agents, estate agents, property management companies, council tax, utilities (gas, electricity, water)
+- Memberships: (1) ALL phone/mobile contracts — O2, Vodafone, EE, Three, giffgaff, iD Mobile, Smarty, Tesco Mobile, Lebara, Sky Mobile, Virgin Mobile; (2) broadband/TV — BT, Virgin Media, Sky, TalkTalk, Plusnet; (3) streaming — Netflix, Spotify, Disney+, Amazon Prime, Apple TV, YouTube Premium; (4) gym memberships; (5) any subscription or SaaS — iCloud, Adobe, Microsoft 365, Google One; (6) ALL insurance — car insurance, home insurance, life insurance, pet insurance, travel insurance, breakdown cover, any narrative containing "insurance", "insure", "protection plan", "breakdown"; (7) DVLA vehicle tax, road tax; (8) Aviva, AXA, Direct Line, Admiral, Churchill, Hastings, Saga, RAC, AA, Legal & General, Royal London, Zurich, Allianz, Sun Life, BUPA Dental, Vitality
+- Transfers: person-to-person bank transfers — narrative pattern is "FIRSTNAME LASTNAME, PAYMENT" (a person's name followed by a comma and the word payment). Both sending and receiving money to/from friends or family. NOT business payments.
+- Online Shopping: Amazon purchases (NOT Amazon Prime), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, IKEA, B&Q, Wayfair, Dunelm, PayPal purchases (when clearly retail), any online retail
+- Healthcare: Boots, Superdrug, Specsavers, Vision Express, any pharmacy, optician, dentist, NHS charges, private GP, physio, counselling
+- Card Repayment: outgoing payments TO a credit card — narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", or any "PAYMENT TO [CARD NAME]"
+- Salary: incoming credits from an employer — payroll, BACS from employer, wages. Also use Salary for any large incoming payment (£500+) where the source is not clearly a shop refund or person transfer.
+- Other Payments: ATM withdrawals, unclear bank transfers, cash, anything not matching above
 
-Every transaction MUST get a category — no nulls, no unknowns. If genuinely unsure → Other Payments.
+Every transaction MUST get a category — no nulls. If genuinely unsure → Other Payments.
 Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
 
 Transactions:
@@ -2304,7 +2331,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     "Food":"Groceries, restaurants, cafes, takeaways, and food delivery.",
     "Travel":"TfL, trains, flights, Uber, Bolt, parking — anything transport.",
     "Rent":"Rent, mortgage, and utilities like energy, broadband and water.",
-    "Memberships":"Subscriptions — streaming, gym, apps, and recurring services.",
+    "Memberships":"Subscriptions — streaming, gym, phone contracts, insurance, road tax, and any recurring services.",
+    "Transfers":"Money sent or received to/from friends and family — excluded from your spend totals as it's not really spending.",
     "Other Payments":"Transactions that didn't fit a specific category.",
     "Card Repayment":"Money moved to pay your credit card. Excluded from Total Spend — it's not new spending.",
     "Total Spend":"Sum of all real spend including Card Repayments — money that left this account.",
@@ -2401,7 +2429,7 @@ function getLastWorkingDay(year, month) {
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
     const MONTHLY_CATS=["Salary"];
     const EXACT_CATS=["Rent","Memberships"];
-    const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
+    const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare","Transfers"];
     const forecastCats=[...new Set([...categories, INTERCOMPANY_CATEGORY])];
     // Precompute non-recurring amounts by week/account/cat so rolling averages exclude one-offs
     const nrMap={};
@@ -3468,8 +3496,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
                   // Build Claude prompt with structured data
                   async function fetchGoalsAdvice2(){
-                    const key=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
-                    if(!key){setGoalsAdvice("Couldn't load advice right now. Please try again.");return;}
                     setGoalsLoading(true);setGoalsAdvice("");
                     try{
                       const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
@@ -3485,11 +3511,25 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 ${goalsText.trim()?`\nTheir own words: "${goalsText}"`:""}
 
 Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
-                      const res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]})});
-                      if(!res.ok)throw new Error();
-                      const data=await res.json();
-                      setGoalsAdvice(data.content[0].text.trim());
-                    }catch(_){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
+                      const payload={model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]};
+                      // Try server-side proxy first (works on all devices, no client key needed)
+                      let text=null;
+                      try{
+                        const r=await fetch("/api/categorise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+                        if(r.ok){const d=await r.json();text=d.content?.[0]?.text?.trim()||null;}
+                      }catch(_){}
+                      // Fallback: direct call with user-supplied key
+                      if(!text){
+                        const key=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
+                        if(!key)throw new Error("no-key");
+                        const r2=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(payload)});
+                        if(!r2.ok)throw new Error();
+                        const d2=await r2.json();
+                        text=d2.content?.[0]?.text?.trim()||null;
+                      }
+                      if(!text)throw new Error();
+                      setGoalsAdvice(text);
+                    }catch(e){setGoalsAdvice(e?.message==="no-key"?"No API key found — enter one below to enable AI advice.":"Couldn't load advice right now. Please try again.");}
                     setGoalsLoading(false);
                   }
 

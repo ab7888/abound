@@ -1930,7 +1930,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 <span
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setOneOffTip({x:r.left,y:r.bottom+8});}}
                   onMouseLeave={()=>setOneOffTip(null)}
-                  style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:"50%",background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.5)",color:"#f59e0b",fontSize:9,fontWeight:700,cursor:"help",flexShrink:0,lineHeight:1}}>
+                  style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",fontSize:9,fontWeight:700,cursor:"help",flexShrink:0,lineHeight:1}}>
                   ?
                 </span>
                 <span style={{fontSize:9,color:"rgba(99,102,241,0.5)",letterSpacing:"0.06em",fontStyle:"italic"}}>+ ONE-OFF</span>
@@ -1958,7 +1958,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     title="Mark as one-off — excludes from forecast"
-                    style={{padding:"6px 10px",borderRadius:20,border:`1.5px solid ${nonRecurring.has(t.narrative)?"#f59e0b":"#2d2a6e"}`,background:nonRecurring.has(t.narrative)?"rgba(245,158,11,0.15)":"transparent",color:nonRecurring.has(t.narrative)?"#f59e0b":"#4b5563",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                    style={{padding:"6px 10px",borderRadius:20,border:`1.5px solid ${nonRecurring.has(t.narrative)?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.15)"}`,background:nonRecurring.has(t.narrative)?"rgba(255,255,255,0.12)":"transparent",color:nonRecurring.has(t.narrative)?"#ffffff":"rgba(255,255,255,0.4)",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                     {nonRecurring.has(t.narrative)?"One-off ✓":"One-off"}
                   </button>
                 </div>
@@ -1982,13 +1982,13 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     style={{padding:"4px 10px",borderRadius:20,
-                      border:`1.5px solid ${nonRecurring.has(t.narrative)?"#f59e0b":"rgba(245,158,11,0.35)"}`,
-                      background:nonRecurring.has(t.narrative)?"rgba(245,158,11,0.18)":"rgba(245,158,11,0.06)",
-                      color:nonRecurring.has(t.narrative)?"#f59e0b":"#d97706",
+                      border:`1.5px solid ${nonRecurring.has(t.narrative)?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.15)"}`,
+                      background:nonRecurring.has(t.narrative)?"rgba(255,255,255,0.12)":"transparent",
+                      color:nonRecurring.has(t.narrative)?"#ffffff":"rgba(255,255,255,0.4)",
                       fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,
                       transition:"all 0.15s",letterSpacing:"0.01em"}}
-                    onMouseEnter={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(245,158,11,0.12)";e.currentTarget.style.borderColor="#f59e0b";e.currentTarget.style.color="#f59e0b";}}}
-                    onMouseLeave={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(245,158,11,0.06)";e.currentTarget.style.borderColor="rgba(245,158,11,0.35)";e.currentTarget.style.color="#d97706";}}}>
+                    onMouseEnter={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(255,255,255,0.07)";e.currentTarget.style.borderColor="rgba(255,255,255,0.35)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}}
+                    onMouseLeave={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.color="rgba(255,255,255,0.4)";}}}>
                     {nonRecurring.has(t.narrative)?"✓ One-off":"One-off"}
                   </button>
                 </div>
@@ -2277,6 +2277,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [goalTargetDate, setGoalTargetDate] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
+  const [splitByCard, setSplitByCard] = useState(false);
   useEffect(()=>{
     if(!showThemeTip)return;
     const t=setTimeout(()=>{setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");},4000);
@@ -2347,7 +2348,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
-    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Got it →",skip:null,isFinal:true,isReviewPrompt:true,highlight:null},
+    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null},
+    {title:"Grouped or split by card?",body:"By default all your accounts are combined so you see one clean view of where your money goes.\n\nUse the toggle above the table to switch to split-by-card — useful when you want to see exactly which card is spending what.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"},
   ];
 
   const getHighlightRect = () => {
@@ -2858,6 +2860,161 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     );
   }
 
+  function GroupedCatRow({cat}){
+    const isIncome=cat==="Salary";
+    const key=`g::${cat}`;
+    const hidden=hiddenCats.has(key);
+    const actuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)));
+    const forecasts=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>s+(forecastData[acc]?.[cat]?.[i]||0),0));
+    const totalAct=actuals.reduce((a,b)=>a+b,0);
+    const totalFcst=forecasts.reduce((a,b)=>a+b,0);
+    const budget=budgets[key];
+    const rowColor=isIncome?"rgba(16,185,129,0.04)":"transparent";
+    const textColor=isIncome?"#34d399":T.catText;
+    return(
+      <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
+        <td/>
+        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
+          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+          onMouseLeave={()=>setTooltip(null)}>
+          {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
+          {cat}
+          <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>?</span>
+        </td>
+        {actuals.map((v,i)=>(
+          <td key={i}
+            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            onClick={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account:"ALL",cat,weekKey:actualWeeks[i].key});}:undefined}
+            onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account:"ALL",cat,weekKey:actualWeeks[i].key});}:undefined}>
+            {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
+          </td>
+        ))}
+        <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
+        {forecasts.map((v,i)=>{
+          const over=budget&&v>0&&v>budget;
+          const wk=forecastWeeks[i];
+          const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account==="ALL";
+          return(
+            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true,false,i,over),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:"pointer"}}
+              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account:"ALL",label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
+              {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
+            </td>
+          );
+        })}
+        <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
+        <td style={{padding:"3px 6px",minWidth:120}}>
+          {isIncome?null:editingBudget===key
+            ?<div style={{padding:"2px 0"}}>
+                <div style={{fontSize:9,color:"#6b7280",marginBottom:2}}>Weekly budget (£)</div>
+                <input autoFocus type="number" defaultValue={budget||""} placeholder="e.g. 50"
+                  onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}}
+                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
+                  style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"4px 6px",outline:"none",background:T.budgetInputBg,color:T.budgetInputColor,boxSizing:"border-box"}}/>
+              </div>
+            :budget?(()=>{
+                const avgAct=totalAct/Math.max(actualWeeks.length,1);
+                const pct=(avgAct/budget)*100;
+                const over=avgAct>budget;
+                const diff=Math.abs(avgAct-budget);
+                const fcstOver=forecasts.filter(v=>v>0&&v>budget).length;
+                const barColor=pct>110?"#ef4444":pct>85?"#f59e0b":"#10b981";
+                return(
+                  <div onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",padding:"3px 4px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
+                      <span style={{fontSize:11,fontWeight:800,color:over?"#ef4444":T.budgetSpendColor}}>£{Math.round(avgAct)}<span style={{fontSize:8,fontWeight:400,color:T.dimText}}> /wk avg</span></span>
+                      <span style={{fontSize:9,color:"#4b5563",cursor:"text"}}>£{budget}/wk</span>
+                    </div>
+                    <div style={{height:4,background:T.progressTrack,borderRadius:99,overflow:"hidden",marginBottom:3}}>
+                      <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:barColor,borderRadius:99,transition:"width 0.4s"}}/>
+                    </div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <span style={{fontSize:9,fontWeight:700,color:over?"#ef4444":"#10b981"}}>{over?`▲ £${Math.round(diff)} over`:`▼ £${Math.round(diff)} left`}</span>
+                      {fcstOver>0&&<span style={{fontSize:8,color:"#f59e0b",fontWeight:700}}>⚠ {fcstOver}wk</span>}
+                    </div>
+                  </div>
+                );
+              })()
+            :<button data-budget-cell onClick={()=>setEditingBudget(key)}
+                style={{width:"100%",padding:"5px 0",fontSize:10,color:T.dimText,border:`1px dashed ${T.dimBorder}`,borderRadius:5,background:"none",cursor:"pointer",transition:"all 0.15s"}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor="#6366f1";e.currentTarget.style.color="#6366f1";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.dimBorder;e.currentTarget.style.color=T.dimText;}}>
+                + set budget
+              </button>
+          }
+        </td>
+        <td style={{padding:"3px 6px",textAlign:"center"}}>
+          <button onClick={()=>setHiddenCats(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;})} style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${hidden?T.dimText:T.border}`,background:hidden?"rgba(239,68,68,0.1)":"transparent",color:hidden?"#ef4444":T.dimText,cursor:"pointer"}}>
+            {hidden?"show":"hide"}
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  function GroupedSection(){
+    const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").filter(cat=>{
+      const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
+      const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
+      return totalActual>=5||totalForecast>=5;
+    });
+    const accActuals=actualWeeks.map(w=>spendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
+    const accForecasts=forecastWeeks.map((_,i)=>spendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
+    const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Salary"]||0),0)));
+    const salaryForecasts=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>s+(forecastData[acc]?.["Salary"]?.[i]||0),0));
+    const weeklyNetActual=actualWeeks.map((_,i)=>salaryActuals[i]-accActuals[i]);
+    const weeklyNetForecast=forecastWeeks.map((_,i)=>salaryForecasts[i]-accForecasts[i]);
+    const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
+    return(
+      <>
+        <GroupedCatRow cat="Salary"/>
+        {spendCats.map(cat=><GroupedCatRow key={cat} cat={cat}/>)}
+        {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
+          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
+            <td/><td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706"}}>Planned expenses</td>
+            {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
+            <td style={tdTot(false)}>—</td>
+            {forecastWeeks.map((w,i)=>{
+              const wkEvents=events.filter(ev=>ev.weekKey===w.key);
+              const total=wkEvents.reduce((s,ev)=>s+ev.amount,0);
+              return(
+                <td key={i} style={{...tdAmt(total>0?"#d97706":"#d1d5db",true),position:"relative"}}>
+                  {total>0?(
+                    <span title={wkEvents.map(e=>`${e.label}: £${e.amount}`).join("\n")} style={{cursor:"help"}}>
+                      {fmtMoney(total)}
+                      <button onClick={()=>setEvents(ev=>ev.filter(e=>e.weekKey!==w.key))} style={{marginLeft:4,fontSize:8,color:"#ef4444",border:"none",background:"none",cursor:"pointer",verticalAlign:"middle"}}>×</button>
+                    </span>
+                  ):"—"}
+                </td>
+              );
+            })}
+            <td style={tdTot(true)}>{fmtMoney(events.reduce((s,ev)=>s+ev.amount,0))}</td>
+            <td/><td/>
+          </tr>
+        )}
+        <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
+          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help"}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
+            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+          {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
+          <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
+          {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
+          <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
+          <td/><td/>
+        </tr>
+        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
+          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help"}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
+          <td/><td/>
+        </tr>
+      </>
+    );
+  }
+
   const currentStep = tourStep!==null ? TOUR_STEPS[tourStep] : null;
 
   return(
@@ -2899,7 +3056,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 if(onUpdateTxns){
                   onUpdateTxns(transactions.map(t=>{
                     const wk=getWeekMonday(t.date).toISOString().slice(0,10);
-                    return(t.account===ctxMenu.account&&t.category===ctxMenu.cat&&wk===ctxMenu.weekKey)?{...t,category:c}:t;
+                    return((ctxMenu.account==="ALL"||t.account===ctxMenu.account)&&t.category===ctxMenu.cat&&wk===ctxMenu.weekKey)?{...t,category:c}:t;
                   }));
                 }
                 setCtxMenu(null);
@@ -3108,6 +3265,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
           );
         })()}
+        {/* Grouped / By card toggle */}
+        <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
+          <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
+          <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
+            <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
+          </button>
+        </div>
        <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",...(!isMobile?{flex:1,minHeight:0}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
@@ -3144,7 +3308,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               </tr>
             </thead>
             <tbody>
-              {accounts.map(acc=><AccountSection key={acc} account={acc}/>)}
+              {splitByCard ? accounts.map(acc=><AccountSection key={acc} account={acc}/>) : <GroupedSection/>}
               {/* Cash Balance row */}
               <tr data-tour="cashbalance" style={{background:T.cashBalRow,borderTop:"2px solid #6366f1",transition:"box-shadow 0.3s",animation:highlightCashBal?"cashBalPulse 1.2s ease-in-out 2":"none"}}>
                 <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}

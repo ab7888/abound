@@ -1773,6 +1773,7 @@ const MobileSort=()=>{
 function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onReviewEdit, reviewEditCount, nonRecurring=new Set(), onToggleNonRecurring}) {
   const [editCount, setEditCount] = useState(0);
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
+  const [showMobileTip, setShowMobileTip] = useState(()=>!sessionStorage.getItem("reviewMobileTipSeen"));
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
@@ -1822,6 +1823,17 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
             {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
           </div>
         </div>
+        {/* Mobile onboarding tip */}
+        {isMobile&&showMobileTip&&(
+          <div style={{background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.35)",borderRadius:12,padding:"13px 16px",marginBottom:14,display:"flex",alignItems:"flex-start",gap:12,animation:"slideInUp 0.3s ease both"}}>
+            <div style={{fontSize:22,flexShrink:0}}>👆</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:3}}>Tap the coloured pill to fix a category</div>
+              <div style={{fontSize:12,color:"#818cf8",lineHeight:1.5}}>The AI makes mistakes — spending 2 minutes here makes your forecast much more accurate.</div>
+            </div>
+            <button onClick={()=>{sessionStorage.setItem("reviewMobileTipSeen","1");setShowMobileTip(false);}} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0,lineHeight:1,padding:0}}>×</button>
+          </div>
+        )}
         {/* Table */}
         <div style={{background:"#0a0919",borderRadius:12,border:"1px solid #1f1d35",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
           {!isMobile&&(
@@ -1960,6 +1972,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
   const [reviewEditCount, setReviewEditCount] = useState(0);
   const [nonRecurring, setNonRecurring] = useState(new Set());
+  const [showFullscreenHint, setShowFullscreenHint] = useState(()=>!localStorage.getItem("fshintSeen"));
   const isMobile = useIsMobile();
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
   function toggleNonRecurring(narrative){setNonRecurring(s=>{const n=new Set(s);n.has(narrative)?n.delete(narrative):n.add(narrative);return n;});}
@@ -1981,6 +1994,13 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </button>
         {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
       </div>
+      {isMobile&&showFullscreenHint&&(
+        <div onClick={()=>{localStorage.setItem("fshintSeen","1");setShowFullscreenHint(false);document.documentElement.requestFullscreen?.().catch(()=>{});}} style={{background:"rgba(99,102,241,0.18)",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"10px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}}>
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          <span style={{flex:1,fontSize:12,color:"#c7d2fe",fontWeight:600}}>Tap here for a better experience — hides browser tabs</span>
+          <span style={{fontSize:16,color:"#4b5563"}}>×</span>
+        </div>
+      )}
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="#a5b4fc" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -2252,7 +2272,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     if(tourStep>=TOUR_STEPS.length-1){finishTour();return;}
     setTourStep(nextStep);
     const target = TOUR_STEPS[nextStep]?.scrollTo;
-    if(target){
+    // On mobile, scrollIntoView scrolls the whole page to the wrong position — skip it
+    if(target && !isMobile){
       setTimeout(()=>{
         const el = target==="budget-cell"
           ? document.querySelector("tbody tr.abound-row td:last-child button, tbody tr.abound-row [data-budget-cell]")
@@ -2880,7 +2901,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:"20px 24px",background:T.bg,transition:"background 0.25s"}}>
+      <div style={{flex:1,overflow:"auto",padding:isMobile?"12px 14px":"20px 24px",background:T.bg,transition:"background 0.25s",zoom:isMobile?"0.82":undefined}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -2958,9 +2979,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         })()}
        <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
-            <thead>
+            <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
-                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,zIndex:3,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
+                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
@@ -3137,16 +3158,40 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <>
             {/* Collapsed tab */}
             {!investigationOpen&&(
-              <button onClick={()=>setInvestigationOpen(true)}
-                style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>
-                ANALYSIS
-              </button>
+              isMobile ? (
+                <button onClick={()=>setInvestigationOpen(true)}
+                  style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",zIndex:810,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"14px 14px 0 0",padding:"10px 28px 14px",fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:"0.04em",boxShadow:"0 -4px 24px rgba(99,102,241,0.5)",display:"flex",alignItems:"center",gap:8}}>
+                  <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Financial Analysis
+                </button>
+              ) : (
+                <button onClick={()=>setInvestigationOpen(true)}
+                  style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>
+                  ANALYSIS
+                </button>
+              )
             )}
 
+            {/* Mobile backdrop */}
+            {isMobile&&investigationOpen&&<div onClick={()=>setInvestigationOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:799,animation:"fadeIn 0.2s ease both"}}/>}
             {/* Drawer */}
-            <div style={{position:"fixed",right:investigationOpen?0:(isMobile?"-100%":-370),top:isMobile?"auto":57,bottom:0,left:isMobile?0:"auto",width:drawerW,background:T.drawerBg,borderLeft:`1px solid ${T.drawerBorderColor}`,zIndex:800,display:"flex",flexDirection:"column",transition:"right 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:investigationOpen?"-12px 0 48px rgba(0,0,0,0.3)":"none",overflow:"hidden"}}>
+            <div style={isMobile?{
+              position:"fixed",bottom:investigationOpen?0:"-78vh",left:0,right:0,height:"78vh",
+              background:T.drawerBg,borderTop:`1px solid ${T.drawerBorderColor}`,
+              borderRadius:"20px 20px 0 0",zIndex:800,display:"flex",flexDirection:"column",
+              transition:"bottom 0.38s cubic-bezier(0.16,1,0.3,1)",
+              boxShadow:investigationOpen?"0 -12px 48px rgba(0,0,0,0.4)":"none",overflow:"hidden"
+            }:{
+              position:"fixed",right:investigationOpen?0:-370,top:57,bottom:0,width:370,
+              background:T.drawerBg,borderLeft:`1px solid ${T.drawerBorderColor}`,
+              zIndex:800,display:"flex",flexDirection:"column",
+              transition:"right 0.35s cubic-bezier(0.16,1,0.3,1)",
+              boxShadow:investigationOpen?"-12px 0 48px rgba(0,0,0,0.3)":"none",overflow:"hidden"
+            }}>
+              {/* Mobile drag handle */}
+              {isMobile&&<div style={{display:"flex",justifyContent:"center",padding:"10px 0 4px",flexShrink:0,cursor:"pointer"}} onClick={()=>setInvestigationOpen(false)}><div style={{width:36,height:4,borderRadius:2,background:"rgba(128,120,200,0.4)"}}/></div>}
               {/* Drawer header */}
-              <div style={{background:T.drawerHdrBg,padding:"13px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${T.drawerBorderColor}`,flexShrink:0}}>
+              <div style={{background:T.drawerHdrBg,padding:isMobile?"11px 16px":"13px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${T.drawerBorderColor}`,flexShrink:0}}>
                 <div style={{width:7,height:7,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px rgba(99,102,241,0.7)"}}/>
                 <span style={{fontSize:13,fontWeight:800,color:T.drawerHdrText,flex:1,letterSpacing:"-0.01em"}}>Financial Analysis</span>
                 {/* Step dots */}

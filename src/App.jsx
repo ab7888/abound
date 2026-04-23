@@ -723,6 +723,51 @@ function IllustrationBarchart() {
   );
 }
 
+function IllustrationCrystal(){
+  return(
+    <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+      <defs>
+        <radialGradient id="crystalCore" cx="50%" cy="42%" r="45%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.45"/>
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+        </radialGradient>
+        <radialGradient id="crystalBase" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.18"/>
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+      {/* Ambient glow */}
+      <ellipse cx="100" cy="130" rx="80" ry="60" fill="url(#crystalCore)"/>
+      {/* === Bottom half === */}
+      {/* Bottom-left face */}
+      <polygon points="100,230 42,130 100,155" fill="rgba(12,10,28,0.88)" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
+      {/* Bottom-right face */}
+      <polygon points="100,230 158,130 100,155" fill="rgba(20,18,42,0.78)" stroke="rgba(255,255,255,0.16)" strokeWidth="1"/>
+      {/* Equatorial accent */}
+      <line x1="42" y1="130" x2="158" y2="130" stroke="rgba(255,255,255,0.1)" strokeWidth="0.8"/>
+      {/* === Top half === */}
+      {/* Top-left face */}
+      <polygon points="100,38 42,130 100,155" fill="rgba(99,102,241,0.14)" stroke="rgba(255,255,255,0.38)" strokeWidth="1.2"/>
+      {/* Inner facet line on top-left */}
+      <line x1="100" y1="38" x2="71" y2="142" stroke="rgba(255,255,255,0.08)" strokeWidth="0.7"/>
+      {/* Top-right face — brightest */}
+      <polygon points="100,38 158,130 100,155" fill="rgba(99,102,241,0.22)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.3"/>
+      {/* Inner facet line on top-right */}
+      <line x1="100" y1="38" x2="129" y2="142" stroke="rgba(255,255,255,0.12)" strokeWidth="0.7"/>
+      {/* Centre vertical ridge */}
+      <line x1="100" y1="38" x2="100" y2="155" stroke="rgba(255,255,255,0.07)" strokeWidth="0.8"/>
+      {/* === Apex glow === */}
+      <circle cx="100" cy="38" r="10" fill="rgba(99,102,241,0.25)"/>
+      <circle cx="100" cy="38" r="3" fill="#818cf8" stroke="rgba(255,255,255,0.85)" strokeWidth="0.8"/>
+      {/* === Base shadow === */}
+      <ellipse cx="100" cy="244" rx="38" ry="8" fill="url(#crystalBase)"/>
+      {/* Reflection shimmer */}
+      <line x1="78" y1="195" x2="92" y2="205" stroke="rgba(255,255,255,0.06)" strokeWidth="1.2" strokeLinecap="round"/>
+      <line x1="85" y1="210" x2="96" y2="220" stroke="rgba(255,255,255,0.04)" strokeWidth="0.8" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 // ─── Session persistence ──────────────────────────────────────────────────────
 const SESSION_KEY = "abound_session_v1";
 
@@ -2319,7 +2364,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
 
   useEffect(()=>{
     setInvestigationOpen(false);
-    if(!localStorage.getItem("cashFlowTourSeen")){
+    if(!localStorage.getItem("cashFlowTourSeen_v2")){
       const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
       return()=>clearTimeout(t);
     }
@@ -2342,7 +2387,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   };
 
   const TOUR_STEPS = [
-    {title:"Welcome to your Cash Flow 👋",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
+    {title:"Welcome to your Cash Flow",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
     {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual"},
     {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
@@ -2368,7 +2413,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   
 
   function finishTour(){
-    localStorage.setItem("cashFlowTourSeen","1");
+    localStorage.setItem("cashFlowTourSeen_v2","1");
     setTourVisible(false);setTourStep(null);
     setTimeout(()=>setInvestigationOpen(true),350);
   }
@@ -2388,7 +2433,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 200);
     }
   }
-  function closeTour(){localStorage.setItem("cashFlowTourSeen","1");setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
+  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
@@ -3020,6 +3065,17 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative",background:T.bg,transition:"background 0.25s"}}>
       <style>{GLOBAL_CSS}</style>
+      {/* Subtle grid + radial glow — dark mode only */}
+      {isDark&&<>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 70% 0%,rgba(99,102,241,0.09) 0%,transparent 55%)",pointerEvents:"none",zIndex:0}}/>
+        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.025) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none",zIndex:0}}/>
+      </>}
+      {/* Decorative crystal — top-right, desktop only */}
+      {!isMobile&&isDark&&(
+        <div style={{position:"absolute",top:-30,right:-20,width:180,opacity:0.18,pointerEvents:"none",zIndex:0,transform:"rotate(8deg)"}}>
+          <IllustrationCrystal/>
+        </div>
+      )}
 
       {/* Plan-a-purchase overlay — rendered here (not inside CatRow) so typing doesn't unmount it */}
       {editingEvent&&(
@@ -3108,7 +3164,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <div style={{position:"fixed",bottom:isMobile?12:32,right:isMobile?10:28,left:"auto",width:isMobile?200:360,maxWidth:isMobile?"55vw":"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:isMobile?"12px 14px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?6:12}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:isMobile?8:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:6,textTransform:"uppercase"}}>{tourStep===0?"✨ Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?8:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:6,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
                   <div style={{fontSize:isMobile?12:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
                 <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
@@ -3161,7 +3217,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:isMobile?"auto":"hidden",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:T.bg,transition:"background 0.25s",zoom:isMobile?"0.82":undefined}}>
+      <div style={{flex:1,overflow:isMobile?"auto":"hidden",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.82":undefined,position:"relative",zIndex:1}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));

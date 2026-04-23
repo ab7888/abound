@@ -2097,18 +2097,7 @@ function RotateScreen() {
 function OrientationGate({children}) {
   const isMobile = useIsMobile();
   const isLandscape = useOrientation();
-  const [dismissed, setDismissed] = useState(()=>!!sessionStorage.getItem("orientDismissed"));
-  function dismiss(){sessionStorage.setItem("orientDismissed","1");setDismissed(true);}
-  if(isMobile && !isLandscape && !dismissed) return(
-    <div style={{position:"relative",minHeight:"100vh",background:"#08070f"}}>
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"rgba(8,7,15,0.97)",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
-        <svg width="20" height="20" viewBox="0 0 80 80" fill="none" style={{flexShrink:0}}><rect x="20" y="10" width="40" height="60" rx="6" stroke="rgba(99,102,241,0.8)" strokeWidth="2.5" fill="rgba(99,102,241,0.06)"/><path d="M52 38 L62 38 M58 34 L62 38 L58 42" stroke="rgba(99,102,241,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        <span style={{flex:1,fontSize:13,color:"#c7d2fe",lineHeight:1.4}}>Rotate to landscape for the best experience</span>
-        <button onClick={dismiss} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2d2a6e",background:"transparent",color:"#818cf8",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>Continue anyway</button>
-      </div>
-      <div style={{paddingTop:60}}>{children}</div>
-    </div>
-  );
+  if(isMobile && !isLandscape) return <RotateScreen/>;
   return children;
 }
 function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback}) {
@@ -2403,10 +2392,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     if(!els.length) return null;
     let top=Infinity, left=Infinity, right=-Infinity, bottom=-Infinity;
     els.forEach(el=>{const r=el.getBoundingClientRect();top=Math.min(top,r.top);left=Math.min(left,r.left);right=Math.max(right,r.right);bottom=Math.max(bottom,r.bottom);});
-    // For column highlights (actual/forecast), extend down to the bottom of the table
+    // For column highlights (actual/forecast), extend down only to the cash balance row
     if(currentStep.highlight==="actual"||currentStep.highlight==="forecast"){
-      const tableEl=document.querySelector("[data-tour-table]");
-      if(tableEl){const tr=tableEl.getBoundingClientRect();bottom=tr.bottom;}
+      const cashBalEl=document.querySelector("[data-tour='cashbalance']");
+      if(cashBalEl){const cr=cashBalEl.getBoundingClientRect();bottom=cr.bottom;}
     }
     return {top:top-6, left:left-6, width:right-left+12, height:bottom-top+12};
   };
@@ -3067,12 +3056,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       <style>{GLOBAL_CSS}</style>
       {/* Subtle grid + radial glow — dark mode only */}
       {isDark&&<>
-        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 70% 0%,rgba(99,102,241,0.09) 0%,transparent 55%)",pointerEvents:"none",zIndex:0}}/>
-        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.025) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none",zIndex:0}}/>
+        <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 65% 20%,rgba(99,102,241,0.13) 0%,transparent 55%)",pointerEvents:"none",zIndex:0}}/>
+        <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.07) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none",zIndex:0}}/>
       </>}
-      {/* Decorative crystal — top-right, desktop only */}
+      {/* Decorative crystal — centre-right, desktop only */}
       {!isMobile&&isDark&&(
-        <div style={{position:"absolute",top:-30,right:-20,width:180,opacity:0.18,pointerEvents:"none",zIndex:0,transform:"rotate(8deg)"}}>
+        <div style={{position:"absolute",top:"50%",right:"6%",transform:"translateY(-55%) rotate(6deg)",width:200,opacity:0.28,pointerEvents:"none",zIndex:0}}>
           <IllustrationCrystal/>
         </div>
       )}
@@ -3722,15 +3711,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                       const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
                       const goalLine=goalAmt>0?`Savings goal: £${goalAmt.toLocaleString()}${targetDate?" by "+targetDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"}):""}. Projected to reach it in ${weeksToGoal?Math.ceil(weeksToGoal/4.33)+" months":"unknown — spending exceeds income"}.`:"No specific savings goal set.";
                       const overrideLine=forecastOverrides.length?`Upcoming changes: ${forecastOverrides.map(o=>`${o.cat} → £${o.newAmt}${isMonthly(o.cat)?"/mo":"/wk"} from ${forecastWeeks.find(w=>w.key===o.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short"})||"soon"}`).join(", ")}.`:"";
-                      const prompt=`You are a friendly UK personal finance advisor. Based on the user's bank data:
-- Weekly spend average: £${weeklySpend}
-- Projected balance in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unknown"}
-- Biggest spending category: ${topCat?.c||"unknown"} (£${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk)
-- Weekly net savings rate: ${avgWeeklyNet>=0?"£"+Math.round(avgWeeklyNet):"−£"+Math.round(Math.abs(avgWeeklyNet))} per week
+                      const prompt=`You're a straight-talking money friend giving quick advice. Here's the data:
+- Spending £${weeklySpend}/wk on average
+- Biggest spend: ${topCat?.c||"unknown"} at £${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk
+- ${avgWeeklyNet>=0?"Saving £"+Math.round(avgWeeklyNet):"Spending £"+Math.round(Math.abs(avgWeeklyNet))+" more than coming in"} each week
+- Balance in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unclear"}
 - ${goalLine}${overrideLine?"\n- "+overrideLine:""}
-${goalsText.trim()?`\nTheir own words: "${goalsText}"`:""}
+${goalsText.trim()?`\nWhat they said: "${goalsText}"`:""}
 
-Give 2-3 simple, practical tips to help them reach their goal. Write like a helpful friend — short sentences, plain words, no jargon. Be honest and specific using the numbers above. Max 90 words. No bullet points.`;
+Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual numbers. Short sentences. Max 60 words total. No bullet points, no intro, just the advice.`;
                       const payload={model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]};
                       // Try server-side proxy first (works on all devices, no client key needed)
                       let text=null;

@@ -95,7 +95,7 @@ const MERCHANT_MAP = {
     "adobe","microsoft","office","dropbox","notion","slack","zoom","lastpass","1password",
     "linkedin","indeed","cv-library","reed","totaljobs",
     "duolingo","masterclass","coursera","udemy","skillshare",
-    "paypal","paypal *","venmo","klarna","clearpay","laybuy",
+    "venmo","klarna","clearpay","laybuy",
     "dating","hinge","tinder","bumble","match","eharmony",
     "headspace","calm","meditation","therapy","betterhelp","nhs app"
   ],
@@ -109,6 +109,7 @@ const MERCHANT_MAP = {
     "virgin media","talktalk","vodafone","council tax","rates","water rates","tv licence","broadband"
   ],
   "Online Shopping": [
+    "paypal","paypal *",
     "amazon","ebay","etsy","asos","next","very","shein","boohoo","prettylittlething","missguided",
     "aliexpress","wish","depop","vinted","argos","currys","john lewis","johnlewis","jd sports","jdsports",
     "sports direct","nike","adidas","net-a-porter","farfetch","revolve","made.com","wayfair","dunelm",
@@ -122,8 +123,7 @@ const MERCHANT_MAP = {
     "skin","dermatologist","gp","counselling","psychologist","hearing"
   ],
   Salary: [
-    "salary","payroll","wages","pay","income","bacs","faster payment received",
-    "standing order in","transfer in","payment received","credit","refund"
+    "salary","payroll","wages"
   ]
 };
 
@@ -993,10 +993,24 @@ function LoadingScreen({pct, message, done, logLines=[]}) {
 }
 
 // ─── Upload Screen ────────────────────────────────────────────────────────────
+const BANK_GUIDES = [
+  {bank:"Barclays",steps:["Log in to the Barclays app or barclays.co.uk","Go to the account you want → select 'Statements & documents'","Choose your date range → tap 'Download'","Select Excel (.xlsx) format","Save the file and upload it here"]},
+  {bank:"HSBC",steps:["Log in to hsbc.co.uk or the HSBC app","Select your account → 'Statements'","Choose date range → 'Download'","Pick 'Excel' or 'CSV' format","Save and upload here"]},
+  {bank:"Lloyds / Halifax / Bank of Scotland",steps:["Go to lloydsbankinggroup.com and log in","Select your account → 'Download transactions'","Choose date range and 'Excel spreadsheet (.xls)'","Download and upload here"]},
+  {bank:"NatWest / RBS",steps:["Log in to natwest.com or the app","Go to your account → 'Download transactions'","Set date range and select 'Excel (.xlsx)'","Download and upload here"]},
+  {bank:"Monzo",steps:["Open Monzo app → tap your account","Scroll down → 'Export transactions'","Choose 'CSV' format (Excel opens CSV fine)","Email or save the file, then upload here"]},
+  {bank:"Starling",steps:["Open Starling app → tap the account","Go to 'Statements' → 'Download'","Choose 'CSV' or 'PDF' — CSV preferred","Save and upload here"]},
+  {bank:"Santander",steps:["Log in at santander.co.uk","Select account → 'Statements' → 'Download'","Pick date range → choose 'Excel' format","Save and upload here"]},
+  {bank:"American Express",steps:["Log in at americanexpress.com","Go to 'Statements & Activity'","Click 'Download' → select 'Excel' or 'CSV'","Save and upload here as a credit card"]},
+  {bank:"Other bank",steps:["Log in to your bank's website (not the app)","Find 'Statements', 'Transaction history', or 'Download'","Look for Export / Download options — choose Excel or CSV","If only PDF is available, upload the PDF — we can read those too"]},
+];
+
 function UploadScreen({onDone}) {
   const [accounts, setAccounts] = useState([{id:1,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(true);
+  const [showGuide, setShowGuide] = useState(false);
+  const [guideBank, setGuideBank] = useState(0);
   const [step, setStep] = useState("upload"); // "upload" | "balance"
   const [parsedTxns, setParsedTxns] = useState([]);
   const [multipleAccounts, setMultipleAccounts] = useState(false);
@@ -1174,9 +1188,45 @@ function UploadScreen({onDone}) {
             </div>
           ))}
         </div>
-        <div style={{marginBottom:24}}>
-          <h2 style={{fontSize:21,fontWeight:800,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Upload your statements</h2>
-          <p style={{fontSize:13,color:"#52525b",margin:0}}>Drop in your bank exports. We'll handle the rest.</p>
+        {/* Bank guide modal */}
+        {showGuide&&(
+          <>
+            <div onClick={()=>setShowGuide(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",zIndex:200}}/>
+            <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#0d0c1e",border:"1px solid #2d2a6e",borderRadius:16,padding:"24px",width:"min(460px,92vw)",maxHeight:"80vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff"}}>How to export your bank statement</div>
+                <button onClick={()=>setShowGuide(false)} style={{fontSize:20,color:"#4b5563",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
+              </div>
+              <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+                {BANK_GUIDES.map((g,i)=>(
+                  <button key={i} onClick={()=>setGuideBank(i)}
+                    style={{padding:"5px 10px",borderRadius:20,border:`1px solid ${i===guideBank?"#6366f1":"#2d2a6e"}`,background:i===guideBank?"rgba(99,102,241,0.15)":"transparent",color:i===guideBank?"#a5b4fc":"#52525b",fontSize:11,fontWeight:600,cursor:"pointer",transition:"all 0.15s"}}>
+                    {g.bank}
+                  </button>
+                ))}
+              </div>
+              <div style={{background:"rgba(99,102,241,0.06)",border:"1px solid #2d2a6e",borderRadius:10,padding:"14px 16px"}}>
+                <div style={{fontSize:12,fontWeight:700,color:"#6366f1",marginBottom:10,letterSpacing:"0.04em"}}>{BANK_GUIDES[guideBank].bank.toUpperCase()}</div>
+                {BANK_GUIDES[guideBank].steps.map((s,i)=>(
+                  <div key={i} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+                    <div style={{width:18,height:18,borderRadius:"50%",background:"rgba(99,102,241,0.2)",border:"1px solid #4338ca",color:"#a5b4fc",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1}}>{i+1}</div>
+                    <div style={{fontSize:12,color:"#9ca3af",lineHeight:1.5}}>{s}</div>
+                  </div>
+                ))}
+              </div>
+              <div style={{marginTop:12,fontSize:11,color:"#374151",textAlign:"center"}}>Can't find the export option? Look for "Download", "Export", or "Statements" in your bank's website settings.</div>
+            </div>
+          </>
+        )}
+        <div style={{marginBottom:24,display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+          <div>
+            <h2 style={{fontSize:21,fontWeight:800,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Upload your statements</h2>
+            <p style={{fontSize:13,color:"#52525b",margin:0}}>Drop in your bank exports. We'll handle the rest.</p>
+          </div>
+          <button onClick={()=>setShowGuide(true)} title="How to get your bank statement"
+            style={{width:30,height:30,borderRadius:"50%",border:"1px solid #2d2a6e",background:"rgba(99,102,241,0.1)",color:"#818cf8",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:4}}>
+            ?
+          </button>
         </div>
         {accounts.map((acc,i)=>(
           <div key={acc.id} style={{position:"relative"}}>
@@ -1861,7 +1911,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
                     style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",flex:1}}>
-                    {categories.map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
+                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     title="Mark as one-off — excludes from forecast"
@@ -1885,7 +1935,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 <div style={{paddingLeft:16,display:"flex",gap:6,alignItems:"center"}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
                     style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",flex:1,maxWidth:130}}>
-                    {categories.map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
+                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     title="Mark as one-off — excludes from forecast"
@@ -2125,29 +2175,28 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [aiExpanded, setAiExpanded] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   function toggleFullscreen(){
-    const isIOS=/iphone|ipad|ipod/i.test(navigator.userAgent);
-    if(isIOS){
-      // iOS doesn't support Fullscreen API — scroll to hide browser chrome
-      if(!isFullscreen){
-        window.scrollTo(0,1);
-        try{screen.orientation?.lock("landscape");}catch(e){}
-        setIsFullscreen(true);
-      } else {
-        window.scrollTo(0,0);
-        setIsFullscreen(false);
-      }
-      return;
-    }
-    if(!document.fullscreenElement){
-      document.documentElement.requestFullscreen?.().then(()=>setIsFullscreen(true)).catch(()=>{});
+    const el=document.documentElement;
+    const requestFS=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
+    const exitFS=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen;
+    const isInFS=!!(document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement);
+    if(requestFS&&!isInFS){
+      requestFS.call(el).then(()=>setIsFullscreen(true)).catch(()=>{
+        // Fallback for iOS < 16.4: scroll to push chrome out of view
+        window.scrollTo(0,1);setIsFullscreen(true);
+      });
+    } else if(exitFS&&isInFS){
+      exitFS.call(document).then(()=>setIsFullscreen(false)).catch(()=>{});
     } else {
-      document.exitFullscreen?.().then(()=>setIsFullscreen(false)).catch(()=>{});
+      // No API (older iOS) — toggle scroll trick
+      if(!isFullscreen){window.scrollTo(0,1);setIsFullscreen(true);}
+      else{window.scrollTo(0,0);setIsFullscreen(false);}
     }
   }
   useEffect(()=>{
-    const handler=()=>setIsFullscreen(!!document.fullscreenElement);
+    const handler=()=>setIsFullscreen(!!(document.fullscreenElement||document.webkitFullscreenElement));
     document.addEventListener("fullscreenchange",handler);
-    return()=>document.removeEventListener("fullscreenchange",handler);
+    document.addEventListener("webkitfullscreenchange",handler);
+    return()=>{document.removeEventListener("fullscreenchange",handler);document.removeEventListener("webkitfullscreenchange",handler);};
   },[]);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
@@ -2220,8 +2269,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
 
   useEffect(()=>{
     setInvestigationOpen(false);
-    const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
-    return()=>clearTimeout(t);
+    if(!localStorage.getItem("cashFlowTourSeen")){
+      const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
+      return()=>clearTimeout(t);
+    }
   },[]);
   useEffect(()=>{if(!aiOpen)return;setAiTyping(true);const t=setTimeout(()=>setAiTyping(false),1100);return()=>clearTimeout(t);},[aiOpen]);
 
@@ -2265,6 +2316,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   
 
   function finishTour(){
+    localStorage.setItem("cashFlowTourSeen","1");
     setTourVisible(false);setTourStep(null);
     setTimeout(()=>setInvestigationOpen(true),350);
   }
@@ -2284,7 +2336,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 200);
     }
   }
-  function closeTour(){setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
+  function closeTour(){localStorage.setItem("cashFlowTourSeen","1");setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
@@ -2846,16 +2898,16 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
             {/* Tour card */}
-            <div style={{position:"fixed",bottom:isMobile?0:32,right:isMobile?0:28,left:isMobile?0:"auto",width:isMobile?"100%":360,background:"#1a1830",border:"1px solid #4338ca",borderLeft:isMobile?"none":"4px solid #6366f1",borderTop:isMobile?"4px solid #6366f1":"none",borderRadius:isMobile?"16px 16px 0 0":16,padding:isMobile?"18px 20px 28px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 -8px 40px rgba(0,0,0,0.5)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                <div>
-                  <div style={{fontSize:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:6,textTransform:"uppercase"}}>{tourStep===0?"✨ Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
-                  <div style={{fontSize:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+            <div style={{position:"fixed",bottom:isMobile?12:32,right:isMobile?10:28,left:"auto",width:isMobile?200:360,maxWidth:isMobile?"55vw":"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:isMobile?"12px 14px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?6:12}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:isMobile?8:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:6,textTransform:"uppercase"}}>{tourStep===0?"✨ Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?12:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
-                <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:12,lineHeight:1,flexShrink:0,padding:4}}>×</button>
+                <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:13,color:"#a1a1aa",lineHeight:1.7,margin:i===0?"0 0 10px":"10px 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?10:13,color:"#a1a1aa",lineHeight:isMobile?1.5:1.7,margin:i===0?"0 0 8px":"8px 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -2877,22 +2929,22 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   ))}
                 </div>
               )}
-              <div style={{display:"flex",gap:8,marginTop:16}}>
+              <div style={{display:"flex",gap:6,marginTop:isMobile?8:16,flexWrap:"wrap"}}>
                 <button onClick={advanceTour}
-                  style={{flex:1,padding:"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)"}}
+                  style={{flex:1,padding:isMobile?"7px 10px":"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?10:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)",whiteSpace:"nowrap"}}
                   onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
                   onMouseLeave={e=>e.currentTarget.style.transform=""}>
                   {currentStep.cta}
                 </button>
                 {currentStep.isReviewPrompt&&(
-                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:"11px 14px",background:"none",color:"#6366f1",border:`1px solid ${T.dimBorder}`,borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
+                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:isMobile?"7px 8px":"11px 14px",background:"none",color:"#6366f1",border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?10:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
                 )}
-                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
+                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:isMobile?"7px 8px":"11px 14px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?10:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
               </div>
               {tourStep>0&&(
-                <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:16}}>
+                <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:isMobile?8:16}}>
                   {TOUR_STEPS.slice(1).map((_,i)=>(
-                    <div key={i} onClick={()=>setTourStep(i+1)} style={{width:6,height:6,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s",cursor:"pointer"}}/>
+                    <div key={i} onClick={()=>setTourStep(i+1)} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s",cursor:"pointer"}}/>
                   ))}
                 </div>
               )}
@@ -2902,7 +2954,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",padding:isMobile?"12px 14px":"20px 24px",background:T.bg,transition:"background 0.25s",zoom:isMobile?"0.82":undefined}}>
+      <div style={{flex:1,overflow:isMobile?"auto":"hidden",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:T.bg,transition:"background 0.25s",zoom:isMobile?"0.82":undefined}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -3006,11 +3058,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
           );
         })()}
-       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)"}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",...(!isMobile?{flex:1,minHeight:0}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
-                <th style={{padding:"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
+                <th style={{padding:"10px 12px",textAlign:"left",...(!isMobile?{position:"sticky",left:0,top:0,zIndex:6}:{top:0,position:"sticky"}),background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
@@ -3145,15 +3197,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         )}
       </div>
       
-      {isMobile&&(
-        <button onClick={toggleFullscreen} title={isFullscreen?"Exit fullscreen":"Go fullscreen"}
-          style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
-          {isFullscreen
-            ?<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M7 3H3v4M17 3h-4v4M7 17H3v-4M17 17h-4v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-            :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-          }
-        </button>
-      )}
+      <button onClick={toggleFullscreen} title={isFullscreen?"Exit fullscreen":"Go fullscreen"}
+        style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
+        {isFullscreen
+          ?<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M7 3H3v4M17 3h-4v4M7 17H3v-4M17 17h-4v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+          :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
+        }
+      </button>
       {/* Investigation Panel — fixed right drawer */}
       {(()=>{
         const today=new Date();
@@ -3233,7 +3283,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   ))}
                 </div>
                 <button onClick={()=>setInvestigationOpen(false)}
-                  style={{width:24,height:24,borderRadius:6,border:`1px solid ${T.dimBorder}`,background:"transparent",color:T.dimText,fontSize:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginLeft:4}}>
+                  style={{width:isMobile?32:24,height:isMobile?32:24,borderRadius:8,border:`1px solid ${T.dimBorder}`,background:isMobile?"rgba(99,102,241,0.12)":"transparent",color:isMobile?"#a5b4fc":T.dimText,fontSize:isMobile?20:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginLeft:4}}>
                   ×
                 </button>
               </div>

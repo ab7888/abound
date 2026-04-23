@@ -1953,13 +1953,14 @@ function RotateScreen() {
 function OrientationGate({children}) {
   const isMobile = useIsMobile();
   const isLandscape = useOrientation();
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(()=>!!sessionStorage.getItem("orientDismissed"));
+  function dismiss(){sessionStorage.setItem("orientDismissed","1");setDismissed(true);}
   if(isMobile && !isLandscape && !dismissed) return(
     <div style={{position:"relative",minHeight:"100vh",background:"#08070f"}}>
       <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"rgba(8,7,15,0.97)",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
         <svg width="20" height="20" viewBox="0 0 80 80" fill="none" style={{flexShrink:0}}><rect x="20" y="10" width="40" height="60" rx="6" stroke="rgba(99,102,241,0.8)" strokeWidth="2.5" fill="rgba(99,102,241,0.06)"/><path d="M52 38 L62 38 M58 34 L62 38 L58 42" stroke="rgba(99,102,241,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
         <span style={{flex:1,fontSize:13,color:"#c7d2fe",lineHeight:1.4}}>Rotate to landscape for the best experience</span>
-        <button onClick={()=>setDismissed(true)} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2d2a6e",background:"transparent",color:"#818cf8",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>Continue anyway</button>
+        <button onClick={dismiss} style={{padding:"6px 12px",borderRadius:8,border:"1px solid #2d2a6e",background:"transparent",color:"#818cf8",fontSize:12,fontWeight:600,cursor:"pointer",flexShrink:0}}>Continue anyway</button>
       </div>
       <div style={{paddingTop:60}}>{children}</div>
     </div>
@@ -2947,6 +2948,34 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M13 6l4 4-4 4" stroke={totalForecastSpend>totalSpent?"#f59e0b":"#10b981"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             },
           ];
+          // Mobile: compact single-row strip instead of 4 cards
+          if(isMobile){
+            const nowVal=cards[0].value, nowSub=cards[0].sub;
+            const fcstVal=cards[1].value, fcstSub=cards[1].sub;
+            const fcstColor=cards[1].valColor;
+            return(
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,background:T.card,borderRadius:10,padding:"10px 12px",border:`1px solid ${T.border}`,boxShadow:"0 2px 12px rgba(0,0,0,0.15)"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:9,fontWeight:600,color:"#6b7280",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:2}}>Now</div>
+                  <div style={{fontSize:19,fontWeight:800,color:"#e0e7ff",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{nowVal}</div>
+                  <div style={{fontSize:10,color:"#6b7280"}}>{nowSub}</div>
+                </div>
+                <div style={{width:1,height:36,background:T.border,flexShrink:0}}/>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:9,fontWeight:600,color:"#6b7280",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:2}}>In 6 weeks</div>
+                  <div style={{fontSize:19,fontWeight:800,color:fcstColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{fcstVal}</div>
+                  <div style={{fontSize:10,color:fcstColor,fontWeight:500}}>{fcstSub}</div>
+                </div>
+                <button onClick={()=>{setIsDark(d=>!d);localStorage.setItem("themeTipSeen","1");}}
+                  style={{width:30,height:30,borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {isDark
+                    ?<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
+                    :<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M17 10.5A7 7 0 1 1 9.5 3c-.5 2.5.5 6 3.5 7.5 2 1 3.5.5 4 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  }
+                </button>
+              </div>
+            );
+          }
           return(
             <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-start"}}>
               {cards.map((c,i)=>(
@@ -2954,7 +2983,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   onMouseEnter={e=>e.currentTarget.style.borderColor=T.border2}
                   onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
                   <div style={{fontSize:10,fontWeight:600,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{c.label}</div>
-                  <div style={{fontSize:isMobile?17:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
+                  <div style={{fontSize:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
                   <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
@@ -3504,23 +3533,41 @@ Give 2-3 simple, practical tips to help them reach their goal. Write like a help
                       </div>
 
                       {/* ── Claude advice ── */}
-                      <div>
-                        <button onClick={fetchGoalsAdvice2} disabled={goalsLoading}
-                          style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                          {goalsLoading?"Thinking...":"Get personalised advice →"}
-                        </button>
-                        {goalsLoading&&(
-                          <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
-                            <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
-                            {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                      {(()=>{
+                        const hasKey=!!(localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY);
+                        return(
+                          <div>
+                            {!hasKey&&(
+                              <div style={{marginBottom:10,padding:"10px 12px",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8}}>
+                                <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:6}}>API key needed</div>
+                                <div style={{fontSize:11,color:T.dimText,marginBottom:8,lineHeight:1.5}}>Paste your <a href="https://console.anthropic.com/account/keys" target="_blank" rel="noreferrer" style={{color:"#818cf8"}}>Anthropic API key</a> to enable AI advice. It's saved locally to your device only.</div>
+                                <div style={{display:"flex",gap:6}}>
+                                  <input type="password" placeholder="sk-ant-..." defaultValue={localStorage.getItem("anthropic_api_key")||""}
+                                    id="apiKeyInput"
+                                    style={{...inputStyle,flex:1,fontSize:11}}/>
+                                  <button onClick={()=>{const v=document.getElementById("apiKeyInput").value.trim();if(v){localStorage.setItem("anthropic_api_key",v);setGoalsAdvice("");}}}
+                                    style={{padding:"7px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Save</button>
+                                </div>
+                              </div>
+                            )}
+                            <button onClick={fetchGoalsAdvice2} disabled={goalsLoading}
+                              style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsLoading?"default":"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:"0 2px 10px rgba(99,102,241,0.3)",opacity:goalsLoading?0.7:1}}>
+                              {goalsLoading?"Thinking...":"Get personalised advice →"}
+                            </button>
+                            {goalsLoading&&(
+                              <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
+                                <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
+                                {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+                              </div>
+                            )}
+                            {goalsAdvice&&!goalsLoading&&(
+                              <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:`1px solid ${T.dimBorder}`,borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:T.catText,lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
+                                {goalsAdvice}
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {goalsAdvice&&!goalsLoading&&(
-                          <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:`1px solid ${T.dimBorder}`,borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:T.catText,lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
-                            {goalsAdvice}
-                          </div>
-                        )}
-                      </div>
+                        );
+                      })()}
                     </div>
                   );
                 })()}

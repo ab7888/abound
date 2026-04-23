@@ -1827,6 +1827,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
+  const [oneOffTip, setOneOffTip] = useState(null);
   const isMobile = useIsMobile();
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});return list;},[transactions]);
   const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount)),[transactions]);
@@ -1837,6 +1838,12 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
   return(
     <div style={{flex:1,overflow:"auto",background:"#08070f"}}>
       <style>{GLOBAL_CSS}</style>
+      {oneOffTip&&(
+        <div style={{position:"fixed",left:oneOffTip.x,top:oneOffTip.y,zIndex:9999,maxWidth:250,background:"#1e1b38",border:"1px solid #4338ca",borderRadius:10,padding:"10px 13px",fontSize:11,color:"#c7d2fe",lineHeight:1.65,pointerEvents:"none",boxShadow:"0 6px 24px rgba(0,0,0,0.4)",animation:"tooltipIn 0.15s ease both"}}>
+          <div style={{fontWeight:700,color:"#e0e7ff",marginBottom:5}}>One-off transactions</div>
+          Mark a transaction as a one-off expense — like a holiday, car repair, or big purchase. It's excluded from your rolling forecast averages so it won't inflate your predicted weekly spend going forward.
+        </div>
+      )}
       {showUpdatedBanner&&(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.12))",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"14px 24px",display:"flex",alignItems:"center",gap:16,animation:"slideInUp 0.3s ease both"}}>
           <div style={{width:8,height:8,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px #6366f1",flexShrink:0}}/>
@@ -1887,11 +1894,20 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
         {/* Table */}
         <div style={{background:"#0a0919",borderRadius:12,border:"1px solid #1f1d35",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
           {!isMobile&&(
-            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 180px",background:"linear-gradient(90deg,#1e1b4b,#1a1738)",padding:"10px 16px",borderBottom:"1px solid #2d2a6e"}}>
+            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",background:"linear-gradient(90deg,#1e1b4b,#1a1738)",padding:"10px 16px",borderBottom:"1px solid #2d2a6e"}}>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DATE</div>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DESCRIPTION</div>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textAlign:"right"}}>AMOUNT</div>
-              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",paddingLeft:16}}>CATEGORY</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",paddingLeft:16,display:"flex",alignItems:"center",gap:7}}>
+                CATEGORY
+                <span
+                  onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setOneOffTip({x:r.left,y:r.bottom+8});}}
+                  onMouseLeave={()=>setOneOffTip(null)}
+                  style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:"50%",background:"rgba(245,158,11,0.15)",border:"1px solid rgba(245,158,11,0.5)",color:"#f59e0b",fontSize:9,fontWeight:700,cursor:"help",flexShrink:0,lineHeight:1}}>
+                  ?
+                </span>
+                <span style={{fontSize:9,color:"rgba(99,102,241,0.5)",letterSpacing:"0.06em",fontStyle:"italic"}}>+ ONE-OFF</span>
+              </div>
             </div>
           )}
           {filtered.map((t,i)=>{
@@ -1921,7 +1937,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 </div>
               </div>
             ) : (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 180px",padding:"9px 16px",borderBottom:"1px solid #13112a",background:rowBg,alignItems:"center",transition:"background 0.1s",cursor:"default"}}
+              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",padding:"9px 16px",borderBottom:"1px solid #13112a",background:rowBg,alignItems:"center",transition:"background 0.1s",cursor:"default"}}
                 onMouseEnter={e=>e.currentTarget.style.background=hoverBg}
                 onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
                 <div style={{fontSize:11,color:"#4b5563",fontVariantNumeric:"tabular-nums"}}>{fmtDate(t.date)}</div>
@@ -1932,15 +1948,21 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 <div style={{fontSize:12,fontWeight:600,color:amtColor,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
                   {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
                 </div>
-                <div style={{paddingLeft:16,display:"flex",gap:6,alignItems:"center"}}>
+                <div style={{paddingLeft:16,display:"flex",gap:7,alignItems:"center"}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
-                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",flex:1,maxWidth:130}}>
+                    style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",flex:1,maxWidth:120}}>
                     {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
-                    title="Mark as one-off — excludes from forecast"
-                    style={{padding:"3px 8px",borderRadius:20,border:`1.5px solid ${nonRecurring.has(t.narrative)?"#f59e0b":"#2d2a6e"}`,background:nonRecurring.has(t.narrative)?"rgba(245,158,11,0.15)":"transparent",color:nonRecurring.has(t.narrative)?"#f59e0b":"#4b5563",fontSize:10,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
-                    {nonRecurring.has(t.narrative)?"One-off ✓":"One-off"}
+                    style={{padding:"4px 10px",borderRadius:20,
+                      border:`1.5px solid ${nonRecurring.has(t.narrative)?"#f59e0b":"rgba(245,158,11,0.35)"}`,
+                      background:nonRecurring.has(t.narrative)?"rgba(245,158,11,0.18)":"rgba(245,158,11,0.06)",
+                      color:nonRecurring.has(t.narrative)?"#f59e0b":"#d97706",
+                      fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,
+                      transition:"all 0.15s",letterSpacing:"0.01em"}}
+                    onMouseEnter={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(245,158,11,0.12)";e.currentTarget.style.borderColor="#f59e0b";e.currentTarget.style.color="#f59e0b";}}}
+                    onMouseLeave={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(245,158,11,0.06)";e.currentTarget.style.borderColor="rgba(245,158,11,0.35)";e.currentTarget.style.color="#d97706";}}}>
+                    {nonRecurring.has(t.narrative)?"✓ One-off":"One-off"}
                   </button>
                 </div>
               </div>

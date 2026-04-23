@@ -2744,20 +2744,20 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {editingEvent&&(
         <>
           <div style={{position:"fixed",inset:0,zIndex:9994}} onClick={()=>setEditingEvent(null)}/>
-          <div style={{position:"fixed",top:editingEvent.y,left:editingEvent.x,zIndex:9995,background:"#1e1b38",border:"1px solid #6366f1",borderRadius:10,padding:"10px 12px",minWidth:200,boxShadow:"0 6px 28px rgba(0,0,0,0.6)",animation:"tooltipIn 0.12s ease both"}}
+          <div style={{position:"fixed",top:editingEvent.y,left:editingEvent.x,zIndex:9995,background:T.tooltipBg,border:"1px solid #6366f1",borderRadius:10,padding:"10px 12px",minWidth:200,boxShadow:"0 6px 28px rgba(0,0,0,0.3)",animation:"tooltipIn 0.12s ease both"}}
             onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:7,letterSpacing:"0.06em"}}>ONE-OFF EXPENSE</div>
             <input autoFocus placeholder="What is it? (e.g. New phone)" value={editingEvent.label} onChange={e=>setEditingEvent(ev=>({...ev,label:e.target.value}))}
               onKeyDown={e=>{if(e.key==="Escape")setEditingEvent(null);}}
-              style={{width:"100%",marginBottom:6,padding:"5px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:6,color:"#fff",fontSize:12,outline:"none"}}/>
+              style={{width:"100%",marginBottom:6,padding:"5px 8px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:6,color:T.text,fontSize:12,outline:"none"}}/>
             <div style={{display:"flex",gap:5}}>
               <input placeholder="£ amount" type="number" min="0" value={editingEvent.amount} onChange={e=>setEditingEvent(ev=>({...ev,amount:e.target.value}))}
                 onKeyDown={e=>{if(e.key==="Enter"){const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}if(e.key==="Escape")setEditingEvent(null);}}
-                style={{flex:1,padding:"5px 8px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:6,color:"#fff",fontSize:12,outline:"none"}}/>
+                style={{flex:1,padding:"5px 8px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:6,color:T.text,fontSize:12,outline:"none"}}/>
               <button onClick={()=>{const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}}
                 style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Add</button>
               <button onClick={()=>setEditingEvent(null)}
-                style={{padding:"5px 9px",background:"none",color:"#6b7280",border:"1px solid #2d2a6e",borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
+                style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
             </div>
           </div>
         </>
@@ -2768,8 +2768,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {ctxMenu&&(
         <>
           <div style={{position:"fixed",inset:0,zIndex:9990}} onClick={()=>setCtxMenu(null)}/>
-          <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9991,background:"#1e1b38",border:"1px solid #4338ca",borderRadius:10,padding:"6px 0",boxShadow:"0 8px 32px rgba(0,0,0,0.5)",minWidth:190,animation:"tooltipIn 0.15s ease both"}}>
-            <div style={{padding:"7px 14px 8px",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",borderBottom:"1px solid #2d2a6e"}}>MOVE TO CATEGORY</div>
+          <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9991,background:T.tooltipBg,border:`1px solid ${T.tooltipBorder}`,borderRadius:10,padding:"6px 0",boxShadow:"0 8px 32px rgba(0,0,0,0.25)",minWidth:190,animation:"tooltipIn 0.15s ease both"}}>
+            <div style={{padding:"7px 14px 8px",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",borderBottom:`1px solid ${T.dimBorderMid}`}}>MOVE TO CATEGORY</div>
             {categories.filter(c=>c!==ctxMenu.cat).map(c=>(
               <button key={c} onClick={()=>{
                 if(onUpdateTxns){
@@ -2780,7 +2780,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 }
                 setCtxMenu(null);
               }}
-              style={{display:"block",width:"100%",padding:"8px 14px",background:"none",border:"none",color:"#c7d2fe",fontSize:12,cursor:"pointer",textAlign:"left"}}
+              style={{display:"block",width:"100%",padding:"8px 14px",background:"none",border:"none",color:T.catText,fontSize:12,cursor:"pointer",textAlign:"left"}}
               onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
               onMouseLeave={e=>e.currentTarget.style.background="none"}>
                 {c}
@@ -2836,8 +2836,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <p key={i} style={{fontSize:13,color:"#a1a1aa",lineHeight:1.7,margin:i===0?"0 0 10px":"10px 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
-                <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:"1px solid #2d2a6e",background:"#0a0919"}}>
-                  <div style={{padding:"7px 12px",background:"#13112a",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",textTransform:"uppercase",borderBottom:"1px solid #1f1d35"}}>Review Categories</div>
+                <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
+                  <div style={{padding:"7px 12px",background:T.theadA,fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",textTransform:"uppercase",borderBottom:`1px solid ${T.border}`}}>Review Categories</div>
                   {[
                     {name:"DELIVEROO*GH7K2",amt:"£24.50",cat:"Food",color:"#10b981",delay:0},
                     {name:"AMAZON MKTPLACE",amt:"£67.99",cat:"Online Shopping",color:"#6366f1",delay:80},
@@ -2845,9 +2845,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     {name:"SPECSAVERS LTD",amt:"£15.00",cat:"Healthcare",color:"#f59e0b",delay:240},
                     {name:"NETFLIX.COM",amt:"£10.99",cat:"Memberships",color:"#8b5cf6",delay:320},
                   ].map(row=>(
-                    <div key={row.name} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:"1px solid #0d0b1e",gap:10,animation:`fadeUp 0.3s ease ${row.delay}ms both`}}>
+                    <div key={row.name} style={{display:"flex",alignItems:"center",padding:"7px 12px",borderBottom:`1px solid ${T.catRowBorder}`,gap:10,animation:`fadeUp 0.3s ease ${row.delay}ms both`}}>
                       <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,color:"#c7d2fe",fontFamily:"monospace",letterSpacing:"-0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</div>
+                        <div style={{fontSize:11,color:T.catText,fontFamily:"monospace",letterSpacing:"-0.02em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.name}</div>
                         <div style={{fontSize:10,color:"#4b5563"}}>{row.amt}</div>
                       </div>
                       <div style={{fontSize:10,fontWeight:700,color:row.color,background:`${row.color}18`,padding:"2px 8px",borderRadius:99,flexShrink:0,border:`1px solid ${row.color}33`}}>{row.cat}</div>
@@ -2863,9 +2863,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   {currentStep.cta}
                 </button>
                 {currentStep.isReviewPrompt&&(
-                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:"11px 14px",background:"none",color:"#6366f1",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
+                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:"11px 14px",background:"none",color:"#6366f1",border:`1px solid ${T.dimBorder}`,borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
                 )}
-                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
+                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:"11px 14px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:10,fontSize:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
               </div>
               {tourStep>0&&(
                 <div style={{display:"flex",gap:5,justifyContent:"center",marginTop:16}}>
@@ -3277,7 +3277,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                                     Yes, mark as one-off →
                                   </button>
                                   <button onClick={()=>setInvestigationStep(3)}
-                                    style={{padding:"8px 12px",background:"transparent",color:"#4b5563",border:"1px solid #2d2a6e",borderRadius:7,fontSize:12,cursor:"pointer",flexShrink:0}}>
+                                    style={{padding:"8px 12px",background:"transparent",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:7,fontSize:12,cursor:"pointer",flexShrink:0}}>
                                     No
                                   </button>
                                 </div>

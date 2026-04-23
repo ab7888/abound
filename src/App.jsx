@@ -3206,7 +3206,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:isMobile?"auto":"hidden",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.82":undefined,position:"relative",zIndex:1}}>
+      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.82":undefined,position:"relative",zIndex:1}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -3317,7 +3317,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
           </button>
         </div>
-       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",...(!isMobile?{flex:1,minHeight:0}:{})}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>

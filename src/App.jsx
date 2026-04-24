@@ -2181,7 +2181,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
 
-      <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:"flex",alignItems:"center",height:57,flexShrink:0}}>
+      <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:isMobile&&activeTab==="cashflow"?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
@@ -2214,9 +2214,9 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
       )}
       {isMobile&&activeTab==="cashflow"&&(
-        <button onClick={goToReview} style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%) rotate(90deg)",transformOrigin:"right center",zIndex:900,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"0 0 8px 8px",padding:"7px 14px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={goToReview} style={{position:"fixed",right:0,top:"38%",zIndex:900,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)",display:"flex",alignItems:"center",gap:6}}>
+          {showReviewPrompt&&<span style={{background:"#ef4444",borderRadius:"50%",width:8,height:8,display:"inline-block",flexShrink:0}}/>}
           Review
-          {showReviewPrompt&&<span style={{background:"#ef4444",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:1.4}}>!</span>}
         </button>
       )}
       {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring}/></OrientationGate>}
@@ -2526,6 +2526,26 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     }
     return()=>{document.body.style.overflow="";document.documentElement.style.overflow="";};
   },[tourVisible,isMobile]);
+
+  // Auto-scroll table to show highlighted element during mobile tour
+  useEffect(()=>{
+    if(!isMobile||!tourVisible||tourStep===null) return;
+    const step = TOUR_STEPS[tourStep];
+    if(!step?.highlight) return;
+    setTimeout(()=>{
+      const els = document.querySelectorAll(`[data-tour="${step.highlight}"]`);
+      if(!els.length) return;
+      const el = els[0];
+      const tableDiv = document.querySelector("[data-tour-table]");
+      if(!tableDiv) return;
+      const elRect = el.getBoundingClientRect();
+      const tableRect = tableDiv.getBoundingClientRect();
+      const targetScrollTop = tableDiv.scrollTop + elRect.top - tableRect.top - tableRect.height / 2 + elRect.height / 2;
+      tableDiv.scrollTo({top: Math.max(0, targetScrollTop), behavior:"smooth"});
+      setTimeout(()=>setTourHighlightTick(t=>t+1), 500);
+    }, 300);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tourStep, tourVisible, isMobile]);
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
@@ -3303,18 +3323,16 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
       {isMobile&&showAnalysisSuggestion&&(
-        <div style={{position:"fixed",bottom:70,left:0,right:0,zIndex:950,display:"flex",justifyContent:"center",pointerEvents:"none",animation:"slideInUp 0.5s cubic-bezier(0.16,1,0.3,1) both"}}>
-          <div style={{pointerEvents:"all",background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"12px 16px",maxWidth:"85vw",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",display:"flex",alignItems:"center",gap:12}}>
-            <div style={{width:36,height:36,borderRadius:10,background:"rgba(99,102,241,0.18)",border:"1px solid rgba(99,102,241,0.35)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        <div style={{position:"fixed",right:0,top:"calc(38% + 120px)",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
+          <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Financial Analysis
             </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontSize:12,fontWeight:800,color:"#e0e7ff",marginBottom:2}}>See your financial outlook</div>
-              <div style={{fontSize:11,color:"#818cf8",lineHeight:1.4}}>Tap Financial Analysis for end-of-month projections and goal planning.</div>
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
-              <button onClick={()=>{setShowAnalysisSuggestion(false);setInvestigationOpen(true);}} style={{padding:"6px 12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Open →</button>
-              <button onClick={()=>setShowAnalysisSuggestion(false)} style={{padding:"4px 12px",background:"none",color:"#4b5563",border:"none",fontSize:11,cursor:"pointer"}}>Dismiss</button>
+            <div style={{fontSize:10,color:"#818cf8",lineHeight:1.4,marginBottom:8}}>End-of-month projections &amp; goal planning.</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setShowAnalysisSuggestion(false);setInvestigationOpen(true);}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Open →</button>
+              <button onClick={()=>setShowAnalysisSuggestion(false)} style={{padding:"5px 8px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:6,fontSize:10,cursor:"pointer"}}>✕</button>
             </div>
           </div>
         </div>

@@ -112,7 +112,11 @@ const MERCHANT_MAP = {
     // Road tax / vehicle
     "dvla","vehicle tax","road tax","driver & vehicle","dvla licensing",
     // Utilities treated as subscriptions
-    "water plus","affinity water","southern water direct"
+    "water plus","affinity water","southern water direct",
+    // Sports / clubs
+    "sparring partners","sparring","boxing club","martial arts","judo","karate","taekwondo",
+    "swimming club","tennis club","golf club","squash club","badminton","cricket club",
+    "football club","rugby club","cycling club","running club","triathlon"
   ],
   Rent: [
     "rent","landlord","letting","estate agent","rightmove","zoopla","openrent",
@@ -151,9 +155,13 @@ Object.entries(MERCHANT_MAP).forEach(([cat, merchants]) => {
 });
 
 const INTERCOMPANY_PATTERNS = [
-  "american express","amex","nw world","mastercard","visa","credit card","card repayment",
-  "card payment","creditcard","barclaycard","natwest card","hsbc card","lloyds card",
-  "capital one","aqua","vanquis","newday","fluid","aquis"
+  "american express","amex","nw world","nw world mastercard","natwest world","world mastercard",
+  "mastercard","visa credit","credit card","card repayment","card payment","creditcard",
+  "barclaycard","natwest card","hsbc card","lloyds card","halifax card","tsb card",
+  "capital one","aqua","vanquis","newday","fluid","aquis","virgin money credit",
+  "tesco bank card","sainsbury bank card","mbna","creation finance","currys credit",
+  "very credit","argos card","next credit","amazon visa","john lewis card","waitrose card",
+  "payment to credit","payment to card","payment to amex","payment to barclaycard"
 ];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -584,10 +592,36 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
     toClassify.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
   }
 
+  // Monthly-once heuristic: if a narrative lands in Other Payments but appears
+  // in 2+ distinct calendar months with at most 2 occurrences per month, it's
+  // almost certainly a subscription → reclassify to Memberships.
+  const monthlyOnceCandidates = new Map(); // normalised narrative → Set<"YYYY-M">
+  withIncome.forEach(t=>{
+    const assigned = t.category || results.get(t.narrative+t.date+t.amount) || "Other Payments";
+    if(assigned!=="Other Payments") return;
+    const key = t.narrative.toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+    if(key.length<4) return;
+    const monthKey = `${t.date.getFullYear()}-${t.date.getMonth()}`;
+    if(!monthlyOnceCandidates.has(key)) monthlyOnceCandidates.set(key, new Map());
+    const mo = monthlyOnceCandidates.get(key);
+    mo.set(monthKey, (mo.get(monthKey)||0)+1);
+  });
+  const monthlyMembershipKeys = new Set();
+  monthlyOnceCandidates.forEach((monthMap, key)=>{
+    const months = [...monthMap.keys()];
+    const allMonthly = [...monthMap.values()].every(count=>count<=2);
+    if(months.length>=2 && allMonthly) monthlyMembershipKeys.add(key);
+  });
+
   onProgress({type:"done"});
   return withIncome.map(t=>{
     if (t.category!==null) return t;
-    return {...t, category:results.get(t.narrative+t.date+t.amount)||"Other Payments"};
+    const cat = results.get(t.narrative+t.date+t.amount)||"Other Payments";
+    if(cat==="Other Payments"){
+      const key = t.narrative.toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
+      if(monthlyMembershipKeys.has(key)) return {...t, category:"Memberships"};
+    }
+    return {...t, category:cat};
   });
 }
 
@@ -2152,10 +2186,10 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
         </button>
-        <button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+        {!isMobile&&<button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
-        </button>
+        </button>}
         <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
           {isMobile?"⭐":"⭐ Leave a review"}
         </button>
@@ -2178,6 +2212,12 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={goToReview} style={{padding:"7px 16px",background:"rgba(99,102,241,0.25)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
+      )}
+      {isMobile&&activeTab==="cashflow"&&(
+        <button onClick={goToReview} style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%) rotate(90deg)",transformOrigin:"right center",zIndex:900,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"0 0 8px 8px",padding:"7px 14px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.05em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",whiteSpace:"nowrap",display:"flex",alignItems:"center",gap:6}}>
+          Review
+          {showReviewPrompt&&<span style={{background:"#ef4444",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:1.4}}>!</span>}
+        </button>
       )}
       {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring}/></OrientationGate>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
@@ -2415,7 +2455,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
-    {title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null},
+    ...(!isMobile?[{title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
     {title:"Grouped or split by card?",body:"By default all your accounts are combined so you see one clean view of where your money goes.\n\nUse the toggle above the table to switch to split-by-card — useful when you want to see exactly which card is spending what.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"},
   ];
 
@@ -2444,19 +2484,43 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     if(tourStep>=TOUR_STEPS.length-1){finishTour();return;}
     setTourStep(nextStep);
     const target = TOUR_STEPS[nextStep]?.scrollTo;
-    // On mobile, scrollIntoView scrolls the whole page to the wrong position — skip it
-    if(target && !isMobile){
+    if(target){
       setTimeout(()=>{
         const el = target==="budget-cell"
           ? document.querySelector("tbody tr.abound-row td:last-child button, tbody tr.abound-row [data-budget-cell]")
           : document.querySelector(`[data-tour="${target}"]`);
-        el?.scrollIntoView({behavior:"smooth", block:"center"});
+        if(el){
+          if(isMobile){
+            // scroll the table container, not the page
+            const tableDiv = document.querySelector("[data-tour-table]");
+            if(tableDiv){
+              const elRect = el.getBoundingClientRect();
+              const tableRect = tableDiv.getBoundingClientRect();
+              tableDiv.scrollTop += elRect.top - tableRect.top - tableRect.height/2 + elRect.height/2;
+            }
+          } else {
+            el.scrollIntoView({behavior:"smooth", block:"center"});
+          }
+        }
         setTimeout(()=>setTourHighlightTick(t=>t+1), 700);
       }, 200);
     }
   }
   function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
+
+  // Lock body scroll during mobile tour
+  useEffect(()=>{
+    if(!isMobile) return;
+    if(tourVisible){
+      document.body.style.overflow="hidden";
+      document.documentElement.style.overflow="hidden";
+    } else {
+      document.body.style.overflow="";
+      document.documentElement.style.overflow="";
+    }
+    return()=>{document.body.style.overflow="";document.documentElement.style.overflow="";};
+  },[tourVisible,isMobile]);
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
@@ -3177,8 +3241,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
             {/* Tour card */}
-            <div style={{position:"fixed",bottom:isMobile?12:32,right:isMobile?10:28,left:"auto",width:isMobile?200:360,maxWidth:isMobile?"55vw":"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:isMobile?"12px 14px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?6:12}}>
+            <div style={{position:"fixed",bottom:isMobile?8:32,right:isMobile?6:28,left:"auto",width:isMobile?150:360,maxWidth:isMobile?"48vw":"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:isMobile?"7px 9px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?4:12}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:isMobile?8:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:6,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
                   <div style={{fontSize:isMobile?12:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
@@ -3233,7 +3297,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.82":undefined,position:"relative",zIndex:1}}>
+      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -3344,7 +3408,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
           </button>
         </div>
-       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc((100vh - 200px) / 0.6)`}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
@@ -3438,11 +3502,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
         {/* Decorative graphics — bottom-left and bottom-right, dark mode desktop only */}
         {!isMobile&&isDark&&(
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:20,paddingBottom:4,pointerEvents:"none"}}>
-            <div style={{width:190,opacity:0.32,transform:"rotate(-4deg) translateY(8px)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:28,paddingBottom:8,pointerEvents:"none",minHeight:180}}>
+            <div style={{width:200,opacity:0.55,transform:"rotate(-4deg) translateY(8px)"}}>
               <IllustrationNodeNet/>
             </div>
-            <div style={{width:190,opacity:0.32,transform:"rotate(4deg) translateY(8px)"}}>
+            <div style={{width:200,opacity:0.55,transform:"rotate(4deg) translateY(8px)"}}>
               <IllustrationOrbits/>
             </div>
           </div>

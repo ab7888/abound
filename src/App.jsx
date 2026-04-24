@@ -4361,8 +4361,8 @@ export default function App() {
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
       <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>
-        <a href="https://www.iubenda.com/privacy-policy/95322623" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#374151",opacity:0.45,textDecoration:"none",pointerEvents:"all"}}>Privacy Policy</a>
-        <a href="https://www.iubenda.com/privacy-policy/95322623/cookie-policy" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#374151",opacity:0.45,textDecoration:"none",pointerEvents:"all"}}>Cookie Policy</a>
+        <a href="https://www.iubenda.com/privacy-policy/95322623" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Privacy Policy</a>
+        <a href="https://www.iubenda.com/privacy-policy/95322623/cookie-policy" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Cookie Policy</a>
       </div>
     </div>
   );

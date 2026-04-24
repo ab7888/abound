@@ -76,6 +76,7 @@ const MERCHANT_MAP = {
   Food: [
     "tesco","sainsbury","waitrose","lidl","aldi","asda","morrisons","marks","m&s","co-op","coop",
     "londis","spar","budgens","iceland","farmfoods","whole foods","wholefoods","planet organic",
+    "kokoro","noodles","noodles city","dojo*kokoro","dojo kokoro",
     "pret","pret a manger","starbucks","costa","caffe nero","greggs","subway","mcdonalds","mcdonald",
     "kfc","burger king","five guys","nandos","wagamama","itsu","wasabi","leon","pod","eat",
     "deliveroo","just eat","uber eats","ubereats","doordash","gopuff","getir","zapp",
@@ -97,6 +98,7 @@ const MERCHANT_MAP = {
     "heathrow express","gatwick express","stansted express","luton",
     "enterprise","hertz","avis","zipcar","enterprise car","sixt",
     "parking","ncp","q-park","airparks","holiday extras",
+    "viator","trip.com","klook","getyourguide","musement","tiqets",
     "booking.com","hotels.com","expedia","airbnb","hostelworld",
     "national express","megabus","flixbus","coach",
     "p&o","carnival","cruise","ferry","hovercraft",
@@ -118,7 +120,8 @@ const MERCHANT_MAP = {
     "dating","hinge","tinder","bumble","match","eharmony",
     "headspace","calm","meditation","therapy","betterhelp","nhs app",
     // Telecoms / mobile
-    "o2","three","giffgaff","id mobile","smarty","tesco mobile","lebara","lyca","sky mobile","bt mobile","talkmobile","virgin mobile",
+    "o2","three","ee","ee limited","giffgaff","id mobile","smarty","tesco mobile","lebara","lyca","sky mobile","bt mobile","talkmobile","virgin mobile",
+    "claude.ai","claude ai","anthropic",
     // Insurance
     "insurance","aviva","axa","direct line","directline","admiral","churchill","hastings direct",
     "esure","elephant auto","saga","rac breakdown","green flag","aa breakdown","legal & general",
@@ -498,12 +501,16 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const spendCats = allCats.filter(c=>c!=="Salary");
 
   const SALARY_SIGNALS = /salary|payroll|wages|pay day|payday|bacs credit|employer|wage slip/i;
-  // Pattern: "FIRSTNAME LASTNAME, PAYMENT" — person-to-person bank transfer
-  const TRANSFER_RE = /^([A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+){1,3}),\s*payment/i;
+  // Pattern: "FIRSTNAME LASTNAME, PAYMENT" or "NAME , MONTHLY , VIA MOBILE - LVP" — person-to-person bank transfer
+  const TRANSFER_RE = /^([A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+){1,3})\s*,\s*(?:payment|monthly)/i;
+  const VIA_MOBILE_RE = /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+)+\s*,.*via\s+mobile/i;
   const BUSINESS_WORDS = /\b(bank|building|society|card|finance|limited|ltd|plc|group|services|insurance|direct|national|barclays|lloyds|hsbc|natwest|halifax|santander|monzo|starling|revolut|amex|visa|mastercard|paypal|apple|google|amazon)\b/i;
   function isPersonTransfer(narrative) {
-    const m = narrative.trim().match(TRANSFER_RE);
-    return !!(m && !BUSINESS_WORDS.test(m[1]));
+    const n = narrative.trim();
+    const m = n.match(TRANSFER_RE);
+    if (m && !BUSINESS_WORDS.test(m[1])) return true;
+    if (VIA_MOBILE_RE.test(n) && !BUSINESS_WORDS.test(n.split(/\s*,/)[0])) return true;
+    return false;
   }
 
   // Step 1: income/transfer routing — reliable, no ambiguity
@@ -534,7 +541,7 @@ Rules (be strict — follow these exactly):
 - Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
 - Rent: rent, mortgage, letting agents, estate agents, property management companies, council tax, utilities (gas, electricity, water)
 - Memberships: (1) ALL phone/mobile contracts — O2, Vodafone, EE, Three, giffgaff, iD Mobile, Smarty, Tesco Mobile, Lebara, Sky Mobile, Virgin Mobile; (2) broadband/TV — BT, Virgin Media, Sky, TalkTalk, Plusnet; (3) streaming — Netflix, Spotify, Disney+, Amazon Prime, Apple TV, YouTube Premium; (4) gym memberships; (5) any subscription or SaaS — iCloud, Adobe, Microsoft 365, Google One; (6) ALL insurance — car insurance, home insurance, life insurance, pet insurance, travel insurance, breakdown cover, any narrative containing "insurance", "insure", "protection plan", "breakdown"; (7) DVLA vehicle tax, road tax; (8) Aviva, AXA, Direct Line, Admiral, Churchill, Hastings, Saga, RAC, AA, Legal & General, Royal London, Zurich, Allianz, Sun Life, BUPA Dental, Vitality
-- Transfers: person-to-person bank transfers — narrative pattern is "FIRSTNAME LASTNAME, PAYMENT" (a person's name followed by a comma and the word payment). Both sending and receiving money to/from friends or family. NOT business payments.
+- Transfers: person-to-person bank transfers. Patterns: (1) "FIRSTNAME LASTNAME, PAYMENT" or "FIRSTNAME LASTNAME , MONTHLY"; (2) any narrative starting with a person's name followed by ", ... , VIA MOBILE" or containing "VIA MOBILE - LVP". Both sending and receiving money to/from friends or family. NOT business payments.
 - Online Shopping: Amazon purchases (NOT Amazon Prime), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, IKEA, B&Q, Wayfair, Dunelm, PayPal purchases (when clearly retail), any online retail
 - Healthcare: Boots, Superdrug, Specsavers, Vision Express, any pharmacy, optician, dentist, NHS charges, private GP, physio, counselling
 - Card Repayment: outgoing payments TO a credit card — narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", or any "PAYMENT TO [CARD NAME]"
@@ -1462,8 +1469,6 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [editVal, setEditVal] = useState("");
   const [step, setStep] = useState("loading");
   const [logLines, setLogLines] = useState([{text:"Starting AI categorisation...",done:false,active:true}]);
-  const [suggestions, setSuggestions] = useState([]);
-  const [dismissedSuggestions, setDismissedSuggestions] = useState(new Set());
   const [autoCats, setAutoCats] = useState([]);
   useEffect(()=>{
     (async()=>{
@@ -1495,8 +1500,6 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       setCategorised(result);
       setDone(true);
       const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
-      const sugg = await computeCategorySuggestions(result, baseCats, apiKey);
-      setSuggestions(sugg);
       setTimeout(()=>setStep("review"),1200);
     })();
   },[]);
@@ -1593,30 +1596,6 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           })}
         </div>
 
-        {/* Smart suggestions */}
-        {suggestions.filter(s=>!dismissedSuggestions.has(s.name)&&!categories.includes(s.name)).length>0&&(
-          <div style={{background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:14,padding:"14px 16px",marginBottom:16,animation:"fadeUp 0.5s ease 0.12s both"}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 2a6 6 0 00-3 11.2V15h6v-1.8A6 6 0 0010 2z" stroke="#a5b4fc" strokeWidth="1.5"/><path d="M8 17h4M9 15v2M11 15v2" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round"/></svg>
-              <span style={{fontSize:12,fontWeight:700,color:"#a5b4fc",letterSpacing:"0.04em"}}>SUGGESTED CATEGORIES</span>
-              <span style={{fontSize:11,color:"#52525b",marginLeft:4}}>Abound spotted recurring patterns in your transactions</span>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
-              {suggestions.filter(s=>!dismissedSuggestions.has(s.name)&&!categories.includes(s.name)).map(s=>(
-                <div key={s.name} style={{display:"flex",alignItems:"center",gap:0,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:20,overflow:"hidden"}}>
-                  <button onClick={()=>{setCategories(c=>[...c,s.name]);setDismissedSuggestions(d=>new Set([...d,s.name]));}}
-                    style={{padding:"6px 12px",background:"none",border:"none",color:"#c7d2fe",fontSize:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{color:"#6366f1",fontSize:14,fontWeight:400}}>+</span>
-                    {s.name}
-                    <span style={{fontSize:10,color:"#6366f1",background:"rgba(99,102,241,0.15)",borderRadius:10,padding:"1px 6px"}}>{s.count} txns</span>
-                  </button>
-                  <button onClick={()=>setDismissedSuggestions(d=>new Set([...d,s.name]))}
-                    style={{padding:"6px 8px",background:"none",border:"none",borderLeft:"1px solid rgba(99,102,241,0.2)",color:"#4b5563",fontSize:13,cursor:"pointer",lineHeight:1}}>×</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Categories list */}
         <div style={{background:"rgba(255,255,255,0.02)",borderRadius:14,border:"1px solid #1f1d35",overflow:"hidden",marginBottom:20,animation:"fadeUp 0.5s ease 0.15s both"}}>
@@ -1965,10 +1944,16 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
+  const [sortMode, setSortMode] = useState("amount"); // "amount" | "category" | "date"
   const [oneOffTip, setOneOffTip] = useState(null);
   const isMobile = useIsMobile();
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});return list;},[transactions]);
-  const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>Math.abs(b.amount)-Math.abs(a.amount)),[transactions]);
+  const sortedTxns = useMemo(()=>[...transactions].sort((a,b)=>{
+    if(sortMode==="amount") return Math.abs(b.amount)-Math.abs(a.amount);
+    if(sortMode==="category") return (a.category||"").localeCompare(b.category||"")||Math.abs(b.amount)-Math.abs(a.amount);
+    if(sortMode==="date") return new Date(b.date)-new Date(a.date);
+    return 0;
+  }),[transactions,sortMode]);
   const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
   function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(onReviewEdit)onReviewEdit();if(editCount>=1)setShowUpdatedBanner(true);}
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
@@ -2013,6 +1998,13 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
             <option value="All">All categories</option>
             {categories.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
+          <div style={{display:"flex",gap:2,background:"#0d0c1e",borderRadius:8,border:"1px solid #1f1d35",padding:2,flexShrink:0}}>
+            {[["amount","£"],["date","Date"],["category","Cat"]].map(([m,label])=>(
+              <button key={m} onClick={()=>setSortMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:11,fontWeight:700,cursor:"pointer",background:sortMode===m?"#6366f1":"transparent",color:sortMode===m?"#fff":"#4b5563",transition:"all 0.15s"}}>
+                {label}
+              </button>
+            ))}
+          </div>
           <div style={{marginLeft:"auto",fontSize:12,color:"#4b5563",whiteSpace:"nowrap"}}>
             {filtered.length} transaction{filtered.length!==1?"s":""}
             {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}

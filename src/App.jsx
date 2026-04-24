@@ -2,6 +2,25 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import * as XLSX from "xlsx";
 import logo from "./logo.png";
 
+// ─── Stripe ───────────────────────────────────────────────────────────────────
+const STRIPE_PUBLISHABLE_KEY = "pk_test_51TPlSFPcKkSmNBEQqNiWP7J3Udw0PywkFDsHYQIXIbnAQKbKj9bvBvz1aHa0otuA2UJi2E9AXU3npqBuQMD4FuCt00W7xaqHZ6";
+const FREE_AI_RUNS = 3;
+const AI_RUNS_KEY = "abound_ai_runs_v1";
+const PREMIUM_KEY = "abound_premium_v1";
+
+function getAiRunsUsed() { try { return parseInt(localStorage.getItem(AI_RUNS_KEY)||"0",10); } catch{ return 0; } }
+function incrementAiRuns() { try { localStorage.setItem(AI_RUNS_KEY, String(getAiRunsUsed()+1)); } catch{} }
+function isPremium() { try { return localStorage.getItem(PREMIUM_KEY)==="1"; } catch{ return false; } }
+function setPremium() { try { localStorage.setItem(PREMIUM_KEY,"1"); } catch{} }
+
+async function redirectToCheckout() {
+  try {
+    const res = await fetch("/api/create-checkout-session", { method:"POST", headers:{"Content-Type":"application/json"} });
+    const { url } = await res.json();
+    if(url) window.location.href = url;
+  } catch(e) { alert("Couldn't start checkout — please try again."); }
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Transfers", "Other Payments"];
 const INTERCOMPANY_CATEGORY = "Card Repayment";
@@ -4026,10 +4045,52 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
+function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(6px)"}}>
+      <div style={{background:"linear-gradient(135deg,#1a1830,#0f0e1f)",border:"1px solid #4338ca",borderRadius:20,padding:"36px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)",textAlign:"center"}}>
+        <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+          <svg width="28" height="28" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.27l-4.76 2.38.91-5.3L2.3 7.6l5.3-.8L10 2z" fill="#fff"/></svg>
+        </div>
+        <div style={{fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>You've used your {FREE_AI_RUNS} free AI runs</div>
+        <h2 style={{fontSize:24,fontWeight:800,color:"#e0e7ff",margin:"0 0 12px",lineHeight:1.2}}>Upgrade to keep the AI magic</h2>
+        <p style={{fontSize:14,color:"#818cf8",lineHeight:1.6,margin:"0 0 28px"}}>
+          Free users get {FREE_AI_RUNS} AI categorisation runs. You've used all {runsUsed}.<br/>
+          Upgrade for <strong style={{color:"#a5b4fc"}}>£5/month</strong> to get unlimited AI runs, Financial Analysis, budgets, and the upcoming stock tracker.
+        </p>
+        <div style={{background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:12,padding:"14px 16px",marginBottom:24,textAlign:"left"}}>
+          {["Unlimited AI categorisation","6-week cash flow forecast","Financial Analysis & goals","Budget tracking per category","Stock tracker (coming soon)"].map((f,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",fontSize:13,color:"#c7d2fe"}}>
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M4 10l5 5 7-8" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {f}
+            </div>
+          ))}
+        </div>
+        <button onClick={onUpgrade} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(99,102,241,0.4)",marginBottom:10,letterSpacing:"0.02em"}}>
+          Upgrade for £5/month →
+        </button>
+        <button onClick={onDismiss} style={{width:"100%",padding:"11px",background:"none",color:"#4b5563",border:"1px solid #1f1d35",borderRadius:12,fontSize:13,cursor:"pointer"}}>
+          Continue with rule-based categorisation (free)
+        </button>
+        <p style={{fontSize:11,color:"#374151",marginTop:12}}>Cancel anytime · Secure payment via Stripe</p>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [screen, setScreen] = useState("hero");
+  const [premium, setPremiumState] = useState(isPremium);
+  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   useEffect(()=>{
+    // Handle return from Stripe Checkout
+    const params = new URLSearchParams(window.location.search);
+    if(params.get("upgraded")==="true"){
+      setPremium();
+      setPremiumState(true);
+      window.history.replaceState({},"",window.location.pathname);
+    }
     // Fix viewport to prevent zoom on input focus (iOS)
     let meta = document.querySelector('meta[name="viewport"]');
     if(!meta){meta=document.createElement('meta');meta.name="viewport";document.head.appendChild(meta);}
@@ -4075,8 +4136,18 @@ export default function App() {
     <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#08070f",minHeight:"100vh",minWidth:"100vw",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
       {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")} onResume={handleResume}/>}
-      {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{setRawTransactions(txns);setMultipleAccounts(multi);setScreen("categorise");}}/>}
+      {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{
+        setRawTransactions(txns);
+        setMultipleAccounts(multi);
+        if(!premium && getAiRunsUsed()>=FREE_AI_RUNS){
+          setShowUpgradeModal(true);
+        } else {
+          incrementAiRuns();
+          setScreen("categorise");
+        }
+      }}/>}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
+      {showUpgradeModal&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>{setShowUpgradeModal(false);incrementAiRuns();setScreen("categorise");}}/>}
       {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
       {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}

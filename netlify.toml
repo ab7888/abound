@@ -7,3 +7,8 @@
   from = "/api/categorise"
   to = "/.netlify/functions/categorise"
   status = 200
+
+[[redirects]]
+  from = "/api/create-checkout-session"
+  to = "/.netlify/functions/create-checkout-session"
+  status = 200

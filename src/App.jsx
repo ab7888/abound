@@ -2391,6 +2391,22 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [investigationStep, setInvestigationStep] = useState(0);
   const [investigationOpen, setInvestigationOpen] = useState(false);
+  const [showPremiumGate, setShowPremiumGate] = useState(false);
+  const [showStockSetup, setShowStockSetup] = useState(false);
+  const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
+  const [stockData, setStockData] = useState({});
+  function openAnalysis(){if(!isPremium()){setShowPremiumGate(true);return;}setInvestigationOpen(true);}
+  function saveStocks(s){setStocks(s);try{localStorage.setItem("abound_stocks_v1",JSON.stringify(s));}catch{}}
+  useEffect(()=>{
+    if(!stocks.length) return;
+    stocks.forEach(async(s)=>{
+      try{
+        const res=await fetch('/api/stock-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:s.ticker})});
+        const d=await res.json();
+        if(d.currentPrice) setStockData(prev=>({...prev,[s.ticker]:d}));
+      }catch(e){}
+    });
+  },[]);
   const [highlightCashBal, setHighlightCashBal] = useState(false);
   const highlightCashBalTimer = useRef(null);
   const [goalsText, setGoalsText] = useState("");
@@ -2507,7 +2523,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     if(isMobile){
       setTimeout(()=>setShowAnalysisSuggestion(true),25000);
     } else {
-      setTimeout(()=>setInvestigationOpen(true),350);
+      setTimeout(()=>{setShowStockSetup(true);},800);
     }
   }
   function advanceTour(){
@@ -2537,7 +2553,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 200);
     }
   }
-  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile)setTimeout(()=>setInvestigationOpen(true),350);}
+  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile)setTimeout(()=>setShowStockSetup(true),800);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   // Lock body scroll during mobile tour
@@ -3357,7 +3373,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
             <div style={{fontSize:10,color:"#818cf8",lineHeight:1.4,marginBottom:8}}>End-of-month projections &amp; goal planning.</div>
             <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>{setShowAnalysisSuggestion(false);setInvestigationOpen(true);}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Open →</button>
+              <button onClick={()=>{setShowAnalysisSuggestion(false);openAnalysis();}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Open →</button>
               <button onClick={()=>setShowAnalysisSuggestion(false)} style={{padding:"5px 8px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:6,fontSize:10,cursor:"pointer"}}>✕</button>
             </div>
           </div>
@@ -3510,6 +3526,56 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/>
                 <td style={{background:T.bg}} colSpan={2}/>
               </tr>
+              {/* Stock portfolio rows */}
+              {stocks.length>0&&stocks.some(s=>stockData[s.ticker])&&(()=>{
+                const visibleStocks=stocks.filter(s=>stockData[s.ticker]?.currentPrice);
+                if(!visibleStocks.length) return null;
+                return(<>
+                  <tr style={{background:"rgba(16,185,129,0.04)",borderTop:"2px solid rgba(16,185,129,0.25)"}}>
+                    <td colSpan={2} style={{padding:"6px 12px",fontSize:10,fontWeight:700,color:"#10b981",letterSpacing:"0.1em",textTransform:"uppercase"}}>STOCK PORTFOLIO</td>
+                    {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.border}`,background:"rgba(16,185,129,0.04)"}}/>)}
+                    <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
+                    {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.06)",borderRight:`1px solid ${T.border2}`}}/>)}
+                    <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}} colSpan={2}/>
+                  </tr>
+                  {visibleStocks.map(stock=>{
+                    const sd=stockData[stock.ticker];
+                    const {currentPrice,history=[]}=sd;
+                    const currentVal=stock.value||0;
+                    const actualVals=actualWeeks.map(w=>{
+                      if(!history.length) return null;
+                      const wDate=new Date(w.key);
+                      const closest=history.reduce((a,b)=>Math.abs(new Date(a.date)-wDate)<Math.abs(new Date(b.date)-wDate)?a:b);
+                      return closest?currentVal*(closest.close/currentPrice):null;
+                    });
+                    const recentCloses=history.slice(-5).map(h=>h.close);
+                    const weeklyDrift=recentCloses.length>1?(recentCloses[recentCloses.length-1]-recentCloses[0])/(recentCloses.length-1):0;
+                    const lastClose=recentCloses[recentCloses.length-1]||currentPrice;
+                    const forecastVals=forecastWeeks.map((_,i)=>{
+                      const projPrice=lastClose+weeklyDrift*(i+1);
+                      return currentVal*(projPrice/currentPrice);
+                    });
+                    return(
+                      <tr key={stock.ticker} className="abound-row" style={{background:"rgba(16,185,129,0.02)",borderBottom:`1px solid rgba(16,185,129,0.1)`}}>
+                        <td style={{padding:"7px 8px 7px 12px",fontSize:11,fontWeight:700,color:"#10b981",whiteSpace:"nowrap"}}>{stock.ticker}</td>
+                        <td style={{padding:"7px 8px",fontSize:11,color:"#6ee7b7",whiteSpace:"nowrap",maxWidth:100,overflow:"hidden",textOverflow:"ellipsis"}}>{stock.name||sd.name||""}</td>
+                        {actualVals.map((v,i)=>(
+                          <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:600,color:"#10b981",fontVariantNumeric:"tabular-nums",borderRight:`1px solid ${T.border}`}}>
+                            {v!==null?fmtMoney(v):"—"}
+                          </td>
+                        ))}
+                        <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
+                        {forecastVals.map((v,i)=>(
+                          <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:600,color:"rgba(16,185,129,0.7)",background:"rgba(16,185,129,0.06)",fontVariantNumeric:"tabular-nums",borderRight:`1px solid ${T.border2}`}}>
+                            {fmtMoney(v)}
+                          </td>
+                        ))}
+                        <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}} colSpan={2}/>
+                      </tr>
+                    );
+                  })}
+                </>);
+              })()}
             </tbody>
           </table>
         </div>
@@ -3610,6 +3676,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
         }
       </button>
+      {/* Premium gate modal */}
+      {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
+
+      {/* Stock setup prompt */}
+      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);}} onDismiss={()=>setShowStockSetup(false)} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+
       {/* Investigation Panel — fixed right drawer */}
       {(()=>{
         const today=new Date();
@@ -3652,13 +3724,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                       <span style={{position:"absolute",top:2,left:splitByCard?12:2,width:8,height:8,borderRadius:4,background:"#fff",transition:"left 0.2s",display:"block"}}/>
                     </div>
                   </button>
-                  <button onClick={()=>setInvestigationOpen(true)}
+                  <button onClick={openAnalysis}
                     style={{background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
                     Analysis
                   </button>
                 </div>
               ) : (
-                <button onClick={()=>setInvestigationOpen(true)}
+                <button onClick={openAnalysis}
                   style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>
                   ANALYSIS
                 </button>
@@ -4066,6 +4138,116 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
 }
 
 // ─── Root ─────────────────────────────────────────────────────────────────────
+async function fetchStockData(ticker) {
+  const res = await fetch('/api/stock-data', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ticker}) });
+  if (!res.ok) throw new Error('Ticker not found');
+  return res.json();
+}
+
+function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
+  const [mode, setMode] = useState(null); // null | 'manual' | 'screenshot'
+  const [ticker, setTicker] = useState('');
+  const [valueInput, setValueInput] = useState('');
+  const [localStocks, setLocalStocks] = useState(stocks||[]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [screenshotLoading, setScreenshotLoading] = useState(false);
+  const fileRef = useRef(null);
+
+  async function addManual() {
+    if(!ticker.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const data = await fetchStockData(ticker.trim());
+      onStockDataFetched({[data.ticker]: data});
+      const val = parseFloat(valueInput) || null;
+      setLocalStocks(s=>[...s.filter(x=>x.ticker!==data.ticker), {ticker:data.ticker, name:data.name, currentValue:val, currency:data.currency}]);
+      setTicker(''); setValueInput('');
+    } catch(e) { setError('Ticker not found — try e.g. AAPL, TSLA, BARC.L for UK stocks'); }
+    setLoading(false);
+  }
+
+  async function handleScreenshot(e) {
+    const file = e.target.files?.[0];
+    if(!file) return;
+    setScreenshotLoading(true); setError('');
+    try {
+      const base64 = await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+      const extracted = await fetch('/api/extract-stocks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:base64,mediaType:file.type})}).then(r=>r.json());
+      if(!extracted.length){setError('No stocks detected — try the manual entry instead.');setScreenshotLoading(false);return;}
+      const results = await Promise.allSettled(extracted.map(s=>fetchStockData(s.ticker)));
+      const newStocks = [];
+      results.forEach((r,i)=>{
+        if(r.status==='fulfilled'){
+          onStockDataFetched({[r.value.ticker]:r.value});
+          newStocks.push({ticker:r.value.ticker, name:r.value.name, currentValue:extracted[i].value||null, currency:r.value.currency});
+        }
+      });
+      setLocalStocks(s=>{const map=new Map(s.map(x=>[x.ticker,x]));newStocks.forEach(x=>map.set(x.ticker,x));return [...map.values()];});
+    } catch(e){setError('Could not read screenshot — please try manual entry.');}
+    setScreenshotLoading(false);
+  }
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(6px)"}}>
+      <div style={{background:"linear-gradient(135deg,#1a1830,#0f0e1f)",border:"1px solid #4338ca",borderRadius:20,padding:"32px 28px",maxWidth:480,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)"}}>
+        {mode===null&&(<>
+          <div style={{textAlign:"center",marginBottom:24}}>
+            <div style={{width:52,height:52,borderRadius:14,background:"linear-gradient(135deg,#10b981,#059669)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 16px"}}>
+              <svg width="26" height="26" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <h2 style={{fontSize:22,fontWeight:800,color:"#e0e7ff",margin:"0 0 8px"}}>Do you hold any stocks?</h2>
+            <p style={{fontSize:13,color:"#818cf8",margin:0,lineHeight:1.6}}>Add your holdings to see your portfolio value alongside your cash flow — actuals for the last 6 weeks and a 6-week forecast.</p>
+          </div>
+          <div style={{display:"flex",gap:10,marginBottom:14}}>
+            <button onClick={()=>setMode('screenshot')} style={{flex:1,padding:"14px",background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:12,color:"#a5b4fc",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="2" stroke="#a5b4fc" strokeWidth="1.5"/><circle cx="10" cy="10" r="3" stroke="#a5b4fc" strokeWidth="1.5"/></svg>
+              Upload screenshot
+              <span style={{fontSize:10,color:"#6366f1",fontWeight:500}}>Fastest — AI reads it automatically</span>
+            </button>
+            <button onClick={()=>setMode('manual')} style={{flex:1,padding:"14px",background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:12,color:"#a5b4fc",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <svg width="22" height="22" viewBox="0 0 20 20" fill="none"><path d="M4 8h12M4 12h8" stroke="#a5b4fc" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              Enter manually
+              <span style={{fontSize:10,color:"#6366f1",fontWeight:500}}>Type ticker + value</span>
+            </button>
+          </div>
+          <button onClick={onDismiss} style={{width:"100%",padding:"10px",background:"none",color:"#4b5563",border:"1px solid #1f1d35",borderRadius:10,fontSize:12,cursor:"pointer"}}>No thanks, I don't hold stocks</button>
+        </>)}
+
+        {mode==='screenshot'&&(<>
+          <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:16,padding:0}}>← Back</button>
+          <h3 style={{fontSize:18,fontWeight:800,color:"#e0e7ff",margin:"0 0 8px"}}>Upload a screenshot of your holdings</h3>
+          <p style={{fontSize:12,color:"#818cf8",marginBottom:16,lineHeight:1.5}}>Any brokerage app screenshot showing ticker symbols and values. The AI will extract your holdings automatically.</p>
+          <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleScreenshot}/>
+          <button onClick={()=>fileRef.current?.click()} disabled={screenshotLoading} style={{width:"100%",padding:"14px",background:"rgba(99,102,241,0.12)",border:"2px dashed rgba(99,102,241,0.4)",borderRadius:12,color:"#a5b4fc",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:12}}>
+            {screenshotLoading?"Analysing with AI...":"📎 Choose screenshot"}
+          </button>
+          {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:12}}>{error}</p>}
+          {localStocks.length>0&&(<>
+            <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker}</span><span style={{color:"#10b981"}}>{s.currentValue?`£${s.currentValue.toLocaleString()}`:s.name}</span></div>)}</div>
+            <button onClick={()=>onSave(localStocks)} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Add to cash flow →</button>
+          </>)}
+        </>)}
+
+        {mode==='manual'&&(<>
+          <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:16,padding:0}}>← Back</button>
+          <h3 style={{fontSize:18,fontWeight:800,color:"#e0e7ff",margin:"0 0 16px"}}>Add your holdings</h3>
+          <div style={{display:"flex",gap:8,marginBottom:8}}>
+            <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&addManual()} placeholder="Ticker (e.g. AAPL, BARC.L)" style={{flex:1,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+            <input value={valueInput} onChange={e=>setValueInput(e.target.value)} placeholder="Value £ (optional)" style={{width:140,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+            <button onClick={addManual} disabled={loading} style={{padding:"10px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>{loading?"...":"Add"}</button>
+          </div>
+          {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:8}}>{error}</p>}
+          {localStocks.length>0&&(<>
+            <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker} <span style={{color:"#6b7280",fontWeight:400,fontSize:11}}>{s.name}</span></span><div style={{display:"flex",alignItems:"center",gap:8}}>{s.currentValue&&<span style={{color:"#10b981"}}>£{s.currentValue.toLocaleString()}</span>}<button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px"}}>×</button></div></div>)}</div>
+            <button onClick={()=>onSave(localStocks)} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Add to cash flow →</button>
+          </>)}
+        </>)}
+      </div>
+    </div>
+  );
+}
+
 function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(6px)"}}>

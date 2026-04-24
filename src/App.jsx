@@ -2460,14 +2460,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
 
   useEffect(()=>{
     setInvestigationOpen(false);
-    const seenKey = "cashFlowTourSeen_v2";
     const sessionKey = "cashFlowTourSeenSession";
-    const shouldShow = isMobile
-      ? !sessionStorage.getItem(sessionKey)
-      : !localStorage.getItem(seenKey);
-    if(shouldShow){
+    if(!sessionStorage.getItem(sessionKey)){
       const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},isMobile?800:1500);
-      if(isMobile) sessionStorage.setItem(sessionKey,"1");
+      sessionStorage.setItem(sessionKey,"1");
       return()=>clearTimeout(t);
     }
   },[]);
@@ -3458,6 +3454,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {/* Grouped / By card toggle — desktop inline, mobile via fixed right bar */}
         {!isMobile&&(
           <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
+            <button onClick={()=>setShowStockSetup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:stocks.length?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.3)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:stocks.length?"#10b981":"#818cf8",cursor:"pointer",flexShrink:0}}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              {stocks.length?`Stocks (${stocks.length})`:"+ Stocks"}
+            </button>
             <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
             <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
               <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
@@ -3537,7 +3537,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   {visibleStocks.map(stock=>{
                     const sd=stockData[stock.ticker];
                     const {currentPrice,history=[]}=sd;
-                    const currentVal=stock.value||0;
+                    const currentVal=stock.currentValue||0;
                     const actualVals=actualWeeks.map(w=>{
                       if(!history.length) return null;
                       const wDate=new Date(w.key);
@@ -3680,6 +3680,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <button onClick={openAnalysis}
                     style={{background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
                     Analysis
+                  </button>
+                  <button onClick={()=>setShowStockSetup(true)}
+                    style={{background:stocks.length?"rgba(16,185,129,0.15)":"rgba(30,27,56,0.95)",color:stocks.length?"#10b981":"#6b7280",border:`1px solid ${stocks.length?"rgba(16,185,129,0.4)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"12px 7px",fontSize:10,fontWeight:700,cursor:"pointer",writingMode:"vertical-rl",transform:"rotate(180deg)",boxShadow:"-2px 0 8px rgba(0,0,0,0.3)"}}>
+                    {stocks.length?`Stocks(${stocks.length})`:"Stocks"}
                   </button>
                 </div>
               ) : (

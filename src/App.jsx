@@ -723,47 +723,80 @@ function IllustrationBarchart() {
   );
 }
 
-function IllustrationCrystal(){
+function IllustrationNodeNet(){
   return(
-    <svg viewBox="0 0 200 260" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+    <svg viewBox="0 0 210 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
       <defs>
-        <radialGradient id="crystalCore" cx="50%" cy="42%" r="45%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.45"/>
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
-        </radialGradient>
-        <radialGradient id="crystalBase" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.18"/>
+        <radialGradient id="nnGlow" cx="44%" cy="57%" r="38%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5"/>
           <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
         </radialGradient>
       </defs>
-      {/* Ambient glow */}
-      <ellipse cx="100" cy="130" rx="80" ry="60" fill="url(#crystalCore)"/>
-      {/* === Bottom half === */}
-      {/* Bottom-left face */}
-      <polygon points="100,230 42,130 100,155" fill="rgba(12,10,28,0.88)" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-      {/* Bottom-right face */}
-      <polygon points="100,230 158,130 100,155" fill="rgba(20,18,42,0.78)" stroke="rgba(255,255,255,0.16)" strokeWidth="1"/>
-      {/* Equatorial accent */}
-      <line x1="42" y1="130" x2="158" y2="130" stroke="rgba(255,255,255,0.1)" strokeWidth="0.8"/>
-      {/* === Top half === */}
-      {/* Top-left face */}
-      <polygon points="100,38 42,130 100,155" fill="rgba(99,102,241,0.14)" stroke="rgba(255,255,255,0.38)" strokeWidth="1.2"/>
-      {/* Inner facet line on top-left */}
-      <line x1="100" y1="38" x2="71" y2="142" stroke="rgba(255,255,255,0.08)" strokeWidth="0.7"/>
-      {/* Top-right face — brightest */}
-      <polygon points="100,38 158,130 100,155" fill="rgba(99,102,241,0.22)" stroke="rgba(255,255,255,0.5)" strokeWidth="1.3"/>
-      {/* Inner facet line on top-right */}
-      <line x1="100" y1="38" x2="129" y2="142" stroke="rgba(255,255,255,0.12)" strokeWidth="0.7"/>
-      {/* Centre vertical ridge */}
-      <line x1="100" y1="38" x2="100" y2="155" stroke="rgba(255,255,255,0.07)" strokeWidth="0.8"/>
-      {/* === Apex glow === */}
-      <circle cx="100" cy="38" r="10" fill="rgba(99,102,241,0.25)"/>
-      <circle cx="100" cy="38" r="3" fill="#818cf8" stroke="rgba(255,255,255,0.85)" strokeWidth="0.8"/>
-      {/* === Base shadow === */}
-      <ellipse cx="100" cy="244" rx="38" ry="8" fill="url(#crystalBase)"/>
-      {/* Reflection shimmer */}
-      <line x1="78" y1="195" x2="92" y2="205" stroke="rgba(255,255,255,0.06)" strokeWidth="1.2" strokeLinecap="round"/>
-      <line x1="85" y1="210" x2="96" y2="220" stroke="rgba(255,255,255,0.04)" strokeWidth="0.8" strokeLinecap="round"/>
+      <ellipse cx="92" cy="108" rx="44" ry="32" fill="url(#nnGlow)"/>
+      {/* Edges */}
+      <line x1="104" y1="22" x2="46" y2="56" stroke="rgba(99,102,241,0.3)" strokeWidth="0.9"/>
+      <line x1="104" y1="22" x2="168" y2="44" stroke="rgba(99,102,241,0.22)" strokeWidth="0.8"/>
+      <line x1="104" y1="22" x2="92" y2="108" stroke="rgba(99,102,241,0.28)" strokeWidth="0.9"/>
+      <line x1="46" y1="56" x2="28" y2="120" stroke="rgba(99,102,241,0.2)" strokeWidth="0.8"/>
+      <line x1="46" y1="56" x2="92" y2="108" stroke="rgba(99,102,241,0.32)" strokeWidth="1"/>
+      <line x1="168" y1="44" x2="152" y2="102" stroke="rgba(99,102,241,0.22)" strokeWidth="0.8"/>
+      <line x1="168" y1="44" x2="92" y2="108" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
+      <line x1="92" y1="108" x2="28" y2="120" stroke="rgba(99,102,241,0.24)" strokeWidth="0.9"/>
+      <line x1="92" y1="108" x2="152" y2="102" stroke="rgba(99,102,241,0.28)" strokeWidth="0.9"/>
+      <line x1="92" y1="108" x2="60" y2="166" stroke="rgba(99,102,241,0.2)" strokeWidth="0.8"/>
+      <line x1="92" y1="108" x2="162" y2="158" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
+      <line x1="28" y1="120" x2="60" y2="166" stroke="rgba(99,102,241,0.16)" strokeWidth="0.8"/>
+      <line x1="152" y1="102" x2="162" y2="158" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
+      <line x1="60" y1="166" x2="162" y2="158" stroke="rgba(99,102,241,0.14)" strokeWidth="0.7"/>
+      {/* Outer dim nodes */}
+      <circle cx="104" cy="22" r="3.5" fill="rgba(99,102,241,0.45)" stroke="rgba(255,255,255,0.28)" strokeWidth="0.8"/>
+      <circle cx="46" cy="56" r="3" fill="rgba(99,102,241,0.38)" stroke="rgba(255,255,255,0.22)" strokeWidth="0.8"/>
+      <circle cx="168" cy="44" r="3" fill="rgba(99,102,241,0.32)" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8"/>
+      <circle cx="28" cy="120" r="2.5" fill="rgba(99,102,241,0.28)" stroke="rgba(255,255,255,0.15)" strokeWidth="0.7"/>
+      <circle cx="152" cy="102" r="3.5" fill="rgba(99,102,241,0.42)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
+      <circle cx="60" cy="166" r="2.5" fill="rgba(99,102,241,0.28)" stroke="rgba(255,255,255,0.14)" strokeWidth="0.7"/>
+      <circle cx="162" cy="158" r="2" fill="rgba(99,102,241,0.22)" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6"/>
+      {/* Central hub */}
+      <circle cx="92" cy="108" r="8" fill="rgba(12,10,28,0.85)" stroke="rgba(99,102,241,0.7)" strokeWidth="1.4"/>
+      <circle cx="92" cy="108" r="4" fill="rgba(99,102,241,0.85)" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
+      <circle cx="92" cy="108" r="1.8" fill="#c7d2fe"/>
+    </svg>
+  );
+}
+
+function IllustrationOrbits(){
+  return(
+    <svg viewBox="0 0 210 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+      <defs>
+        <radialGradient id="orbCore" cx="50%" cy="50%" r="42%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.55"/>
+          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+        </radialGradient>
+      </defs>
+      {/* Core glow */}
+      <circle cx="105" cy="95" r="38" fill="url(#orbCore)"/>
+      {/* Outer equatorial ring */}
+      <ellipse cx="105" cy="95" rx="92" ry="26" stroke="rgba(99,102,241,0.38)" strokeWidth="1.1" fill="none"/>
+      {/* Mid ring — tilted 52° */}
+      <ellipse cx="105" cy="95" rx="74" ry="21" transform="rotate(52 105 95)" stroke="rgba(99,102,241,0.28)" strokeWidth="1" fill="none"/>
+      {/* Inner ring — tilted −38°, dashed */}
+      <ellipse cx="105" cy="95" rx="52" ry="16" transform="rotate(-38 105 95)" stroke="rgba(99,102,241,0.22)" strokeWidth="0.9" fill="none" strokeDasharray="4 6"/>
+      {/* Tiny extra ring close to core */}
+      <ellipse cx="105" cy="95" rx="28" ry="8" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8" fill="none" strokeDasharray="2 4"/>
+      {/* Orbital nodes — equatorial */}
+      <circle cx="197" cy="95" r="3.5" fill="rgba(99,102,241,0.65)" stroke="rgba(255,255,255,0.45)" strokeWidth="0.9"/>
+      <circle cx="13" cy="95" r="2.5" fill="rgba(99,102,241,0.4)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
+      {/* Node on mid ring (approx top) */}
+      <circle cx="105" cy="21" r="3" fill="rgba(99,102,241,0.52)" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8"/>
+      {/* Node on inner ring (approx right) */}
+      <circle cx="155" cy="78" r="2" fill="rgba(99,102,241,0.42)" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7"/>
+      {/* Tick marks on equatorial ring */}
+      <line x1="105" y1="69" x2="105" y2="74" stroke="rgba(99,102,241,0.3)" strokeWidth="0.8"/>
+      <line x1="105" y1="116" x2="105" y2="121" stroke="rgba(99,102,241,0.3)" strokeWidth="0.8"/>
+      {/* Core node */}
+      <circle cx="105" cy="95" r="9" fill="rgba(12,10,28,0.88)" stroke="rgba(99,102,241,0.75)" strokeWidth="1.4"/>
+      <circle cx="105" cy="95" r="4.5" fill="rgba(99,102,241,0.9)" stroke="rgba(255,255,255,0.65)" strokeWidth="1"/>
+      <circle cx="105" cy="95" r="2" fill="#e0e7ff"/>
     </svg>
   );
 }
@@ -3059,12 +3092,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 65% 20%,rgba(99,102,241,0.13) 0%,transparent 55%)",pointerEvents:"none",zIndex:0}}/>
         <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.07) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none",zIndex:0}}/>
       </>}
-      {/* Decorative crystal — centre-right, desktop only */}
-      {!isMobile&&isDark&&(
-        <div style={{position:"absolute",top:"50%",right:"6%",transform:"translateY(-55%) rotate(6deg)",width:200,opacity:0.28,pointerEvents:"none",zIndex:0}}>
-          <IllustrationCrystal/>
-        </div>
-      )}
 
       {/* Plan-a-purchase overlay — rendered here (not inside CatRow) so typing doesn't unmount it */}
       {editingEvent&&(
@@ -3408,6 +3435,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
           );
         })()}
+
+        {/* Decorative graphics — bottom-left and bottom-right, dark mode desktop only */}
+        {!isMobile&&isDark&&(
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:20,paddingBottom:4,pointerEvents:"none"}}>
+            <div style={{width:190,opacity:0.32,transform:"rotate(-4deg) translateY(8px)"}}>
+              <IllustrationNodeNet/>
+            </div>
+            <div style={{width:190,opacity:0.32,transform:"rotate(4deg) translateY(8px)"}}>
+              <IllustrationOrbits/>
+            </div>
+          </div>
+        )}
 
       </div>
 

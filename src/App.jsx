@@ -2173,7 +2173,11 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [reviewEditCount, setReviewEditCount] = useState(0);
   const [nonRecurring, setNonRecurring] = useState(new Set());
   const [showFullscreenHint, setShowFullscreenHint] = useState(()=>!localStorage.getItem("fshintSeen"));
+  const [showInlineUpgrade, setShowInlineUpgrade] = useState(false);
   const isMobile = useIsMobile();
+  const userIsPremium = isPremium();
+  const runsUsed = getAiRunsUsed();
+  const runsLeft = Math.max(0, FREE_AI_RUNS - runsUsed);
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
   function toggleNonRecurring(narrative){setNonRecurring(s=>{const n=new Set(s);n.has(narrative)?n.delete(narrative):n.add(narrative);return n;});}
   return(
@@ -2189,10 +2193,27 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
         </button>}
-        <button onClick={onFeedback} style={{marginLeft:"auto",padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-          {isMobile?"⭐":"⭐ Leave a review"}
-        </button>
-        {!isMobile&&<button onClick={onStartOver} style={{marginLeft:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
+        {/* Plan badge */}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+          {userIsPremium?(
+            <div style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.25)",borderRadius:20,fontSize:11,fontWeight:700,color:"#10b981"}}>
+              <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.27l-4.76 2.38.91-5.3L2.3 7.6l5.3-.8L10 2z" fill="#10b981"/></svg>
+              Premium
+            </div>
+          ):(
+            <button onClick={()=>setShowInlineUpgrade(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:20,fontSize:11,fontWeight:700,color:"#a5b4fc",cursor:"pointer",transition:"all 0.15s"}}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(99,102,241,0.22)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(99,102,241,0.12)";}}>
+              <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.27l-4.76 2.38.91-5.3L2.3 7.6l5.3-.8L10 2z" fill="#a5b4fc"/></svg>
+              {isMobile?"Upgrade":`Free · ${runsLeft} AI run${runsLeft!==1?"s":""} left · Upgrade`}
+            </button>
+          )}
+          <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+            {isMobile?"⭐":"⭐ Leave a review"}
+          </button>
+          {!isMobile&&<button onClick={onStartOver} style={{fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
+        </div>
+        {showInlineUpgrade&&<UpgradeModal runsUsed={runsUsed} onUpgrade={redirectToCheckout} onDismiss={()=>setShowInlineUpgrade(false)}/>}
       </div>
       {isMobile&&showFullscreenHint&&(
         <div onClick={()=>{localStorage.setItem("fshintSeen","1");setShowFullscreenHint(false);document.documentElement.requestFullscreen?.().catch(()=>{});}} style={{background:"rgba(99,102,241,0.18)",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"10px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}}>

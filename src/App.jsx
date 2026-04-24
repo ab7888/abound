@@ -59,6 +59,11 @@ const GLOBAL_CSS = `
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
+  @media (max-width: 768px) {
+    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0a0919; }
+    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0a0919; max-width: 80px !important; }
+    [data-sticky-hdr] { position: sticky !important; left: 0; z-index: 6; }
+  }
 `;
 
 function useIsMobile() {
@@ -2226,7 +2231,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
       )}
       {isMobile&&activeTab==="cashflow"&&(
-        <button onClick={goToReview} style={{position:"fixed",right:0,top:"38%",zIndex:900,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)",display:"flex",alignItems:"center",gap:6}}>
+        <button onClick={goToReview} style={{position:"fixed",right:0,top:"18%",zIndex:900,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)",display:"flex",alignItems:"center",gap:6}}>
           {showReviewPrompt&&<span style={{background:"#ef4444",borderRadius:"50%",width:8,height:8,display:"inline-block",flexShrink:0}}/>}
           Review
         </button>
@@ -2531,8 +2536,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
             el.scrollIntoView({behavior:"smooth", block:"center"});
           }
         }
-        setTimeout(()=>setTourHighlightTick(t=>t+1), 700);
-      }, 200);
+        setTimeout(()=>setTourHighlightTick(t=>t+1), 1000);
+      }, 150);
     }
   }
   function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile)setTimeout(()=>setShowStockSetup(true),800);}
@@ -2559,9 +2564,17 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     setTimeout(()=>{
       const els = document.querySelectorAll(`[data-tour="${step.highlight}"]`);
       if(!els.length) return;
-      const el = els[0];
       const tableDiv = document.querySelector("[data-tour-table]");
       if(!tableDiv) return;
+      // Horizontal scroll: for forecast step scroll right, for actual scroll back left
+      if(step.highlight==="forecast"){
+        const fcstEl = els[0];
+        const tableRect = tableDiv.getBoundingClientRect();
+        tableDiv.scrollLeft = fcstEl.offsetLeft - tableRect.width / 2 + fcstEl.offsetWidth / 2;
+      } else if(step.highlight==="actual"){
+        tableDiv.scrollLeft = 0;
+      }
+      const el = els[0];
       const elRect = el.getBoundingClientRect();
       const tableRect = tableDiv.getBoundingClientRect();
       const targetScrollTop = tableDiv.scrollTop + elRect.top - tableRect.top - tableRect.height / 2 + elRect.height / 2;
@@ -2834,8 +2847,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const textColor=isIncome?"#34d399":isRepayment?"#a78bfa":T.catText;
     return(
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
-        <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:T.acctLabelColor,whiteSpace:"nowrap"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
-        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
+        <td data-sticky-label style={{padding:"5px 4px 5px 6px",fontSize:10,color:T.acctLabelColor,whiteSpace:"nowrap",minWidth:isMobile?26:undefined}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
+        <td data-sticky-label2 style={{padding:"5px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
@@ -3347,7 +3360,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
       {isMobile&&showAnalysisSuggestion&&(
-        <div style={{position:"fixed",right:0,top:"calc(38% + 120px)",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
+        <div style={{position:"fixed",right:0,top:"calc(18% + 120px)",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
           <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
             <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
               <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -3454,11 +3467,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </button>
           </div>
         )}
-       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc((100vh - 200px) / 0.6)`}:{})}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc((100vh - 120px) / 0.6)`}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
-                <th style={{padding:"10px 12px",textAlign:"left",...(!isMobile?{position:"sticky",left:0,top:0,zIndex:6}:{top:0,position:"sticky"}),background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:130}}>
+                <th data-sticky-hdr style={{padding:isMobile?"10px 6px":"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:isMobile?90:130}}>
                   <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
@@ -3493,7 +3506,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               {splitByCard ? accounts.map(acc=><AccountSection key={acc} account={acc}/>) : <GroupedSection/>}
               {/* Cash Balance row */}
               <tr data-tour="cashbalance" style={{background:T.cashBalRow,borderTop:"2px solid #6366f1",transition:"box-shadow 0.3s",animation:highlightCashBal?"cashBalPulse 1.2s ease-in-out 2":"none"}}>
-                <td colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help"}}
+                <td data-sticky-label colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help",background:T.cashBalRow}}
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
                   CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
@@ -3659,7 +3672,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {/* Collapsed tab */}
             {!investigationOpen&&(
               isMobile ? (
-                <div style={{position:"fixed",right:0,top:"calc(38% + 90px)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                <div style={{position:"fixed",right:0,top:"calc(18% + 90px)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
                   <button onClick={()=>setSplitByCard(s=>!s)} data-tour="view-toggle"
                     style={{background:T.card,border:`1px solid ${T.border}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:"-2px 0 10px rgba(0,0,0,0.3)",cursor:"pointer"}}>
                     <span style={{fontSize:8,color:"#6b7280",fontWeight:600,writingMode:"vertical-rl",transform:"rotate(180deg)",letterSpacing:"0.06em",lineHeight:1}}>{splitByCard?"By card":"Grouped"}</span>
@@ -4380,7 +4393,7 @@ export default function App() {
       {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:(screen==="main"&&typeof window!=="undefined"&&window.innerWidth<768)?"none":"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>
         <a href="https://www.iubenda.com/privacy-policy/95322623" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Privacy Policy</a>
         <a href="https://www.iubenda.com/privacy-policy/95322623/cookie-policy" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Cookie Policy</a>
       </div>

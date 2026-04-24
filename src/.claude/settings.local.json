@@ -3,7 +3,8 @@
     "allow": [
       "Read(//c/Users/Lenovo/Desktop/Abound/**)",
       "Bash(npx vite *)",
-      "Bash(npm run *)"
+      "Bash(npm run *)",
+      "Bash(npm install *)"
     ]
   }
 }

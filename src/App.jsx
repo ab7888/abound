@@ -757,80 +757,60 @@ function IllustrationBarchart() {
   );
 }
 
-function IllustrationNodeNet(){
+function IllustrationPyramidLeft(){
+  const N=30, ax=100, ay=20, baseY=188;
   return(
-    <svg viewBox="0 0 210 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+    <svg viewBox="0 0 200 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
       <defs>
-        <radialGradient id="nnGlow" cx="44%" cy="57%" r="38%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.5"/>
+        <radialGradient id="pyGlowL" cx="50%" cy="11%" r="22%">
+          <stop offset="0%" stopColor="#c7d2fe" stopOpacity="0.35"/>
           <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
         </radialGradient>
       </defs>
-      <ellipse cx="92" cy="108" rx="44" ry="32" fill="url(#nnGlow)"/>
-      {/* Edges */}
-      <line x1="104" y1="22" x2="46" y2="56" stroke="rgba(99,102,241,0.3)" strokeWidth="0.9"/>
-      <line x1="104" y1="22" x2="168" y2="44" stroke="rgba(99,102,241,0.22)" strokeWidth="0.8"/>
-      <line x1="104" y1="22" x2="92" y2="108" stroke="rgba(99,102,241,0.28)" strokeWidth="0.9"/>
-      <line x1="46" y1="56" x2="28" y2="120" stroke="rgba(99,102,241,0.2)" strokeWidth="0.8"/>
-      <line x1="46" y1="56" x2="92" y2="108" stroke="rgba(99,102,241,0.32)" strokeWidth="1"/>
-      <line x1="168" y1="44" x2="152" y2="102" stroke="rgba(99,102,241,0.22)" strokeWidth="0.8"/>
-      <line x1="168" y1="44" x2="92" y2="108" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
-      <line x1="92" y1="108" x2="28" y2="120" stroke="rgba(99,102,241,0.24)" strokeWidth="0.9"/>
-      <line x1="92" y1="108" x2="152" y2="102" stroke="rgba(99,102,241,0.28)" strokeWidth="0.9"/>
-      <line x1="92" y1="108" x2="60" y2="166" stroke="rgba(99,102,241,0.2)" strokeWidth="0.8"/>
-      <line x1="92" y1="108" x2="162" y2="158" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
-      <line x1="28" y1="120" x2="60" y2="166" stroke="rgba(99,102,241,0.16)" strokeWidth="0.8"/>
-      <line x1="152" y1="102" x2="162" y2="158" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8"/>
-      <line x1="60" y1="166" x2="162" y2="158" stroke="rgba(99,102,241,0.14)" strokeWidth="0.7"/>
-      {/* Outer dim nodes */}
-      <circle cx="104" cy="22" r="3.5" fill="rgba(99,102,241,0.45)" stroke="rgba(255,255,255,0.28)" strokeWidth="0.8"/>
-      <circle cx="46" cy="56" r="3" fill="rgba(99,102,241,0.38)" stroke="rgba(255,255,255,0.22)" strokeWidth="0.8"/>
-      <circle cx="168" cy="44" r="3" fill="rgba(99,102,241,0.32)" stroke="rgba(255,255,255,0.18)" strokeWidth="0.8"/>
-      <circle cx="28" cy="120" r="2.5" fill="rgba(99,102,241,0.28)" stroke="rgba(255,255,255,0.15)" strokeWidth="0.7"/>
-      <circle cx="152" cy="102" r="3.5" fill="rgba(99,102,241,0.42)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
-      <circle cx="60" cy="166" r="2.5" fill="rgba(99,102,241,0.28)" stroke="rgba(255,255,255,0.14)" strokeWidth="0.7"/>
-      <circle cx="162" cy="158" r="2" fill="rgba(99,102,241,0.22)" stroke="rgba(255,255,255,0.12)" strokeWidth="0.6"/>
-      {/* Central hub */}
-      <circle cx="92" cy="108" r="8" fill="rgba(12,10,28,0.85)" stroke="rgba(99,102,241,0.7)" strokeWidth="1.4"/>
-      <circle cx="92" cy="108" r="4" fill="rgba(99,102,241,0.85)" stroke="rgba(255,255,255,0.6)" strokeWidth="0.9"/>
-      <circle cx="92" cy="108" r="1.8" fill="#c7d2fe"/>
+      <ellipse cx={ax} cy={ay+8} rx="32" ry="16" fill="url(#pyGlowL)"/>
+      {Array.from({length:N},(_,i)=>{
+        const t=i/(N-1);
+        const blx=(-6)+(ax-(-6))*t;
+        const bly=baseY+(ay-baseY)*t;
+        const brx=206+(ax-206)*t;
+        const op=0.07+0.48*(1-t);
+        const cr=Math.round(6+(99-6)*t);
+        const cg=Math.round(182+(102-182)*t);
+        const cb=Math.round(212+(241-212)*t);
+        const sw=(0.55+0.85*(1-t)).toFixed(2);
+        return <path key={i} d={`M ${ax},${ay} L ${blx.toFixed(1)},${bly.toFixed(1)} L ${brx.toFixed(1)},${bly.toFixed(1)} Z`} stroke={`rgba(${cr},${cg},${cb},${op.toFixed(3)})`} strokeWidth={sw} fill="none" strokeLinejoin="round"/>;
+      })}
+      <circle cx={ax} cy={ay} r="2" fill="rgba(199,210,254,0.75)"/>
+      <circle cx={ax} cy={ay} r="5" fill="rgba(99,102,241,0.12)"/>
     </svg>
   );
 }
 
-function IllustrationOrbits(){
+function IllustrationPyramidRight(){
+  const N=30, ax=100, ay=20, baseY=188;
   return(
-    <svg viewBox="0 0 210 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+    <svg viewBox="0 0 200 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
       <defs>
-        <radialGradient id="orbCore" cx="50%" cy="50%" r="42%">
-          <stop offset="0%" stopColor="#6366f1" stopOpacity="0.55"/>
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
+        <radialGradient id="pyGlowR" cx="50%" cy="11%" r="22%">
+          <stop offset="0%" stopColor="#c7d2fe" stopOpacity="0.35"/>
+          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
         </radialGradient>
       </defs>
-      {/* Core glow */}
-      <circle cx="105" cy="95" r="38" fill="url(#orbCore)"/>
-      {/* Outer equatorial ring */}
-      <ellipse cx="105" cy="95" rx="92" ry="26" stroke="rgba(99,102,241,0.38)" strokeWidth="1.1" fill="none"/>
-      {/* Mid ring — tilted 52° */}
-      <ellipse cx="105" cy="95" rx="74" ry="21" transform="rotate(52 105 95)" stroke="rgba(99,102,241,0.28)" strokeWidth="1" fill="none"/>
-      {/* Inner ring — tilted −38°, dashed */}
-      <ellipse cx="105" cy="95" rx="52" ry="16" transform="rotate(-38 105 95)" stroke="rgba(99,102,241,0.22)" strokeWidth="0.9" fill="none" strokeDasharray="4 6"/>
-      {/* Tiny extra ring close to core */}
-      <ellipse cx="105" cy="95" rx="28" ry="8" stroke="rgba(99,102,241,0.18)" strokeWidth="0.8" fill="none" strokeDasharray="2 4"/>
-      {/* Orbital nodes — equatorial */}
-      <circle cx="197" cy="95" r="3.5" fill="rgba(99,102,241,0.65)" stroke="rgba(255,255,255,0.45)" strokeWidth="0.9"/>
-      <circle cx="13" cy="95" r="2.5" fill="rgba(99,102,241,0.4)" stroke="rgba(255,255,255,0.25)" strokeWidth="0.8"/>
-      {/* Node on mid ring (approx top) */}
-      <circle cx="105" cy="21" r="3" fill="rgba(99,102,241,0.52)" stroke="rgba(255,255,255,0.35)" strokeWidth="0.8"/>
-      {/* Node on inner ring (approx right) */}
-      <circle cx="155" cy="78" r="2" fill="rgba(99,102,241,0.42)" stroke="rgba(255,255,255,0.28)" strokeWidth="0.7"/>
-      {/* Tick marks on equatorial ring */}
-      <line x1="105" y1="69" x2="105" y2="74" stroke="rgba(99,102,241,0.3)" strokeWidth="0.8"/>
-      <line x1="105" y1="116" x2="105" y2="121" stroke="rgba(99,102,241,0.3)" strokeWidth="0.8"/>
-      {/* Core node */}
-      <circle cx="105" cy="95" r="9" fill="rgba(12,10,28,0.88)" stroke="rgba(99,102,241,0.75)" strokeWidth="1.4"/>
-      <circle cx="105" cy="95" r="4.5" fill="rgba(99,102,241,0.9)" stroke="rgba(255,255,255,0.65)" strokeWidth="1"/>
-      <circle cx="105" cy="95" r="2" fill="#e0e7ff"/>
+      <ellipse cx={ax} cy={ay+8} rx="32" ry="16" fill="url(#pyGlowR)"/>
+      {Array.from({length:N},(_,i)=>{
+        const t=i/(N-1);
+        const blx=(-6)+(ax-(-6))*t;
+        const bly=baseY+(ay-baseY)*t;
+        const brx=206+(ax-206)*t;
+        const op=0.07+0.48*(1-t);
+        const cr=Math.round(139+(99-139)*t);
+        const cg=Math.round(92+(102-92)*t);
+        const cb=Math.round(246+(241-246)*t);
+        const sw=(0.55+0.85*(1-t)).toFixed(2);
+        return <path key={i} d={`M ${ax},${ay} L ${blx.toFixed(1)},${bly.toFixed(1)} L ${brx.toFixed(1)},${bly.toFixed(1)} Z`} stroke={`rgba(${cr},${cg},${cb},${op.toFixed(3)})`} strokeWidth={sw} fill="none" strokeLinejoin="round"/>;
+      })}
+      <circle cx={ax} cy={ay} r="2" fill="rgba(199,210,254,0.75)"/>
+      <circle cx={ax} cy={ay} r="5" fill="rgba(139,92,246,0.12)"/>
     </svg>
   );
 }
@@ -3527,11 +3507,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {/* Decorative graphics — bottom-left and bottom-right, dark mode desktop only */}
         {!isMobile&&isDark&&(
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:28,paddingBottom:8,pointerEvents:"none",minHeight:180}}>
-            <div style={{width:200,opacity:0.55,transform:"rotate(-4deg) translateY(8px)"}}>
-              <IllustrationNodeNet/>
+            <div style={{width:200,opacity:0.6,transform:"rotate(-3deg) translateY(4px)"}}>
+              <IllustrationPyramidLeft/>
             </div>
-            <div style={{width:200,opacity:0.55,transform:"rotate(4deg) translateY(8px)"}}>
-              <IllustrationOrbits/>
+            <div style={{width:200,opacity:0.6,transform:"rotate(3deg) translateY(4px)"}}>
+              <IllustrationPyramidRight/>
             </div>
           </div>
         )}

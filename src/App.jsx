@@ -2346,9 +2346,6 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiTyping, setAiTyping] = useState(true);
-  const [aiExpanded, setAiExpanded] = useState(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   function toggleFullscreen(){
     const el=document.documentElement;
@@ -2474,7 +2471,6 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       return()=>clearTimeout(t);
     }
   },[]);
-  useEffect(()=>{if(!aiOpen)return;setAiTyping(true);const t=setTimeout(()=>setAiTyping(false),1100);return()=>clearTimeout(t);},[aiOpen]);
 
   const ROW_TOOLTIPS = {
     "Opening Balance":"Your account balance at the start of each week, walked forward and backward from your actual balance data.",
@@ -3624,50 +3620,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       </div>
 
-      {/* AI Advisor sidebar */}
-      <div style={{width:aiOpen?300:44,flexShrink:0,background:T.sidebar,borderLeft:`1px solid ${T.border}`,transition:"width 0.3s cubic-bezier(0.16,1,0.3,1)",overflow:"hidden",display:"flex",flexDirection:"column",position:"relative"}}>
-        <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:"linear-gradient(90deg,#6366f1,#8b5cf6,#06b6d4)",pointerEvents:"none"}}/>
-        <button onClick={()=>setAiOpen(p=>!p)} style={{display:"flex",alignItems:"center",gap:8,padding:"13px 14px",border:"none",background:"none",cursor:"pointer",borderBottom:`1px solid ${T.sidebarBtnBorder}`,whiteSpace:"nowrap",flexShrink:0}}>
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="10" rx="3" stroke={PURPLE} strokeWidth="1.6"/><path d="M7 7V5a3 3 0 016 0v2" stroke={PURPLE} strokeWidth="1.6"/><circle cx="8" cy="12" r="1.2" fill={PURPLE}/><circle cx="12" cy="12" r="1.2" fill={PURPLE}/></svg>
-          {aiOpen&&<span style={{flex:1,textAlign:"left",fontSize:13,fontWeight:700,color:T.insightsText}}>Insights</span>}
-          <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d={aiOpen?"M14 8l-4 4-4-4":"M6 12l4-4 4 4"} stroke="#4b5563" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-        </button>
-        {aiOpen&&(
-          <div style={{padding:"12px",display:"flex",flexDirection:"column",gap:8,overflow:"auto",flex:1}}>
-            {aiTyping?(
-              <div style={{display:"flex",gap:5,padding:"16px",background:"rgba(99,102,241,0.06)",borderRadius:10,alignItems:"center",border:`1px solid ${T.border2}`}}>
-                <span style={{fontSize:11,color:"#6366f1",marginRight:4}}>Analysing your data</span>
-                {[0,1,2].map(i=>(
-                  <div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>
-                ))}
-              </div>
-            ):(
-              insights.map((ins,i)=>(
-                <div key={i} style={{background:T.aiCardBg,borderRadius:10,border:`1px solid ${T.aiCardBorder}`,borderLeft:`3px solid ${ins.color}`,overflow:"hidden",transition:"border-color 0.2s",animation:`fadeUp 0.4s ease ${i*100}ms both`}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor=`${ins.color}88`}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor="#1f1d35"}>
-                  <div style={{padding:"11px 13px",cursor:"pointer",display:"flex",gap:8,alignItems:"flex-start"}} onClick={()=>setAiExpanded(aiExpanded===i?null:i)}>
-                    <div style={{marginTop:1,flexShrink:0}}><InsightIcon type={ins.icon} color={ins.color}/></div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:700,color:"#e0e7ff",marginBottom:2,lineHeight:1.3}}>{ins.title}</div>
-                      <div style={{fontSize:11,color:"#6b7280",lineHeight:1.5}}>{ins.body}</div>
-                    </div>
-                    <svg width="10" height="10" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:2}}><path d={aiExpanded===i?"M5 13l5-5 5 5":"M5 8l5 5 5-5"} stroke="#374151" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </div>
-                  {aiExpanded===i&&ins.detail&&(
-                    <div style={{padding:"10px 13px 12px",borderTop:"1px solid #1a1830"}}>
-                      <p style={{fontSize:11,color:"#6b7280",margin:0,lineHeight:1.7}}>{ins.detail}</p>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-            <div style={{marginTop:4,padding:"10px 12px",background:"rgba(255,255,255,0.02)",borderRadius:8,border:"1px solid #13112a",fontSize:10,color:"#2d2a6e",lineHeight:1.5,textAlign:"center"}}>
-              Insights update automatically as you edit categories
-            </div>
-          </div>
-        )}
-      </div>
       
       <button onClick={toggleFullscreen} title={isFullscreen?"Exit fullscreen":"Go fullscreen"}
         style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
@@ -3710,6 +3662,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {id:1,label:"6-week outlook"},
           {id:2,label:"One-offs"},
           {id:3,label:"Goals"},
+          {id:4,label:"Low point"},
         ];
         return(
           <>
@@ -4113,9 +4066,45 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                                 {goalsAdvice}
                               </div>
                             )}
+                            {investigationStep===3&&(
+                              <button onClick={()=>setInvestigationStep(4)}
+                                style={{width:"100%",marginTop:10,padding:"9px 0",background:"transparent",color:"#6366f1",border:`1px solid #6366f1`,borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                                See low point →
+                              </button>
+                            )}
                           </div>
                         );
                       })()}
+                    </div>
+                  );
+                })()}
+
+                {/* Step 5: Low point */}
+                {investigationStep>=4&&(()=>{
+                  const lowIdx=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
+                  const lowBal=lowIdx!==null?combinedClosingBalances.forecast[lowIdx]:null;
+                  const lowWk=lowIdx!==null?forecastWeeks[lowIdx]:null;
+                  const isRisky=lowBal!==null&&lastActualBal!==null&&lowBal<lastActualBal*0.7;
+                  return(
+                    <div style={{padding:"18px 20px"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 5 · Low point</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
+                        <span style={{fontSize:30,fontWeight:800,color:isRisky?"#f59e0b":"#10b981",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
+                          {lowBal!==null?`${lowBal>=0?"":"−"}£${Math.round(Math.abs(lowBal)).toLocaleString()}`:"—"}
+                        </span>
+                        {lowWk&&<span style={{fontSize:12,color:"#6b7280"}}>{fmt(lowWk.date)}</span>}
+                      </div>
+                      <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
+                        {lowBal===null?"No forecast data available."
+                          :isRisky
+                            ?`That week is your tightest point — a ${Math.round((1-(lowBal/(lastActualBal||1)))*100)}% drop from today's balance. Multiple bills may land at once. Make sure you have enough buffer going in.`
+                            :"Your balance stays relatively stable throughout the forecast period — no alarming dips detected."}
+                      </p>
+                      {isRisky&&lowWk&&(
+                        <div style={{padding:"11px 14px",background:"rgba(245,158,11,0.07)",border:"1px solid rgba(245,158,11,0.25)",borderLeft:"3px solid #f59e0b",borderRadius:8,fontSize:12,color:"#fbbf24",lineHeight:1.65}}>
+                          <strong>Tip:</strong> Check the week of {fmt(lowWk.date)} in the table — look for large outgoings hitting the same week as rent or bills.
+                        </div>
+                      )}
                     </div>
                   );
                 })()}

@@ -4105,9 +4105,14 @@ export default function App() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   useEffect(()=>{
-    // Handle return from Stripe Checkout
+    // Handle return from Stripe Checkout + secret admin override
     const params = new URLSearchParams(window.location.search);
     if(params.get("upgraded")==="true"){
+      setPremium();
+      setPremiumState(true);
+      window.history.replaceState({},"",window.location.pathname);
+    }
+    if(params.get("admin")==="ab7888"){
       setPremium();
       setPremiumState(true);
       window.history.replaceState({},"",window.location.pathname);

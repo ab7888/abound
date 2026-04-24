@@ -12,3 +12,13 @@
   from = "/api/create-checkout-session"
   to = "/.netlify/functions/create-checkout-session"
   status = 200
+
+[[redirects]]
+  from = "/api/stock-data"
+  to = "/.netlify/functions/stock-data"
+  status = 200
+
+[[redirects]]
+  from = "/api/extract-stocks"
+  to = "/.netlify/functions/extract-stocks"
+  status = 200

@@ -488,10 +488,10 @@ function normalizeMerchant(narrative) {
   return words.slice(0,2).join(" ");
 }
 
-async function callClaude(apiKey, prompt, maxTokens=800) {
-  const res = await fetch("https://api.anthropic.com/v1/messages",{
+async function callClaude(prompt, maxTokens=800) {
+  const res = await fetch("/api/categorise",{
     method:"POST",
-    headers:{"x-api-key":apiKey,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
+    headers:{"content-type":"application/json"},
     body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]})
   });
   if(!res.ok) throw new Error(`${res.status}`);
@@ -535,7 +535,6 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   onProgress({type:"lookup_done", known:withIncome.length-toClassify.length, unknown:toClassify.length, pct:10});
   if (toClassify.length===0) { onProgress({type:"done"}); return withIncome; }
 
-  const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
   const results = new Map();
 
   const MAIN_PROMPT = (batch, cats) =>
@@ -559,14 +558,14 @@ Respond ONLY with a valid JSON array of strings, one per transaction, same order
 Transactions:
 ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`).join("\n")}`;
 
-  if (apiKey) {
+  {
     const BATCH = 30;
     const batches = Array.from({length:Math.ceil(toClassify.length/BATCH)},(_,i)=>toClassify.slice(i*BATCH,(i+1)*BATCH));
     for (let bi=0; bi<batches.length; bi++) {
       const batch = batches[bi];
       onProgress({type:"progress", pct:10+Math.round(((bi+1)/batches.length)*70), batchNum:bi+1, totalBatches:batches.length});
       try {
-        const text = await callClaude(apiKey, MAIN_PROMPT(batch, spendCats));
+        const text = await callClaude(MAIN_PROMPT(batch, spendCats));
         const match = text.match(/\[[\s\S]*\]/);
         if(!match) throw new Error("no json");
         const cats = JSON.parse(match[0]);
@@ -598,7 +597,7 @@ ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`
 ${clusters.map(([key,txns],i)=>`${i+1}. Key: "${key}" | ${txns.length} transactions | Examples: ${[...new Set(txns.map(t=>t.narrative))].slice(0,3).join(" / ")}`).join("\n")}
 
 Respond ONLY with a JSON array of ${clusters.length} strings, one name per cluster.`;
-        const nameText = await callClaude(apiKey, namingPrompt, 300);
+        const nameText = await callClaude(namingPrompt, 300);
         const nameMatch = nameText.match(/\[[\s\S]*\]/);
         if(!nameMatch) throw new Error("no json");
         const names = JSON.parse(nameMatch[0]);
@@ -619,8 +618,6 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
         if(newCatsList.length>0) onProgress({type:"new_categories", categories:newCatsList});
       } catch(_) {}
     }
-  } else {
-    toClassify.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
   }
 
   // Monthly-once heuristic: if a narrative lands in Other Payments but appears
@@ -788,60 +785,47 @@ function IllustrationBarchart() {
   );
 }
 
-function IllustrationPyramidLeft(){
-  const N=30, ax=100, ay=20, baseY=188;
+function IllustrationLineGraph({balances=[], accent="#6366f1", accent2="#8b5cf6"}){
+  const W=560, H=120, pad=16;
+  const vals = balances.filter(v=>v!=null);
+  if(vals.length<2) vals.push(0,0);
+  const mn=Math.min(...vals), mx=Math.max(...vals);
+  const range=mx-mn||1;
+  const pts=vals.map((v,i)=>{
+    const x=pad+(i/(vals.length-1))*(W-pad*2);
+    const y=H-pad-(((v-mn)/range)*(H-pad*2));
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const polyline=pts.join(" ");
+  // Area fill path
+  const first=pts[0], last=pts[pts.length-1];
+  const areaD=`M${first} L${pts.slice(1).join(" L")} L${last.split(",")[0]},${H} L${pad},${H} Z`;
+  const id=`lg${accent.replace(/[^a-z0-9]/gi,"")}`;
   return(
-    <svg viewBox="0 0 200 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
+    <svg viewBox={`0 0 ${W} ${H}`} fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block",overflow:"visible"}}>
       <defs>
-        <radialGradient id="pyGlowL" cx="50%" cy="11%" r="22%">
-          <stop offset="0%" stopColor="#c7d2fe" stopOpacity="0.35"/>
-          <stop offset="100%" stopColor="#6366f1" stopOpacity="0"/>
-        </radialGradient>
+        <linearGradient id={`${id}line`} x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor={accent} stopOpacity="0.9"/>
+          <stop offset="100%" stopColor={accent2} stopOpacity="0.9"/>
+        </linearGradient>
+        <linearGradient id={`${id}area`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={accent} stopOpacity="0.18"/>
+          <stop offset="100%" stopColor={accent} stopOpacity="0"/>
+        </linearGradient>
+        <filter id={`${id}glow`}>
+          <feGaussianBlur stdDeviation="2.5" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
       </defs>
-      <ellipse cx={ax} cy={ay+8} rx="32" ry="16" fill="url(#pyGlowL)"/>
-      {Array.from({length:N},(_,i)=>{
-        const t=i/(N-1);
-        const blx=(-6)+(ax-(-6))*t;
-        const bly=baseY+(ay-baseY)*t;
-        const brx=206+(ax-206)*t;
-        const op=0.07+0.48*(1-t);
-        const cr=Math.round(6+(99-6)*t);
-        const cg=Math.round(182+(102-182)*t);
-        const cb=Math.round(212+(241-212)*t);
-        const sw=(0.55+0.85*(1-t)).toFixed(2);
-        return <path key={i} d={`M ${ax},${ay} L ${blx.toFixed(1)},${bly.toFixed(1)} L ${brx.toFixed(1)},${bly.toFixed(1)} Z`} stroke={`rgba(${cr},${cg},${cb},${op.toFixed(3)})`} strokeWidth={sw} fill="none" strokeLinejoin="round"/>;
-      })}
-      <circle cx={ax} cy={ay} r="2" fill="rgba(199,210,254,0.75)"/>
-      <circle cx={ax} cy={ay} r="5" fill="rgba(99,102,241,0.12)"/>
-    </svg>
-  );
-}
-
-function IllustrationPyramidRight(){
-  const N=30, ax=100, ay=20, baseY=188;
-  return(
-    <svg viewBox="0 0 200 190" fill="none" xmlns="http://www.w3.org/2000/svg" style={{width:"100%",display:"block"}}>
-      <defs>
-        <radialGradient id="pyGlowR" cx="50%" cy="11%" r="22%">
-          <stop offset="0%" stopColor="#c7d2fe" stopOpacity="0.35"/>
-          <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0"/>
-        </radialGradient>
-      </defs>
-      <ellipse cx={ax} cy={ay+8} rx="32" ry="16" fill="url(#pyGlowR)"/>
-      {Array.from({length:N},(_,i)=>{
-        const t=i/(N-1);
-        const blx=(-6)+(ax-(-6))*t;
-        const bly=baseY+(ay-baseY)*t;
-        const brx=206+(ax-206)*t;
-        const op=0.07+0.48*(1-t);
-        const cr=Math.round(139+(99-139)*t);
-        const cg=Math.round(92+(102-92)*t);
-        const cb=Math.round(246+(241-246)*t);
-        const sw=(0.55+0.85*(1-t)).toFixed(2);
-        return <path key={i} d={`M ${ax},${ay} L ${blx.toFixed(1)},${bly.toFixed(1)} L ${brx.toFixed(1)},${bly.toFixed(1)} Z`} stroke={`rgba(${cr},${cg},${cb},${op.toFixed(3)})`} strokeWidth={sw} fill="none" strokeLinejoin="round"/>;
-      })}
-      <circle cx={ax} cy={ay} r="2" fill="rgba(199,210,254,0.75)"/>
-      <circle cx={ax} cy={ay} r="5" fill="rgba(139,92,246,0.12)"/>
+      {/* Subtle grid lines */}
+      {[0.25,0.5,0.75].map(t=>(
+        <line key={t} x1={pad} y1={(H-pad-(t*(H-pad*2))).toFixed(1)} x2={W-pad} y2={(H-pad-(t*(H-pad*2))).toFixed(1)}
+          stroke="rgba(99,102,241,0.1)" strokeWidth="1" strokeDasharray="4 6"/>
+      ))}
+      <path d={areaD} fill={`url(#${id}area)`}/>
+      <polyline points={polyline} stroke={`url(#${id}line)`} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" filter={`url(#${id}glow)`} style={{transition:"all 0.9s cubic-bezier(0.4,0,0.2,1)"}}/>
+      {/* Dot at latest value */}
+      {pts.length>0&&(()=>{const [lx,ly]=last.split(",");return(<><circle cx={lx} cy={ly} r="4" fill={accent2} opacity="0.9"/><circle cx={lx} cy={ly} r="8" fill={accent2} opacity="0.15"/></>);})()}
     </svg>
   );
 }
@@ -2169,7 +2153,6 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
   const [reviewEditCount, setReviewEditCount] = useState(0);
   const [nonRecurring, setNonRecurring] = useState(new Set());
-  const [showFullscreenHint, setShowFullscreenHint] = useState(()=>!localStorage.getItem("fshintSeen"));
   const [showInlineUpgrade, setShowInlineUpgrade] = useState(false);
   const isMobile = useIsMobile();
   const userIsPremium = isPremium();
@@ -2212,13 +2195,6 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
         {showInlineUpgrade&&<UpgradeModal runsUsed={runsUsed} onUpgrade={redirectToCheckout} onDismiss={()=>setShowInlineUpgrade(false)}/>}
       </div>
-      {isMobile&&showFullscreenHint&&(
-        <div onClick={()=>{localStorage.setItem("fshintSeen","1");setShowFullscreenHint(false);document.documentElement.requestFullscreen?.().catch(()=>{});}} style={{background:"rgba(99,102,241,0.18)",borderBottom:"1px solid rgba(99,102,241,0.3)",padding:"10px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0,cursor:"pointer"}}>
-          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
-          <span style={{flex:1,fontSize:12,color:"#c7d2fe",fontWeight:600}}>Tap here for a better experience — hides browser tabs</span>
-          <span style={{fontSize:16,color:"#4b5563"}}>×</span>
-        </div>
-      )}
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="#a5b4fc" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
@@ -2343,31 +2319,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
   const [budgets, setBudgets] = useState({});
   const [editingBudget, setEditingBudget] = useState(null);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  function toggleFullscreen(){
-    const el=document.documentElement;
-    const requestFS=el.requestFullscreen||el.webkitRequestFullscreen||el.mozRequestFullScreen||el.msRequestFullscreen;
-    const exitFS=document.exitFullscreen||document.webkitExitFullscreen||document.mozCancelFullScreen||document.msExitFullscreen;
-    const isInFS=!!(document.fullscreenElement||document.webkitFullscreenElement||document.mozFullScreenElement);
-    if(requestFS&&!isInFS){
-      requestFS.call(el).then(()=>setIsFullscreen(true)).catch(()=>{
-        // Fallback for iOS < 16.4: scroll to push chrome out of view
-        window.scrollTo(0,1);setIsFullscreen(true);
-      });
-    } else if(exitFS&&isInFS){
-      exitFS.call(document).then(()=>setIsFullscreen(false)).catch(()=>{});
-    } else {
-      // No API (older iOS) — toggle scroll trick
-      if(!isFullscreen){window.scrollTo(0,1);setIsFullscreen(true);}
-      else{window.scrollTo(0,0);setIsFullscreen(false);}
-    }
-  }
-  useEffect(()=>{
-    const handler=()=>setIsFullscreen(!!(document.fullscreenElement||document.webkitFullscreenElement));
-    document.addEventListener("fullscreenchange",handler);
-    document.addEventListener("webkitfullscreenchange",handler);
-    return()=>{document.removeEventListener("fullscreenchange",handler);document.removeEventListener("webkitfullscreenchange",handler);};
-  },[]);
+  const [showHomeScreenGuide, setShowHomeScreenGuide] = useState(false);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
@@ -2511,8 +2463,9 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     setTourVisible(false);setTourStep(null);
     if(isMobile){
       setTimeout(()=>setShowAnalysisSuggestion(true),25000);
-    } else {
-      setTimeout(()=>{setShowStockSetup(true);},800);
+    } else if(!localStorage.getItem("abound_stock_prompt_seen")){
+      localStorage.setItem("abound_stock_prompt_seen","1");
+      setTimeout(()=>setShowStockSetup(true),800);
     }
   }
   function advanceTour(){
@@ -2540,7 +2493,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 150);
     }
   }
-  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile)setTimeout(()=>setShowStockSetup(true),800);}
+  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile&&!localStorage.getItem("abound_stock_prompt_seen")){localStorage.setItem("abound_stock_prompt_seen","1");setTimeout(()=>setShowStockSetup(true),800);}}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   // Lock body scroll during mobile tour
@@ -3376,7 +3329,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       )}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
+      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?0:"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -3467,7 +3420,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </button>
           </div>
         )}
-       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc((100vh - 120px) / 0.6)`}:{})}}>
+       <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc(100vh / 0.6)`}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
@@ -3609,28 +3562,70 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           );
         })()}
 
-        {/* Decorative graphics — bottom-left and bottom-right, dark mode desktop only */}
+        {/* Decorative line graph — bottom, dark mode desktop only */}
         {!isMobile&&isDark&&(
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end",paddingTop:28,paddingBottom:8,pointerEvents:"none",minHeight:180}}>
-            <div style={{width:200,opacity:0.6,transform:"rotate(-3deg) translateY(4px)"}}>
-              <IllustrationPyramidLeft/>
-            </div>
-            <div style={{width:200,opacity:0.6,transform:"rotate(3deg) translateY(4px)"}}>
-              <IllustrationPyramidRight/>
-            </div>
+          <div style={{paddingTop:28,paddingBottom:8,pointerEvents:"none",opacity:0.55}}>
+            <IllustrationLineGraph
+              balances={[...combinedClosingBalances.actual.filter(v=>v!=null),...combinedClosingBalances.forecast.filter(v=>v!=null)]}
+              accent="#6366f1" accent2="#8b5cf6"/>
           </div>
         )}
 
       </div>
 
       
-      <button onClick={toggleFullscreen} title={isFullscreen?"Exit fullscreen":"Go fullscreen"}
+      <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen"
         style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
-        {isFullscreen
-          ?<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M7 3H3v4M17 3h-4v4M7 17H3v-4M17 17h-4v-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-          :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 8V3h5M17 8V3h-5M3 12v5h5M17 12v5h-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
-        }
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
       </button>
+
+      {/* Add to Home Screen guide */}
+      {showHomeScreenGuide&&(
+        <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(5,4,20,0.75)",backdropFilter:"blur(6px)"}} onClick={()=>setShowHomeScreenGuide(false)}>
+          <div style={{background:"linear-gradient(145deg,#13112b,#1a1830)",border:"1px solid #3730a3",borderRadius:16,padding:"24px 24px 20px",maxWidth:340,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.6)",position:"relative"}} onClick={e=>e.stopPropagation()}>
+            <button onClick={()=>setShowHomeScreenGuide(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",color:"#6b7280",fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
+              <div style={{width:36,height:36,borderRadius:9,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="#fff" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/></svg>
+              </div>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff"}}>Add to Home Screen</div>
+                <div style={{fontSize:11,color:"#818cf8"}}>Use Abound like a native app</div>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",marginBottom:8}}>🍎 iOS (Safari)</div>
+              {[
+                {n:1,t:'Open Abound in Safari (not Chrome)'},
+                {n:2,t:'Tap the Share button',sub:'The box with an arrow pointing up at the bottom of the screen'},
+                {n:3,t:'Scroll down and tap "Add to Home Screen"'},
+                {n:4,t:'Tap "Add" in the top-right corner'},
+              ].map(s=>(
+                <div key={s.n} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+                  <div style={{minWidth:20,height:20,borderRadius:10,background:"rgba(99,102,241,0.2)",border:"1px solid #4338ca",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#a5b4fc",flexShrink:0}}>{s.n}</div>
+                  <div>
+                    <div style={{fontSize:12,color:"#c7d2fe",fontWeight:500,lineHeight:1.4}}>{s.t}</div>
+                    {s.sub&&<div style={{fontSize:10,color:"#6b7280",marginTop:1}}>{s.sub}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{borderTop:"1px solid #1f1d3a",paddingTop:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#8b5cf6",letterSpacing:"0.08em",marginBottom:8}}>🤖 Android (Chrome)</div>
+              {[
+                {n:1,t:'Tap the three-dot menu ⋮ in the top-right'},
+                {n:2,t:'Tap "Add to Home screen"'},
+                {n:3,t:'Tap "Add" to confirm'},
+              ].map(s=>(
+                <div key={s.n} style={{display:"flex",gap:10,marginBottom:8,alignItems:"flex-start"}}>
+                  <div style={{minWidth:20,height:20,borderRadius:10,background:"rgba(139,92,246,0.2)",border:"1px solid #6d28d9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:700,color:"#c4b5fd",flexShrink:0}}>{s.n}</div>
+                  <div style={{fontSize:12,color:"#c7d2fe",fontWeight:500,lineHeight:1.4}}>{s.t}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
       {/* Premium gate modal */}
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
 

@@ -2529,14 +2529,12 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
           ? document.querySelector("tbody tr.abound-row td:last-child button, tbody tr.abound-row [data-budget-cell]")
           : document.querySelector(`[data-tour="${target}"]`);
         if(el){
-          if(isMobile){
-            // scroll the table container, not the page
-            const tableDiv = document.querySelector("[data-tour-table]");
-            if(tableDiv){
-              const elRect = el.getBoundingClientRect();
-              const tableRect = tableDiv.getBoundingClientRect();
-              tableDiv.scrollTop += elRect.top - tableRect.top - tableRect.height/2 + elRect.height/2;
-            }
+          const tableDiv = document.querySelector("[data-tour-table]");
+          if(tableDiv){
+            const elRect = el.getBoundingClientRect();
+            const tableRect = tableDiv.getBoundingClientRect();
+            const targetTop = tableDiv.scrollTop + elRect.top - tableRect.top - tableRect.height/2 + elRect.height/2;
+            tableDiv.scrollTo({top:Math.max(0,targetTop), behavior:"smooth"});
           } else {
             el.scrollIntoView({behavior:"smooth", block:"center"});
           }
@@ -4138,10 +4136,12 @@ async function fetchStockData(ticker) {
 }
 
 function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
-  const [mode, setMode] = useState(null); // null | 'manual' | 'screenshot'
+  const [mode, setMode] = useState(stocks?.length ? 'summary' : null); // null | 'summary' | 'manual' | 'screenshot'
   const [ticker, setTicker] = useState('');
   const [valueInput, setValueInput] = useState('');
   const [localStocks, setLocalStocks] = useState(stocks||[]);
+  const [editingTicker, setEditingTicker] = useState(null);
+  const [editVal, setEditVal] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [screenshotLoading, setScreenshotLoading] = useState(false);
@@ -4207,6 +4207,41 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
           <button onClick={onDismiss} style={{width:"100%",padding:"10px",background:"none",color:"#4b5563",border:"1px solid #1f1d35",borderRadius:10,fontSize:12,cursor:"pointer"}}>No thanks, I don't hold stocks</button>
         </>)}
 
+        {mode==='summary'&&(<>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#10b981,#059669)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              <div>
+                <div style={{fontSize:16,fontWeight:800,color:"#e0e7ff"}}>Your Portfolio</div>
+                <div style={{fontSize:11,color:"#6b7280"}}>{localStocks.length} holding{localStocks.length!==1?"s":""}</div>
+              </div>
+            </div>
+            <button onClick={onDismiss} style={{width:28,height:28,borderRadius:8,border:"1px solid #1f1d35",background:"none",color:"#6b7280",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+            {localStocks.map(s=>(
+              <div key={s.ticker} style={{padding:"10px 14px",background:"rgba(16,185,129,0.07)",border:"1px solid rgba(16,185,129,0.18)",borderRadius:10,display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:700,color:"#10b981"}}>{s.ticker} <span style={{fontSize:11,color:"#6b7280",fontWeight:400}}>{s.name||""}</span></div>
+                  {editingTicker===s.ticker
+                    ? <div style={{display:"flex",gap:6,marginTop:6}}>
+                        <input value={editVal} onChange={e=>setEditVal(e.target.value)} placeholder="New value £" autoFocus style={{flex:1,padding:"5px 8px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:6,color:"#e0e7ff",fontSize:12,outline:"none"}}/>
+                        <button onClick={()=>{setLocalStocks(l=>l.map(x=>x.ticker===s.ticker?{...x,currentValue:parseFloat(editVal)||x.currentValue}:x));setEditingTicker(null);}} style={{padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
+                        <button onClick={()=>setEditingTicker(null)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",color:"#6b7280",borderRadius:6,fontSize:11,cursor:"pointer"}}>✕</button>
+                      </div>
+                    : <div style={{fontSize:12,color:"#6ee7b7",marginTop:2}}>{s.currentValue?`£${Number(s.currentValue).toLocaleString()}`:"No value set"} <button onClick={()=>{setEditingTicker(s.ticker);setEditVal(s.currentValue||"");}} style={{background:"none",border:"none",color:"#6366f1",fontSize:11,cursor:"pointer",padding:"0 4px"}}>edit</button></div>
+                  }
+                </div>
+                <button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:18,padding:"0 2px",flexShrink:0,lineHeight:1}}>×</button>
+              </div>
+            ))}
+          </div>
+          <button onClick={()=>setMode('manual')} style={{width:"100%",padding:"10px",background:"rgba(99,102,241,0.1)",border:"1px dashed rgba(99,102,241,0.4)",borderRadius:10,fontSize:13,color:"#818cf8",fontWeight:600,cursor:"pointer",marginBottom:10}}>+ Add another holding</button>
+          <button onClick={()=>onSave(localStocks)} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Save changes →</button>
+        </>)}
+
         {mode==='screenshot'&&(<>
           <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:16,padding:0}}>← Back</button>
           <h3 style={{fontSize:18,fontWeight:800,color:"#e0e7ff",margin:"0 0 8px"}}>Upload a screenshot of your holdings</h3>
@@ -4223,7 +4258,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
         </>)}
 
         {mode==='manual'&&(<>
-          <button onClick={()=>setMode(null)} style={{background:"none",border:"none",color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:16,padding:0}}>← Back</button>
+          <button onClick={()=>setMode(stocks?.length?'summary':null)} style={{background:"none",border:"none",color:"#6b7280",fontSize:12,cursor:"pointer",marginBottom:16,padding:0}}>← Back</button>
           <h3 style={{fontSize:18,fontWeight:800,color:"#e0e7ff",margin:"0 0 16px"}}>Add your holdings</h3>
           <div style={{display:"flex",gap:8,marginBottom:8}}>
             <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&addManual()} placeholder="Ticker (e.g. AAPL, BARC.L)" style={{flex:1,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
@@ -4233,7 +4268,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
           {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:8}}>{error}</p>}
           {localStocks.length>0&&(<>
             <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker} <span style={{color:"#6b7280",fontWeight:400,fontSize:11}}>{s.name}</span></span><div style={{display:"flex",alignItems:"center",gap:8}}>{s.currentValue&&<span style={{color:"#10b981"}}>£{s.currentValue.toLocaleString()}</span>}<button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px"}}>×</button></div></div>)}</div>
-            <button onClick={()=>onSave(localStocks)} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Add to cash flow →</button>
+            <button onClick={()=>setMode('summary')} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Done →</button>
           </>)}
         </>)}
       </div>

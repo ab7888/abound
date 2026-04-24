@@ -31,14 +31,14 @@ const GLOBAL_CSS = `
   @keyframes cashBalPulse { 0%,100%{box-shadow:none} 30%{box-shadow:0 0 0 3px rgba(99,102,241,0.6),0 0 32px rgba(99,102,241,0.4)} 60%{box-shadow:0 0 0 2px rgba(99,102,241,0.4),0 0 20px rgba(99,102,241,0.25)} }
   @keyframes typingDot { 0%,60%,100%{transform:translateY(0);opacity:0.3} 30%{transform:translateY(-4px);opacity:1} }
   @keyframes tooltipIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
-  @keyframes spotlightIn { from{opacity:0;transform:tr@keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
+  @keyframes spotlightIn { from{opacity:0;transform:translateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   @keyframes cursorFloat { 0%,100%{transform:translate(0,0)} 40%{transform:translate(4px,6px)} 60%{transform:translate(4px,6px) scale(0.9)} 80%{transform:translate(4px,6px) scale(1)} }
   @keyframes cursorClick { 0%,100%{transform:scale(1)} 50%{transform:scale(0.82)} }
   @keyframes ripple { 0%{transform:scale(0.5);opacity:0.8} 100%{transform:scale(2.5);opacity:0} }
   @keyframes cursorFadeIn { from{opacity:0;transform:translate(-8px,-8px)} to{opacity:1;transform:translate(0,0)} }
+  @keyframes slideInUp { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
-  .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }anslateY(12px) scale(0.97)} to{opacity:1;transform:translateY(0) scale(1)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
 `;
 
@@ -2357,6 +2357,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
+  const [showAnalysisSuggestion, setShowAnalysisSuggestion] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
   function showTooltip(text, x, y) {
@@ -2477,7 +2478,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   function finishTour(){
     localStorage.setItem("cashFlowTourSeen_v2","1");
     setTourVisible(false);setTourStep(null);
-    setTimeout(()=>setInvestigationOpen(true),350);
+    if(isMobile){
+      setTimeout(()=>setShowAnalysisSuggestion(true),25000);
+    } else {
+      setTimeout(()=>setInvestigationOpen(true),350);
+    }
   }
   function advanceTour(){
     const nextStep = tourStep===0 ? 1 : tourStep+1;
@@ -2506,7 +2511,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
       }, 200);
     }
   }
-  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);setTimeout(()=>setInvestigationOpen(true),350);}
+  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile)setTimeout(()=>setInvestigationOpen(true),350);}
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   // Lock body scroll during mobile tour
@@ -3296,6 +3301,25 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         );
       })()}
 
+      {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
+      {isMobile&&showAnalysisSuggestion&&(
+        <div style={{position:"fixed",bottom:70,left:0,right:0,zIndex:950,display:"flex",justifyContent:"center",pointerEvents:"none",animation:"slideInUp 0.5s cubic-bezier(0.16,1,0.3,1) both"}}>
+          <div style={{pointerEvents:"all",background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:14,padding:"12px 16px",maxWidth:"85vw",boxShadow:"0 8px 32px rgba(0,0,0,0.6)",display:"flex",alignItems:"center",gap:12}}>
+            <div style={{width:36,height:36,borderRadius:10,background:"rgba(99,102,241,0.18)",border:"1px solid rgba(99,102,241,0.35)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,fontWeight:800,color:"#e0e7ff",marginBottom:2}}>See your financial outlook</div>
+              <div style={{fontSize:11,color:"#818cf8",lineHeight:1.4}}>Tap Financial Analysis for end-of-month projections and goal planning.</div>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,flexShrink:0}}>
+              <button onClick={()=>{setShowAnalysisSuggestion(false);setInvestigationOpen(true);}} style={{padding:"6px 12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Open →</button>
+              <button onClick={()=>setShowAnalysisSuggestion(false)} style={{padding:"4px 12px",background:"none",color:"#4b5563",border:"none",fontSize:11,cursor:"pointer"}}>Dismiss</button>
+            </div>
+          </div>
+        </div>
+      )}
+
      {/* Main table area */}
       <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"12px 14px":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
         {(()=>{
@@ -3343,34 +3367,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M13 6l4 4-4 4" stroke={totalForecastSpend>totalSpent?"#f59e0b":"#10b981"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
             },
           ];
-          // Mobile: compact single-row strip instead of 4 cards
-          if(isMobile){
-            const nowVal=cards[0].value, nowSub=cards[0].sub;
-            const fcstVal=cards[1].value, fcstSub=cards[1].sub;
-            const fcstColor=cards[1].valColor;
-            return(
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,background:T.card,borderRadius:10,padding:"10px 12px",border:`1px solid ${T.border}`,boxShadow:"0 2px 12px rgba(0,0,0,0.15)"}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:9,fontWeight:600,color:"#6b7280",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:2}}>Now</div>
-                  <div style={{fontSize:19,fontWeight:800,color:"#e0e7ff",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{nowVal}</div>
-                  <div style={{fontSize:10,color:"#6b7280"}}>{nowSub}</div>
-                </div>
-                <div style={{width:1,height:36,background:T.border,flexShrink:0}}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:9,fontWeight:600,color:"#6b7280",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:2}}>In 6 weeks</div>
-                  <div style={{fontSize:19,fontWeight:800,color:fcstColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>{fcstVal}</div>
-                  <div style={{fontSize:10,color:fcstColor,fontWeight:500}}>{fcstSub}</div>
-                </div>
-                <button onClick={()=>{setIsDark(d=>!d);localStorage.setItem("themeTipSeen","1");}}
-                  style={{width:30,height:30,borderRadius:8,border:`1px solid ${T.border}`,background:"none",color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  {isDark
-                    ?<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
-                    :<svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M17 10.5A7 7 0 1 1 9.5 3c-.5 2.5.5 6 3.5 7.5 2 1 3.5.5 4 0z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  }
-                </button>
-              </div>
-            );
-          }
+          // Mobile: skip summary strip entirely — grid fills the screen
+          if(isMobile){ return null; }
           return(
             <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-start"}}>
               {cards.map((c,i)=>(

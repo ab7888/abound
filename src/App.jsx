@@ -2427,8 +2427,14 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
 
   useEffect(()=>{
     setInvestigationOpen(false);
-    if(!localStorage.getItem("cashFlowTourSeen_v2")){
-      const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},1500);
+    const seenKey = "cashFlowTourSeen_v2";
+    const sessionKey = "cashFlowTourSeenSession";
+    const shouldShow = isMobile
+      ? !sessionStorage.getItem(sessionKey)
+      : !localStorage.getItem(seenKey);
+    if(shouldShow){
+      const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},isMobile?800:1500);
+      if(isMobile) sessionStorage.setItem(sessionKey,"1");
       return()=>clearTimeout(t);
     }
   },[]);
@@ -2457,7 +2463,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
     {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
     ...(!isMobile?[{title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
-    {title:"Grouped or split by card?",body:"By default all your accounts are combined so you see one clean view of where your money goes.\n\nUse the toggle above the table to switch to split-by-card — useful when you want to see exactly which card is spending what.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"},
+    ...(!isMobile?[{title:"Grouped or split by card?",body:"By default all your accounts are combined so you see one clean view of where your money goes.\n\nUse the toggle above the table to switch to split-by-card — useful when you want to see exactly which card is spending what.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left to see forecast weeks. Tap any number to explore your spending.\n\nUse the side bar to run Financial Analysis and plan ahead.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
   ];
 
   const getHighlightRect = () => {
@@ -3417,13 +3423,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             </div>
           );
         })()}
-        {/* Grouped / By card toggle */}
-        <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
-          <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
-          <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
-            <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
-          </button>
-        </div>
+        {/* Grouped / By card toggle — desktop inline, mobile via fixed right bar */}
+        {!isMobile&&(
+          <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
+            <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
+            <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
+              <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
+            </button>
+          </div>
+        )}
        <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc((100vh - 200px) / 0.6)`}:{})}}>
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
@@ -3486,8 +3494,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </table>
         </div>
 
-        {/* "So what" summary bar */}
-        {(()=>{
+        {/* "So what" summary bar — desktop only */}
+        {!isMobile&&(()=>{
           const lastActual = combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
           const forecastEnd = combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
           const topSpendCat = categories
@@ -3616,11 +3624,19 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {/* Collapsed tab */}
             {!investigationOpen&&(
               isMobile ? (
-                <button onClick={()=>setInvestigationOpen(true)}
-                  style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",zIndex:810,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"14px 14px 0 0",padding:"10px 28px 14px",fontSize:12,fontWeight:800,cursor:"pointer",letterSpacing:"0.04em",boxShadow:"0 -4px 24px rgba(99,102,241,0.5)",display:"flex",alignItems:"center",gap:8}}>
-                  <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  Financial Analysis
-                </button>
+                <div style={{position:"fixed",right:0,top:"calc(38% + 90px)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+                  <button onClick={()=>setSplitByCard(s=>!s)} data-tour="view-toggle"
+                    style={{background:T.card,border:`1px solid ${T.border}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:"-2px 0 10px rgba(0,0,0,0.3)",cursor:"pointer"}}>
+                    <span style={{fontSize:8,color:"#6b7280",fontWeight:600,writingMode:"vertical-rl",transform:"rotate(180deg)",letterSpacing:"0.06em",lineHeight:1}}>{splitByCard?"By card":"Grouped"}</span>
+                    <div style={{position:"relative",width:22,height:12,borderRadius:6,background:splitByCard?"#6366f1":"#374151",transition:"background 0.2s",flexShrink:0}}>
+                      <span style={{position:"absolute",top:2,left:splitByCard?12:2,width:8,height:8,borderRadius:4,background:"#fff",transition:"left 0.2s",display:"block"}}/>
+                    </div>
+                  </button>
+                  <button onClick={()=>setInvestigationOpen(true)}
+                    style={{background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
+                    Analysis
+                  </button>
+                </div>
               ) : (
                 <button onClick={()=>setInvestigationOpen(true)}
                   style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>

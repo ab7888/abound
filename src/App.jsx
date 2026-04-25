@@ -1488,7 +1488,6 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       });
       setCategorised(result);
       setDone(true);
-      const apiKey = localStorage.getItem("anthropic_api_key") || import.meta.env.VITE_ANTHROPIC_KEY;
       setTimeout(()=>setStep("review"),1200);
     })();
   },[]);
@@ -2324,6 +2323,13 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [tourVisible, setTourVisible] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
   const [showAnalysisSuggestion, setShowAnalysisSuggestion] = useState(false);
+  const [showAnalysisTipAfterStock, setShowAnalysisTipAfterStock] = useState(false);
+  function triggerAnalysisTip(){
+    if(!localStorage.getItem("abound_analysis_tip_seen")){
+      localStorage.setItem("abound_analysis_tip_seen","1");
+      setTimeout(()=>setShowAnalysisTipAfterStock(true), 600);
+    }
+  }
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
   function showTooltip(text, x, y) {
@@ -2334,6 +2340,16 @@ function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, r
   const [events, setEvents] = useState([]);
   const [editingEvent, setEditingEvent] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null);
+  function txnKey(t){return t.narrative+'|'+t.date.getTime()+'|'+t.amount;}
+  function openCtxMenu(e, account, cat, weekKey){
+    e.preventDefault();
+    const txns = transactions.filter(t=>{
+      const wk=getWeekMonday(t.date).toISOString().slice(0,10);
+      return (account==="ALL"||t.account===account)&&t.category===cat&&wk===weekKey;
+    });
+    const selectedKeys = new Set(txns.map(txnKey));
+    setCtxMenu({x:e.clientX, y:e.clientY, account, cat, weekKey, txns, selectedKeys});
+  }
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [investigationStep, setInvestigationStep] = useState(0);
   const [investigationOpen, setInvestigationOpen] = useState(false);
@@ -2812,8 +2828,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {actuals.map((v,i)=>(
           <td key={i}
             style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
-            onClick={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}
-            onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account,cat,weekKey:actualWeeks[i].key});}:undefined}>
+            onClick={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}
+            onContextMenu={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}>
             {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
@@ -3030,8 +3046,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {actuals.map((v,i)=>(
           <td key={i}
             style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
-            onClick={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account:"ALL",cat,weekKey:actualWeeks[i].key});}:undefined}
-            onContextMenu={v>0?e=>{e.preventDefault();setCtxMenu({x:e.clientX,y:e.clientY,account:"ALL",cat,weekKey:actualWeeks[i].key});}:undefined}>
+            onClick={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}
+            onContextMenu={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}>
             {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
@@ -3197,30 +3213,81 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
 
       {/* Right-click category menu */}
-      {ctxMenu&&(
-        <>
-          <div style={{position:"fixed",inset:0,zIndex:9990}} onClick={()=>setCtxMenu(null)}/>
-          <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9991,background:T.tooltipBg,border:`1px solid ${T.tooltipBorder}`,borderRadius:10,padding:"6px 0",boxShadow:"0 8px 32px rgba(0,0,0,0.25)",minWidth:190,animation:"tooltipIn 0.15s ease both"}}>
-            <div style={{padding:"7px 14px 8px",fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",borderBottom:`1px solid ${T.dimBorderMid}`}}>MOVE TO CATEGORY</div>
-            {categories.filter(c=>c!==ctxMenu.cat).map(c=>(
-              <button key={c} onClick={()=>{
-                if(onUpdateTxns){
-                  onUpdateTxns(transactions.map(t=>{
-                    const wk=getWeekMonday(t.date).toISOString().slice(0,10);
-                    return((ctxMenu.account==="ALL"||t.account===ctxMenu.account)&&t.category===ctxMenu.cat&&wk===ctxMenu.weekKey)?{...t,category:c}:t;
-                  }));
-                }
-                setCtxMenu(null);
-              }}
-              style={{display:"block",width:"100%",padding:"8px 14px",background:"none",border:"none",color:T.catText,fontSize:12,cursor:"pointer",textAlign:"left"}}
-              onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
-              onMouseLeave={e=>e.currentTarget.style.background="none"}>
-                {c}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
+      {ctxMenu&&(()=>{
+        const {txns, selectedKeys, cat, account, weekKey} = ctxMenu;
+        const multi = txns.length > 1;
+        const fmtDate = d => d.toLocaleDateString("en-GB",{weekday:"short",day:"numeric",month:"short"});
+        const truncate = (s,n=28) => s.length>n?s.slice(0,n-1)+"…":s;
+        const selCount = selectedKeys.size;
+        // Position: clamp so menu stays on screen
+        const menuW = 230;
+        const left = Math.min(ctxMenu.x, window.innerWidth - menuW - 8);
+        return(
+          <>
+            <div style={{position:"fixed",inset:0,zIndex:9990}} onClick={()=>setCtxMenu(null)}/>
+            <div style={{position:"fixed",left:left,top:ctxMenu.y,zIndex:9991,background:T.tooltipBg,border:`1px solid ${T.tooltipBorder}`,borderRadius:10,padding:"6px 0",boxShadow:"0 8px 32px rgba(0,0,0,0.3)",width:menuW,animation:"tooltipIn 0.15s ease both"}}>
+
+              {/* Transaction summary */}
+              <div style={{padding:"8px 12px",borderBottom:`1px solid ${T.dimBorderMid}`}}>
+                <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",marginBottom:6}}>
+                  {multi?`${txns.length} TRANSACTIONS IN THIS CELL`:"TRANSACTION"}
+                </div>
+                {txns.map(t=>{
+                  const key=txnKey(t);
+                  const checked=selectedKeys.has(key);
+                  return(
+                    <div key={key}
+                      onClick={multi?()=>{
+                        setCtxMenu(prev=>{
+                          const next=new Set(prev.selectedKeys);
+                          checked?next.delete(key):next.add(key);
+                          return {...prev,selectedKeys:next};
+                        });
+                      }:undefined}
+                      style={{display:"flex",alignItems:"flex-start",gap:7,padding:"4px 2px",borderRadius:5,cursor:multi?"pointer":"default",userSelect:"none",
+                        background:multi&&checked?"rgba(99,102,241,0.08)":"none",marginBottom:2}}>
+                      {multi&&(
+                        <div style={{marginTop:2,width:13,height:13,borderRadius:3,border:`1.5px solid ${checked?"#6366f1":"#374151"}`,background:checked?"#6366f1":"none",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          {checked&&<svg width="8" height="8" viewBox="0 0 10 10" fill="none"><path d="M2 5l2.5 2.5L8 3" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        </div>
+                      )}
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:600,color:T.text,lineHeight:1.3,wordBreak:"break-word"}}>{truncate(t.narrative)}</div>
+                        <div style={{fontSize:10,color:"#6b7280",marginTop:1}}>
+                          £{Math.abs(t.amount).toFixed(2)} · {fmtDate(t.date)}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Category list */}
+              <div style={{padding:"4px 0 2px"}}>
+                <div style={{padding:"5px 12px 6px",fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em"}}>
+                  {multi&&selCount<txns.length?`MOVE ${selCount} SELECTED TO`:"MOVE TO CATEGORY"}
+                </div>
+                {selCount===0&&(
+                  <div style={{padding:"6px 12px",fontSize:11,color:"#6b7280",fontStyle:"italic"}}>Select at least one transaction</div>
+                )}
+                {selCount>0&&categories.filter(c=>c!==cat).map(c=>(
+                  <button key={c} onClick={()=>{
+                    if(onUpdateTxns){
+                      onUpdateTxns(transactions.map(t=>selectedKeys.has(txnKey(t))?{...t,category:c}:t));
+                    }
+                    setCtxMenu(null);
+                  }}
+                  style={{display:"block",width:"100%",padding:"7px 14px",background:"none",border:"none",color:T.catText,fontSize:12,cursor:"pointer",textAlign:"left"}}
+                  onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
+                  onMouseLeave={e=>e.currentTarget.style.background="none"}>
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Tooltip */}
       {tooltip&&(
@@ -3630,7 +3697,24 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
 
       {/* Stock setup prompt */}
-      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);}} onDismiss={()=>setShowStockSetup(false)} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);triggerAnalysisTip();}} onDismiss={()=>{setShowStockSetup(false);triggerAnalysisTip();}} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+
+      {/* Financial Analysis tip — appears once after stock modal is closed */}
+      {showAnalysisTipAfterStock&&(
+        <div style={{position:"fixed",bottom:72,right:16,zIndex:950,maxWidth:260,animation:"tooltipIn 0.35s cubic-bezier(0.16,1,0.3,1) both"}}>
+          <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:"12px 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.55)"}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#e0e7ff",marginBottom:4,display:"flex",alignItems:"center",gap:7}}>
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Financial Analysis
+            </div>
+            <div style={{fontSize:11,color:"#818cf8",lineHeight:1.45,marginBottom:10}}>See your end-of-month balance, 6-week outlook, and goal planning — all in one place.</div>
+            <div style={{display:"flex",gap:7}}>
+              <button onClick={()=>{setShowAnalysisTipAfterStock(false);openAnalysis();}} style={{flex:1,padding:"6px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer"}}>Open →</button>
+              <button onClick={()=>setShowAnalysisTipAfterStock(false)} style={{padding:"6px 9px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:7,fontSize:12,cursor:"pointer"}}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Investigation Panel — fixed right drawer */}
       {(()=>{
@@ -3903,24 +3987,13 @@ ${goalsText.trim()?`\nWhat they said: "${goalsText}"`:""}
 
 Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual numbers. Short sentences. Max 60 words total. No bullet points, no intro, just the advice.`;
                       const payload={model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]};
-                      // Try server-side proxy first (works on all devices, no client key needed)
-                      let text=null;
-                      try{
-                        const r=await fetch("/api/categorise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-                        if(r.ok){const d=await r.json();text=d.content?.[0]?.text?.trim()||null;}
-                      }catch(_){}
-                      // Fallback: direct call with user-supplied key
-                      if(!text){
-                        const key=localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY||"";
-                        if(!key)throw new Error("no-key");
-                        const r2=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":key,"anthropic-version":"2023-06-01","content-type":"application/json","anthropic-dangerous-direct-browser-access":"true"},body:JSON.stringify(payload)});
-                        if(!r2.ok)throw new Error();
-                        const d2=await r2.json();
-                        text=d2.content?.[0]?.text?.trim()||null;
-                      }
+                      const r=await fetch("/api/categorise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+                      if(!r.ok)throw new Error();
+                      const d=await r.json();
+                      const text=d.content?.[0]?.text?.trim()||null;
                       if(!text)throw new Error();
                       setGoalsAdvice(text);
-                    }catch(e){setGoalsAdvice(e?.message==="no-key"?"No API key found — enter one below to enable AI advice.":"Couldn't load advice right now. Please try again.");}
+                    }catch(e){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
                     setGoalsLoading(false);
                   }
 
@@ -4037,22 +4110,8 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
 
                       {/* ── Claude advice ── */}
                       {(()=>{
-                        const hasKey=!!(localStorage.getItem("anthropic_api_key")||import.meta.env.VITE_ANTHROPIC_KEY);
                         return(
                           <div>
-                            {!hasKey&&(
-                              <div style={{marginBottom:10,padding:"10px 12px",background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.3)",borderRadius:8}}>
-                                <div style={{fontSize:11,fontWeight:700,color:"#f59e0b",marginBottom:6}}>API key needed</div>
-                                <div style={{fontSize:11,color:T.dimText,marginBottom:8,lineHeight:1.5}}>Paste your <a href="https://console.anthropic.com/account/keys" target="_blank" rel="noreferrer" style={{color:"#818cf8"}}>Anthropic API key</a> to enable AI advice. It's saved locally to your device only.</div>
-                                <div style={{display:"flex",gap:6}}>
-                                  <input type="password" placeholder="sk-ant-..." defaultValue={localStorage.getItem("anthropic_api_key")||""}
-                                    id="apiKeyInput"
-                                    style={{...inputStyle,flex:1,fontSize:11}}/>
-                                  <button onClick={()=>{const v=document.getElementById("apiKeyInput").value.trim();if(v){localStorage.setItem("anthropic_api_key",v);setGoalsAdvice("");}}}
-                                    style={{padding:"7px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Save</button>
-                                </div>
-                              </div>
-                            )}
                             <button onClick={fetchGoalsAdvice2} disabled={goalsLoading}
                               style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsLoading?"default":"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:"0 2px 10px rgba(99,102,241,0.3)",opacity:goalsLoading?0.7:1}}>
                               {goalsLoading?"Thinking...":"Get personalised advice →"}

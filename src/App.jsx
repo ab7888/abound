@@ -2205,13 +2205,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {isMobile&&activeTab==="cashflow"&&(
-        <button onClick={goToReview} style={{position:"fixed",right:0,top:"18%",zIndex:900,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)",display:"flex",alignItems:"center",gap:6}}>
-          {showReviewPrompt&&<span style={{background:"#ef4444",borderRadius:"50%",width:8,height:8,display:"inline-block",flexShrink:0}}/>}
-          Review
-        </button>
-      )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring}/></OrientationGate>}
+      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring}/></OrientationGate>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
     </div>
   );
@@ -2312,7 +2306,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, onUpdateTxns, reviewEditCount, nonRecurring=new Set()}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set()}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -3380,7 +3374,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
       {isMobile&&showAnalysisSuggestion&&(
-        <div style={{position:"fixed",right:0,top:"calc(18% + 120px)",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
+        <div style={{position:"fixed",right:0,top:"38%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
           <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
             <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
               <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -3396,7 +3390,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       )}
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?0:"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
+      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"8px 0 0":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -3491,8 +3485,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
-                <th data-sticky-hdr style={{padding:isMobile?"10px 6px":"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:isMobile?90:130}}>
-                  <img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>
+                <th data-sticky-hdr style={{padding:isMobile?"10px 6px":"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:isMobile?108:130}}>
+                  {!isMobile&&<img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>}
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
@@ -3751,20 +3745,29 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {/* Collapsed tab */}
             {!investigationOpen&&(
               isMobile ? (
-                <div style={{position:"fixed",right:0,top:"calc(18% + 90px)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-                  <button onClick={()=>setSplitByCard(s=>!s)} data-tour="view-toggle"
-                    style={{background:T.card,border:`1px solid ${T.border}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 10px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:"-2px 0 10px rgba(0,0,0,0.3)",cursor:"pointer"}}>
-                    <span style={{fontSize:8,color:"#6b7280",fontWeight:600,writingMode:"vertical-rl",transform:"rotate(180deg)",letterSpacing:"0.06em",lineHeight:1}}>{splitByCard?"By card":"Grouped"}</span>
-                    <div style={{position:"relative",width:22,height:12,borderRadius:6,background:splitByCard?"#6366f1":"#374151",transition:"background 0.2s",flexShrink:0}}>
-                      <span style={{position:"absolute",top:2,left:splitByCard?12:2,width:8,height:8,borderRadius:4,background:"#fff",transition:"left 0.2s",display:"block"}}/>
-                    </div>
+                <div style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                  {/* Review */}
+                  <button onClick={onGoToReview} data-tour="view-toggle"
+                    style={{position:"relative",background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"13px 8px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.07em",boxShadow:"-3px 0 14px rgba(99,102,241,0.45)",writingMode:"vertical-rl"}}>
+                    {showReviewPrompt&&<span style={{position:"absolute",top:6,right:6,width:7,height:7,borderRadius:"50%",background:"#ef4444",flexShrink:0,display:"block"}}/>}
+                    Review
                   </button>
+                  {/* Analysis */}
                   <button onClick={openAnalysis}
-                    style={{background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 8px",fontSize:11,fontWeight:800,cursor:"pointer",letterSpacing:"0.06em",boxShadow:"-4px 0 16px rgba(99,102,241,0.45)",writingMode:"vertical-rl",transform:"rotate(180deg)"}}>
+                    style={{background:"rgba(30,27,56,0.95)",color:"#818cf8",border:"1px solid rgba(99,102,241,0.3)",borderRight:"none",borderRadius:"8px 0 0 8px",padding:"13px 8px",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:"0.07em",boxShadow:"-3px 0 10px rgba(0,0,0,0.35)",writingMode:"vertical-rl"}}>
                     Analysis
                   </button>
+                  {/* Grouped toggle */}
+                  <button onClick={()=>setSplitByCard(s=>!s)}
+                    style={{background:"rgba(30,27,56,0.95)",border:"1px solid rgba(99,102,241,0.2)",borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 9px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:"-2px 0 8px rgba(0,0,0,0.3)",cursor:"pointer"}}>
+                    <span style={{fontSize:8,color:"#6b7280",fontWeight:600,writingMode:"vertical-rl",letterSpacing:"0.06em",lineHeight:1}}>{splitByCard?"By card":"Grouped"}</span>
+                    <div style={{position:"relative",width:20,height:11,borderRadius:6,background:splitByCard?"#6366f1":"#374151",transition:"background 0.2s",flexShrink:0}}>
+                      <span style={{position:"absolute",top:2,left:splitByCard?11:2,width:7,height:7,borderRadius:"50%",background:"#fff",transition:"left 0.2s",display:"block"}}/>
+                    </div>
+                  </button>
+                  {/* Stocks */}
                   <button onClick={()=>setShowStockSetup(true)}
-                    style={{background:stocks.length?"rgba(16,185,129,0.15)":"rgba(30,27,56,0.95)",color:stocks.length?"#10b981":"#6b7280",border:`1px solid ${stocks.length?"rgba(16,185,129,0.4)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"12px 7px",fontSize:10,fontWeight:700,cursor:"pointer",writingMode:"vertical-rl",transform:"rotate(180deg)",boxShadow:"-2px 0 8px rgba(0,0,0,0.3)"}}>
+                    style={{background:stocks.length?"rgba(16,185,129,0.12)":"rgba(30,27,56,0.95)",color:stocks.length?"#10b981":"#6b7280",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"12px 7px",fontSize:10,fontWeight:700,cursor:"pointer",writingMode:"vertical-rl",boxShadow:"-2px 0 8px rgba(0,0,0,0.3)"}}>
                     {stocks.length?`Stocks(${stocks.length})`:"Stocks"}
                   </button>
                 </div>
@@ -4335,33 +4338,33 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
 }
 
 function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
+  const mob = useIsMobile();
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:24,backdropFilter:"blur(6px)"}}>
-      <div style={{background:"linear-gradient(135deg,#1a1830,#0f0e1f)",border:"1px solid #4338ca",borderRadius:20,padding:"36px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)",textAlign:"center"}}>
-        <div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?12:24,backdropFilter:"blur(6px)"}}>
+      <div style={{background:"linear-gradient(135deg,#1a1830,#0f0e1f)",border:"1px solid #4338ca",borderRadius:mob?14:20,padding:mob?"16px 18px":"36px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)",textAlign:"center"}}>
+        {!mob&&<div style={{width:56,height:56,borderRadius:16,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
           <svg width="28" height="28" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.27l-4.76 2.38.91-5.3L2.3 7.6l5.3-.8L10 2z" fill="#fff"/></svg>
-        </div>
-        <div style={{fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:8}}>You've used your {FREE_AI_RUNS} free AI runs</div>
-        <h2 style={{fontSize:24,fontWeight:800,color:"#e0e7ff",margin:"0 0 12px",lineHeight:1.2}}>Upgrade to keep the AI magic</h2>
-        <p style={{fontSize:14,color:"#818cf8",lineHeight:1.6,margin:"0 0 28px"}}>
-          Free users get {FREE_AI_RUNS} AI categorisation runs. You've used all {runsUsed}.<br/>
-          Upgrade for <strong style={{color:"#a5b4fc"}}>£5/month</strong> to get unlimited AI runs, Financial Analysis, budgets, and the upcoming stock tracker.
+        </div>}
+        <div style={{fontSize:mob?9:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:mob?4:8}}>You've used your {FREE_AI_RUNS} free AI runs</div>
+        <h2 style={{fontSize:mob?16:24,fontWeight:800,color:"#e0e7ff",margin:mob?"0 0 6px":"0 0 12px",lineHeight:1.2}}>Upgrade to keep the AI magic</h2>
+        <p style={{fontSize:mob?11:14,color:"#818cf8",lineHeight:1.5,margin:mob?"0 0 12px":"0 0 28px"}}>
+          Upgrade for <strong style={{color:"#a5b4fc"}}>£5/month</strong> — unlimited AI runs, Financial Analysis, budgets &amp; stock tracker.
         </p>
-        <div style={{background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:12,padding:"14px 16px",marginBottom:24,textAlign:"left"}}>
+        <div style={{background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:mob?8:12,padding:mob?"8px 12px":"14px 16px",marginBottom:mob?12:24,textAlign:"left"}}>
           {["Unlimited AI categorisation","6-week cash flow forecast","Financial Analysis & goals","Budget tracking per category","Stock tracker (coming soon)"].map((f,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"4px 0",fontSize:13,color:"#c7d2fe"}}>
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M4 10l5 5 7-8" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:mob?"2px 0":"4px 0",fontSize:mob?11:13,color:"#c7d2fe"}}>
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none" style={{flexShrink:0}}><path d="M4 10l5 5 7-8" stroke="#10b981" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {f}
             </div>
           ))}
         </div>
-        <button onClick={onUpgrade} style={{width:"100%",padding:"14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(99,102,241,0.4)",marginBottom:10,letterSpacing:"0.02em"}}>
+        <button onClick={onUpgrade} style={{width:"100%",padding:mob?"10px":"14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:mob?9:12,fontSize:mob?13:15,fontWeight:800,cursor:"pointer",boxShadow:"0 8px 24px rgba(99,102,241,0.4)",marginBottom:mob?6:10,letterSpacing:"0.02em"}}>
           Upgrade for £5/month →
         </button>
-        <button onClick={onDismiss} style={{width:"100%",padding:"11px",background:"none",color:"#4b5563",border:"1px solid #1f1d35",borderRadius:12,fontSize:13,cursor:"pointer"}}>
-          Continue with rule-based categorisation (free)
+        <button onClick={onDismiss} style={{width:"100%",padding:mob?"7px":"11px",background:"none",color:"#4b5563",border:"1px solid #1f1d35",borderRadius:mob?9:12,fontSize:mob?11:13,cursor:"pointer"}}>
+          Continue free (rule-based only)
         </button>
-        <p style={{fontSize:11,color:"#374151",marginTop:12}}>Cancel anytime · Secure payment via Stripe</p>
+        {!mob&&<p style={{fontSize:11,color:"#374151",marginTop:12}}>Cancel anytime · Secure payment via Stripe</p>}
       </div>
     </div>
   );

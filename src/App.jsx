@@ -2088,7 +2088,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
           })}
           {filtered.length===0&&(
             <div style={{padding:"56px 24px",textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:12,opacity:0.3}}>🔍</div>
+              <div style={{marginBottom:12,opacity:0.3,display:"flex",justifyContent:"center"}}><svg width="32" height="32" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="#9ca3af" strokeWidth="1.5"/><path d="M14 14l3 3" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round"/></svg></div>
               <div style={{fontSize:14,color:"#374151",fontWeight:600,marginBottom:4}}>No transactions found</div>
               <div style={{fontSize:12,color:"#2d2a6e"}}>Try adjusting your filters</div>
             </div>
@@ -2188,7 +2188,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
             </button>
           )}
           <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
-            {isMobile?"⭐":"⭐ Leave a review"}
+            {isMobile?"Review":"Leave a review"}
           </button>
           {!isMobile&&<button onClick={onStartOver} style={{fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
         </div>
@@ -3655,7 +3655,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               </div>
             </div>
             <div style={{marginBottom:14}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",marginBottom:8}}>🍎 iOS (Safari)</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#6366f1",letterSpacing:"0.08em",marginBottom:8}}>iOS (Safari)</div>
               {[
                 {n:1,t:'Open Abound in Safari (not Chrome)'},
                 {n:2,t:'Tap the Share button',sub:'The box with an arrow pointing up at the bottom of the screen'},
@@ -3672,7 +3672,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               ))}
             </div>
             <div style={{borderTop:"1px solid #1f1d3a",paddingTop:14}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#8b5cf6",letterSpacing:"0.08em",marginBottom:8}}>🤖 Android (Chrome)</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#8b5cf6",letterSpacing:"0.08em",marginBottom:8}}>Android (Chrome)</div>
               {[
                 {n:1,t:'Tap the three-dot menu ⋮ in the top-right'},
                 {n:2,t:'Tap "Add to Home screen"'},
@@ -4309,7 +4309,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
           <p style={{fontSize:12,color:"#818cf8",marginBottom:16,lineHeight:1.5}}>Any brokerage app screenshot showing ticker symbols and values. The AI will extract your holdings automatically.</p>
           <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={handleScreenshot}/>
           <button onClick={()=>fileRef.current?.click()} disabled={screenshotLoading} style={{width:"100%",padding:"14px",background:"rgba(99,102,241,0.12)",border:"2px dashed rgba(99,102,241,0.4)",borderRadius:12,color:"#a5b4fc",fontSize:13,fontWeight:600,cursor:"pointer",marginBottom:12}}>
-            {screenshotLoading?"Analysing with AI...":"📎 Choose screenshot"}
+            {screenshotLoading?"Analysing with AI...":"Choose screenshot"}
           </button>
           {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:12}}>{error}</p>}
           {localStocks.length>0&&(<>

@@ -2317,6 +2317,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [tourVisible, setTourVisible] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
   const [showAnalysisSuggestion, setShowAnalysisSuggestion] = useState(false);
+  const [showStockSuggestion, setShowStockSuggestion] = useState(false);
   const [showAnalysisTipAfterStock, setShowAnalysisTipAfterStock] = useState(false);
   function triggerAnalysisTip(){
     if(!localStorage.getItem("abound_analysis_tip_seen")){
@@ -2352,6 +2353,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
   const [stockData, setStockData] = useState({});
   function openAnalysis(){if(!isPremium()){setShowPremiumGate(true);return;}setInvestigationOpen(true);}
+  function openStocks(){if(!isPremium()){setShowPremiumGate(true);return;}setShowStockSetup(true);}
   function saveStocks(s){setStocks(s);try{localStorage.setItem("abound_stocks_v1",JSON.stringify(s));}catch{}}
   useEffect(()=>{
     if(!stocks.length) return;
@@ -2472,6 +2474,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     localStorage.setItem("cashFlowTourSeen_v2","1");
     setTourVisible(false);setTourStep(null);
     if(isMobile){
+      if(!localStorage.getItem("abound_stock_prompt_seen")){
+        localStorage.setItem("abound_stock_prompt_seen","1");
+        setTimeout(()=>setShowStockSuggestion(true),2000);
+      }
       setTimeout(()=>setShowAnalysisSuggestion(true),25000);
     } else if(!localStorage.getItem("abound_stock_prompt_seen")){
       localStorage.setItem("abound_stock_prompt_seen","1");
@@ -2503,7 +2509,14 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
       }, 150);
     }
   }
-  function closeTour(){localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);if(!isMobile&&!localStorage.getItem("abound_stock_prompt_seen")){localStorage.setItem("abound_stock_prompt_seen","1");setTimeout(()=>setShowStockSetup(true),800);}}
+  function closeTour(){
+    localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);
+    if(!localStorage.getItem("abound_stock_prompt_seen")){
+      localStorage.setItem("abound_stock_prompt_seen","1");
+      if(isMobile) setTimeout(()=>setShowStockSuggestion(true),2000);
+      else setTimeout(()=>setShowStockSetup(true),800);
+    }
+  }
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
   // Lock body scroll during mobile tour
@@ -3373,6 +3386,22 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       })()}
 
       {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
+      {isMobile&&showStockSuggestion&&(
+        <div style={{position:"fixed",right:0,top:"28%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"68vw"}}>
+          <div style={{background:"linear-gradient(135deg,#0f1f1a,#111827)",border:"1px solid rgba(16,185,129,0.4)",borderLeft:"4px solid #10b981",borderRadius:"10px 0 0 10px",padding:"9px 11px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
+            <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
+              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="#10b981" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Track your stocks
+            </div>
+            <div style={{fontSize:10,color:"#6ee7b7",lineHeight:1.4,marginBottom:8}}>See holdings alongside your cash flow.</div>
+            <div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setShowStockSuggestion(false);openStocks();}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#059669,#047857)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Add stocks →</button>
+              <button onClick={()=>setShowStockSuggestion(false)} style={{padding:"5px 8px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:6,fontSize:10,cursor:"pointer"}}>✕</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {isMobile&&showAnalysisSuggestion&&(
         <div style={{position:"fixed",right:0,top:"38%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
           <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
@@ -3471,7 +3500,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {/* Grouped / By card toggle — desktop inline, mobile via fixed right bar */}
         {!isMobile&&(
           <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
-            <button onClick={()=>setShowStockSetup(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:stocks.length?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.3)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:stocks.length?"#10b981":"#818cf8",cursor:"pointer",flexShrink:0}}>
+            <button onClick={openStocks} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:stocks.length?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.3)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:stocks.length?"#10b981":"#818cf8",cursor:"pointer",flexShrink:0}}>
               <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {stocks.length?`Stocks (${stocks.length})`:"+ Stocks"}
             </button>
@@ -3643,7 +3672,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {/* Add to Home Screen guide */}
       {showHomeScreenGuide&&(
         <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(5,4,20,0.75)",backdropFilter:"blur(6px)"}} onClick={()=>setShowHomeScreenGuide(false)}>
-          <div style={{background:"linear-gradient(145deg,#13112b,#1a1830)",border:"1px solid #3730a3",borderRadius:16,padding:"24px 24px 20px",maxWidth:340,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.6)",position:"relative"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#13112b,#1a1830)",border:"1px solid #3730a3",borderRadius:16,padding:"24px 24px 20px",maxWidth:340,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.6)",position:"relative",zoom:isMobile?0.9:1}} onClick={e=>e.stopPropagation()}>
             <button onClick={()=>setShowHomeScreenGuide(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",color:"#6b7280",fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
               <div style={{width:36,height:36,borderRadius:9,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -3766,10 +3795,17 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     </div>
                   </button>
                   {/* Stocks */}
-                  <button onClick={()=>setShowStockSetup(true)}
+                  <button onClick={openStocks}
                     style={{background:stocks.length?"rgba(16,185,129,0.12)":"rgba(30,27,56,0.95)",color:stocks.length?"#10b981":"#6b7280",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"12px 7px",fontSize:10,fontWeight:700,cursor:"pointer",writingMode:"vertical-rl",boxShadow:"-2px 0 8px rgba(0,0,0,0.3)"}}>
                     {stocks.length?`Stocks(${stocks.length})`:"Stocks"}
                   </button>
+                  {/* Free / Premium badge */}
+                  {(()=>{const pro=isPremium();return(
+                    <div onClick={pro?undefined:()=>setShowPremiumGate(true)}
+                      style={{background:pro?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${pro?"rgba(16,185,129,0.3)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"7px 5px",cursor:pro?"default":"pointer",boxShadow:"-2px 0 6px rgba(0,0,0,0.25)"}}>
+                      <div style={{writingMode:"vertical-rl",fontSize:8,fontWeight:800,color:pro?"#10b981":"#818cf8",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>{pro?"Premium":"Free"}</div>
+                    </div>
+                  );})()}
                 </div>
               ) : (
                 <button onClick={openAnalysis}

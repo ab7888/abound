@@ -3743,8 +3743,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {id:0,label:"End of month"},
           {id:1,label:"6-week outlook"},
           {id:2,label:"One-offs"},
-          {id:3,label:"Goals"},
-          {id:4,label:"Low point"},
+          {id:3,label:"Low point"},
+          {id:4,label:"Your plan"},
         ];
         return(
           <>
@@ -3943,13 +3943,47 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     )}
                     <button onClick={()=>setInvestigationStep(3)}
                       style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                      {hasOutliers?(anyExcluded?"Set my goals →":"Skip & set goals →"):"Set my goals →"}
+                      {hasOutliers?(anyExcluded?"See low point →":"Skip →"):"See low point →"}
                     </button>
                   </div>
                 )}
 
-                {/* Step 4: Plan — forecast changes + savings goal + advice */}
-                {investigationStep>=3&&(()=>{
+                {/* Step 4: Low point */}
+                {investigationStep>=3&&investigationStep<4&&(()=>{
+                  const lowIdx=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
+                  const lowBal=lowIdx!==null?combinedClosingBalances.forecast[lowIdx]:null;
+                  const lowWk=lowIdx!==null?forecastWeeks[lowIdx]:null;
+                  const isRisky=lowBal!==null&&lastActualBal!==null&&lowBal<lastActualBal*0.7;
+                  return(
+                    <div style={{padding:"18px 20px"}}>
+                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:10,textTransform:"uppercase"}}>Step 4 · Low point</div>
+                      <div style={{display:"flex",alignItems:"baseline",gap:12,marginBottom:10}}>
+                        <span style={{fontSize:36,fontWeight:800,color:"#ef4444",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.03em"}}>
+                          {lowBal!==null?`${lowBal>=0?"":"−"}£${Math.round(Math.abs(lowBal)).toLocaleString()}`:"—"}
+                        </span>
+                        {lowWk&&<span style={{fontSize:14,fontWeight:700,color:"#e0e7ff",background:"rgba(99,102,241,0.15)",padding:"2px 8px",borderRadius:5}}>{lowWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"})}</span>}
+                      </div>
+                      <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
+                        {lowBal===null?"No forecast data available."
+                          :isRisky
+                            ?`That week is your tightest point — a ${Math.round((1-(lowBal/(lastActualBal||1)))*100)}% drop from today's balance. Multiple bills may land at once. Make sure you have enough buffer going in.`
+                            :"Your balance stays relatively stable throughout the forecast period — no alarming dips detected."}
+                      </p>
+                      {isRisky&&lowWk&&(
+                        <div style={{padding:"11px 14px",background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderLeft:"3px solid #ef4444",borderRadius:8,fontSize:12,color:"#fca5a5",lineHeight:1.65,marginBottom:14}}>
+                          <strong>Tip:</strong> Check the week of {lowWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} in the table — look for large outgoings hitting the same week as rent or bills.
+                        </div>
+                      )}
+                      <button onClick={()=>setInvestigationStep(4)}
+                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
+                        Set my goals →
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Step 5: Plan — forecast changes + savings goal + advice */}
+                {investigationStep>=4&&(()=>{
                   const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
                   const isMonthly=cat=>MONTHLY_OV_CATS.includes(cat);
 
@@ -4001,7 +4035,7 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
 
                   return(
                     <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:18}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 4 · Your plan</div>
+                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 5 · Your plan</div>
 
                       {/* ── Forecast changes ── */}
                       <div>
@@ -4071,7 +4105,7 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                           </div>
                           <div style={{flex:1}}>
                             <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>By (optional)</div>
-                            <input type="month" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
+                            <input type="date" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
                           </div>
                         </div>
 
@@ -4127,12 +4161,6 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                                 {goalsAdvice}
                               </div>
                             )}
-                            {investigationStep===3&&(
-                              <button onClick={()=>setInvestigationStep(4)}
-                                style={{width:"100%",marginTop:10,padding:"9px 0",background:"transparent",color:"#6366f1",border:`1px solid #6366f1`,borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                                See low point →
-                              </button>
-                            )}
                           </div>
                         );
                       })()}
@@ -4140,35 +4168,6 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                   );
                 })()}
 
-                {/* Step 5: Low point */}
-                {investigationStep>=4&&(()=>{
-                  const lowIdx=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
-                  const lowBal=lowIdx!==null?combinedClosingBalances.forecast[lowIdx]:null;
-                  const lowWk=lowIdx!==null?forecastWeeks[lowIdx]:null;
-                  const isRisky=lowBal!==null&&lastActualBal!==null&&lowBal<lastActualBal*0.7;
-                  return(
-                    <div style={{padding:"18px 20px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 5 · Low point</div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
-                        <span style={{fontSize:30,fontWeight:800,color:isRisky?"#f59e0b":"#10b981",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
-                          {lowBal!==null?`${lowBal>=0?"":"−"}£${Math.round(Math.abs(lowBal)).toLocaleString()}`:"—"}
-                        </span>
-                        {lowWk&&<span style={{fontSize:12,color:"#6b7280"}}>{fmt(lowWk.date)}</span>}
-                      </div>
-                      <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
-                        {lowBal===null?"No forecast data available."
-                          :isRisky
-                            ?`That week is your tightest point — a ${Math.round((1-(lowBal/(lastActualBal||1)))*100)}% drop from today's balance. Multiple bills may land at once. Make sure you have enough buffer going in.`
-                            :"Your balance stays relatively stable throughout the forecast period — no alarming dips detected."}
-                      </p>
-                      {isRisky&&lowWk&&(
-                        <div style={{padding:"11px 14px",background:"rgba(245,158,11,0.07)",border:"1px solid rgba(245,158,11,0.25)",borderLeft:"3px solid #f59e0b",borderRadius:8,fontSize:12,color:"#fbbf24",lineHeight:1.65}}>
-                          <strong>Tip:</strong> Check the week of {fmt(lowWk.date)} in the table — look for large outgoings hitting the same week as rent or bills.
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
               </div>
             </div>
           </>

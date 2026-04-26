@@ -1,6 +1,38 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, Component } from "react";
 import * as XLSX from "xlsx";
 import logo from "./logo.png";
+
+class ErrorBoundary extends Component {
+  constructor(props){ super(props); this.state={crashed:false,error:null}; }
+  static getDerivedStateFromError(error){ return {crashed:true,error}; }
+  componentDidCatch(error,info){ console.error("Abound crashed:",error,info); }
+  render(){
+    if(!this.state.crashed) return this.props.children;
+    return(
+      <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#09081a",padding:32,textAlign:"center",fontFamily:"'Inter',system-ui,sans-serif"}}>
+        <img src={logo} alt="Abound" style={{height:40,marginBottom:24,opacity:0.7}}/>
+        <div style={{fontSize:22,fontWeight:800,color:"#e0e7ff",marginBottom:8}}>Something went wrong</div>
+        <div style={{fontSize:14,color:"#6b7280",marginBottom:28,lineHeight:1.6,maxWidth:340}}>
+          An unexpected error occurred. Your data hasn't been lost — try refreshing the page.
+        </div>
+        <button onClick={()=>window.location.reload()}
+          style={{padding:"11px 28px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer",boxShadow:"0 4px 16px rgba(99,102,241,0.4)",marginBottom:12}}>
+          Refresh page
+        </button>
+        <button onClick={()=>this.setState({crashed:false,error:null})}
+          style={{padding:"9px 20px",background:"none",color:"#6b7280",border:"1px solid #1f1d35",borderRadius:10,fontSize:13,cursor:"pointer"}}>
+          Try to continue
+        </button>
+        {this.state.error&&(
+          <details style={{marginTop:24,maxWidth:480,textAlign:"left"}}>
+            <summary style={{fontSize:11,color:"#4b5563",cursor:"pointer"}}>Error details</summary>
+            <pre style={{fontSize:10,color:"#6b7280",marginTop:8,overflow:"auto",background:"#0f0e1f",padding:12,borderRadius:8}}>{String(this.state.error)}</pre>
+          </details>
+        )}
+      </div>
+    );
+  }
+}
 
 // ─── Stripe ───────────────────────────────────────────────────────────────────
 const STRIPE_PUBLISHABLE_KEY = "pk_test_51TPlSFPcKkSmNBEQqNiWP7J3Udw0PywkFDsHYQIXIbnAQKbKj9bvBvz1aHa0otuA2UJi2E9AXU3npqBuQMD4FuCt00W7xaqHZ6";
@@ -4406,7 +4438,7 @@ function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
   );
 }
 
-export default function App() {
+function AppInner() {
   const [screen, setScreen] = useState("hero");
   const [premium, setPremiumState] = useState(isPremium);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
@@ -4491,4 +4523,8 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+export default function App(){
+  return <ErrorBoundary><AppInner/></ErrorBoundary>;
 }

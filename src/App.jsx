@@ -55,6 +55,7 @@ async function redirectToCheckout() {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Transfers", "Other Payments"];
+const APP_VERSION = "1.0.0";
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
 const CATEGORY_COLORS = ["#10b981","#3b82f6","#f59e0b","#8b5cf6","#059669","#6366f1","#ec4899","#14b8a6","#f97316","#ef4444"];
@@ -973,6 +974,7 @@ function HeroScreen({onEnter, onResume}) {
             {session?"Start fresh instead":"Get started →"}
           </button>
           <div style={{marginTop:14,fontSize:11,color:"#3f3f46",letterSpacing:"0.08em"}}>FREE · NO ACCOUNT REQUIRED</div>
+          <div style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em"}}>v{APP_VERSION}</div>
         </div>
       </div>
     </div>

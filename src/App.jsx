@@ -93,8 +93,8 @@ const GLOBAL_CSS = `
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
-    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0d0c1e !important; box-shadow: none; }
-    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0d0c1e !important; max-width: 80px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: 4px 0 8px rgba(0,0,0,0.4); }
+    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0d0c1e !important; }
+    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0d0c1e !important; box-shadow: 6px 0 10px rgba(0,0,0,0.5); }
     [data-sticky-hdr] { position: sticky !important; left: 0; z-index: 6; }
   }
 `;
@@ -3386,16 +3386,16 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
             {/* Tour card */}
-            <div style={{position:"fixed",bottom:isMobile?8:32,right:isMobile?6:28,left:"auto",width:isMobile?150:360,maxWidth:isMobile?"48vw":"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:isMobile?"7px 9px":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?4:12}}>
+            <div style={{position:"fixed",bottom:isMobile?"1.5vh":32,right:isMobile?"1.5vw":28,left:"auto",width:isMobile?"46vw":360,maxWidth:isMobile?220:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:isMobile?"1.2vh 1.5vw":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?"0.5vh":12}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:isMobile?8:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:6,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
-                  <div style={{fontSize:isMobile?12:18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+                  <div style={{fontSize:isMobile?"1.4vw":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?"0.4vh":6,textTransform:"uppercase",minFontSize:8}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?"clamp(11px,3.2vw,14px)":18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
                 <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:isMobile?10:13,color:"#a1a1aa",lineHeight:isMobile?1.5:1.7,margin:i===0?"0 0 8px":"8px 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?"clamp(9px,2.6vw,12px)":13,color:"#a1a1aa",lineHeight:isMobile?1.5:1.7,margin:i===0?"0 0 0.6vh":"0.6vh 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -3417,20 +3417,20 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   ))}
                 </div>
               )}
-              <div style={{display:"flex",gap:6,marginTop:isMobile?8:16,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:6,marginTop:isMobile?"0.8vh":16,flexWrap:"wrap"}}>
                 <button onClick={advanceTour}
-                  style={{flex:1,padding:isMobile?"7px 10px":"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?10:13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)",whiteSpace:"nowrap"}}
+                  style={{flex:1,padding:isMobile?"clamp(5px,1.2vh,8px) 10px":"11px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?"clamp(9px,2.6vw,12px)":13,fontWeight:700,cursor:"pointer",transition:"all 0.15s",boxShadow:"0 4px 16px rgba(99,102,241,0.3)",whiteSpace:"nowrap"}}
                   onMouseEnter={e=>e.currentTarget.style.transform="translateY(-1px)"}
                   onMouseLeave={e=>e.currentTarget.style.transform=""}>
                   {currentStep.cta}
                 </button>
                 {currentStep.isReviewPrompt&&(
-                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:isMobile?"7px 8px":"11px 14px",background:"none",color:"#6366f1",border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?10:13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
+                  <button onClick={()=>{finishTour();if(onGoToReview)onGoToReview();}} style={{padding:isMobile?"clamp(5px,1.2vh,8px) 8px":"11px 14px",background:"none",color:"#6366f1",border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?"clamp(9px,2.6vw,12px)":13,cursor:"pointer",whiteSpace:"nowrap",fontWeight:600}}>Review now</button>
                 )}
-                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:isMobile?"7px 8px":"11px 14px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?10:13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
+                {currentStep.skip&&!currentStep.isReviewPrompt&&<button onClick={closeTour} style={{padding:isMobile?"clamp(5px,1.2vh,8px) 8px":"11px 14px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:8,fontSize:isMobile?"clamp(9px,2.6vw,12px)":13,cursor:"pointer",whiteSpace:"nowrap"}}>{currentStep.skip}</button>}
               </div>
               {tourStep>0&&(
-                <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:isMobile?8:16}}>
+                <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:isMobile?"0.8vh":16}}>
                   {TOUR_STEPS.slice(1).map((_,i)=>(
                     <div key={i} onClick={()=>setTourStep(i+1)} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s",cursor:"pointer"}}/>
                   ))}

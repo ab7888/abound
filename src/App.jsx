@@ -483,18 +483,49 @@ function normaliseRows(rows, accountLabel) {
   if (!rows.length) return [];
   const keys = Object.keys(rows[0]);
   const isMainAccount = accountLabel === "Main Account";
-  const dateKey = keys.find(k=>/^date$/i.test(k.trim()))||keys.find(k=>/date/i.test(k));
-  const narKey = keys.find(k=>/^description$/i.test(k.trim()))||keys.find(k=>/^narrative$/i.test(k.trim()))||keys.find(k=>/desc|narr|merchant|payee|detail|ref/i.test(k));
-  const amtKey = keys.find(k=>/^amount$/i.test(k.trim()))||keys.find(k=>/^value$/i.test(k.trim()))||keys.find(k=>/^trans$/i.test(k.trim()))||keys.find(k=>/amount|value|trans|spend|debit/i.test(k)&&!/balance|date|extended|statement/i.test(k));
-  const balKey = keys.find(k=>/^balance$/i.test(k.trim()));
-  if (!dateKey||!narKey||!amtKey) { console.error(`[${accountLabel}] Missing columns`); return []; }
+  const toNum = s => Number(String(s||"").replace(/[£$€,\s]/g,""))||0;
+
+  const dateKey = keys.find(k=>/^(date|transaction.?date|started.?date|completed.?date)$/i.test(k.trim()))
+               || keys.find(k=>/date/i.test(k)&&!/update|expiry/i.test(k));
+  const narKey  = keys.find(k=>/^(description|narrative|details|merchant|payee|reference|counter.?party)$/i.test(k.trim()))
+               || keys.find(k=>/desc|narr|merchant|payee|detail|counter/i.test(k));
+
+  // Detect split debit/credit column pattern (Lloyds, Halifax, Barclays, NatWest, Santander)
+  const creditKey = keys.find(k=>/^(money.?in|credit|paid.?in|deposit|money in \([^)]+\)|credit \([^)]+\))$/i.test(k.trim()));
+  const debitKey  = keys.find(k=>/^(money.?out|debit|paid.?out|withdrawal|money out \([^)]+\)|debit \([^)]+\))$/i.test(k.trim()));
+  const splitMode = !!(creditKey && debitKey);
+
+  // Single-amount column fallback (Monzo, Starling, Revolut, Wise, Tide)
+  const amtKey = !splitMode
+    ? (keys.find(k=>/^(amount|value|trans|net.?amount)$/i.test(k.trim()))
+    || keys.find(k=>/amount|value|trans|spend/i.test(k)&&!/balance|date|extended|statement|fee|currency/i.test(k)))
+    : null;
+
+  const balKey = keys.find(k=>/^(balance|running.?balance|account.?balance)$/i.test(k.trim()));
+
+  if (!dateKey||!narKey||(splitMode?false:!amtKey)) {
+    console.error(`[${accountLabel}] Missing columns. Keys:`, keys.join(", "));
+    return [];
+  }
+
   return rows.map(row=>{
     const date = parseDate(row[dateKey]);
-    const rawAmt = Number(String(row[amtKey]).replace(/[£,]/g,""))||0;
-    const amount = Math.abs(rawAmt);
     const narrative = String(row[narKey]||"").replace(/\r\n|\r|\n/g," ").trim();
-    const balance = balKey?(Number(String(row[balKey]).replace(/[£,]/g,""))||null):null;
+    const balance = balKey?(toNum(row[balKey])||null):null;
+
+    let rawAmt;
+    if (splitMode) {
+      const inAmt  = toNum(row[creditKey]);
+      const outAmt = toNum(row[debitKey]);
+      if (inAmt===0 && outAmt===0) return null;
+      // Money-in = positive, money-out = negative
+      rawAmt = inAmt > 0 ? inAmt : -outAmt;
+    } else {
+      rawAmt = toNum(row[amtKey]);
+    }
+
     if (!date||!narrative||rawAmt===0) return null;
+    const amount = Math.abs(rawAmt);
     const isIncome = isMainAccount ? rawAmt>0 : rawAmt<0;
     return {date, narrative, amount, isIncome, balance, account:accountLabel, category:null};
   }).filter(Boolean);

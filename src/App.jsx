@@ -1176,6 +1176,7 @@ function UploadScreen({onDone}) {
   const [loading, setLoading] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(true);
   const [showGuide, setShowGuide] = useState(false);
+  const [showHomeScreenTip, setShowHomeScreenTip] = useState(()=>window.innerWidth<768&&!localStorage.getItem("homeScreenTipDismissed"));
   const [guideBank, setGuideBank] = useState(0);
   const [step, setStep] = useState("upload"); // "upload" | "balance"
   const [parsedTxns, setParsedTxns] = useState([]);
@@ -1342,6 +1343,18 @@ function UploadScreen({onDone}) {
         <span style={{fontSize:12,color:"#6ee7b7",fontWeight:500}}>Your statement never leaves your device.</span>
       </div>
       <div style={{width:"100%",maxWidth:420,position:"relative",zIndex:1,animation:"fadeUp 0.6s ease both"}}>
+        {/* Mobile: save to home screen tip */}
+        {showHomeScreenTip&&(
+          <div style={{background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.25)",borderLeft:"3px solid #6366f1",borderRadius:10,padding:"10px 12px",marginBottom:20,display:"flex",alignItems:"flex-start",gap:10}}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:2}}><rect x="3" y="3" width="14" height="14" rx="3" stroke="#818cf8" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="#818cf8" strokeWidth="1.6" strokeLinecap="round"/></svg>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#a5b4fc",marginBottom:3}}>Save Abound to your Home Screen</div>
+              <div style={{fontSize:11,color:"#6b7280",lineHeight:1.5}}>iOS: tap the Share button in Safari, then "Add to Home Screen". Android: tap the menu and "Add to Home Screen".</div>
+            </div>
+            <button onClick={()=>{localStorage.setItem("homeScreenTipDismissed","1");setShowHomeScreenTip(false);}}
+              style={{background:"none",border:"none",color:"#4b5563",fontSize:16,cursor:"pointer",padding:0,lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+        )}
         {/* Step indicator */}
         <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:0,marginBottom:32}}>
           {[["Upload",true],["Categorise",false],["Review",false]].map(([label,active],i)=>(
@@ -2237,7 +2250,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring}/></OrientationGate>}
+      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onFeedback={onFeedback}/></OrientationGate>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
     </div>
   );
@@ -2338,7 +2351,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set()}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set(), onFeedback}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -3016,7 +3029,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {!collapsedAccounts.has(account)&&isMainAcc&&<CatRow key="Card Repayment" cat="Card Repayment" account={account}/>}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
           <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
-            <td/><td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706"}}>Planned expenses</td>
+            <td data-sticky-label style={{background:"rgba(217,119,6,0.06)"}}/>
+            <td data-sticky-label2 style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706",background:"rgba(217,119,6,0.06)"}}>Planned expenses</td>
             {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
             <td style={tdTot(false)}>—</td>
             {forecastWeeks.map((w,i)=>{
@@ -3038,7 +3052,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </tr>
         )}
         <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
-          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help"}}
+          <td data-sticky-label style={{background:"rgba(255,255,255,0.03)"}}/>
+          <td data-sticky-label2 style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.03)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
           {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
@@ -3048,7 +3063,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td/><td/>
         </tr>
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
-          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help"}}
+          <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
+          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
@@ -3074,8 +3090,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const textColor=isIncome?"#34d399":T.catText;
     return(
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
-        <td/>
-        <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
+        <td data-sticky-label style={{padding:0,minWidth:isMobile?26:undefined,background:isIncome?"rgba(16,185,129,0.04)":"transparent"}}/>
+        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:isIncome?"rgba(16,185,129,0.04)":"#0a0919"}}
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
@@ -3171,7 +3187,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {spendCats.map(cat=><GroupedCatRow key={cat} cat={cat}/>)}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
           <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
-            <td/><td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706"}}>Planned expenses</td>
+            <td data-sticky-label style={{background:"rgba(217,119,6,0.06)"}}/>
+            <td data-sticky-label2 style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706",background:"rgba(217,119,6,0.06)"}}>Planned expenses</td>
             {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
             <td style={tdTot(false)}>—</td>
             {forecastWeeks.map((w,i)=>{
@@ -3193,7 +3210,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </tr>
         )}
         <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
-          <td/><td style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help"}}
+          <td data-sticky-label style={{background:"rgba(255,255,255,0.03)"}}/>
+          <td data-sticky-label2 style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.03)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
           {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
@@ -3203,7 +3221,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td/><td/>
         </tr>
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
-          <td/><td style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help"}}
+          <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
+          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
@@ -3696,6 +3715,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       </div>
 
       
+      {isMobile&&(
+        <button onClick={onFeedback} title="Leave a review"
+          style={{position:"fixed",bottom:16,right:102,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid rgba(99,102,241,0.4)",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9L18 7.6l-4 3.9.9 5.5L10 14.4 5.1 17l.9-5.5L2 7.6l5.6-.7L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+        </button>
+      )}
       <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen"
         style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
         <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
@@ -4451,10 +4476,11 @@ function AppInner() {
       setPremiumState(true);
       window.history.replaceState({},"",window.location.pathname);
     }
-    if(params.get("admin")==="ab7888"){
+    if(params.get("admin")==="ab7888" || window.location.hash==="admin=ab7888"){
       setPremium();
       setPremiumState(true);
       window.history.replaceState({},"",window.location.pathname);
+      if(window.location.hash) window.location.hash="";
     }
     // Fix viewport to prevent zoom on input focus (iOS)
     let meta = document.querySelector('meta[name="viewport"]');

@@ -92,17 +92,20 @@ const GLOBAL_CSS = `
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
-  @media (max-width: 768px) {
-    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0a0919; }
-    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0a0919; max-width: 80px !important; }
+  @media (max-width: 1024px) {
+    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0d0c1e !important; box-shadow: none; }
+    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0d0c1e !important; max-width: 80px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-shadow: 4px 0 8px rgba(0,0,0,0.4); }
     [data-sticky-hdr] { position: sticky !important; left: 0; z-index: 6; }
   }
 `;
 
+function isMobileDevice() {
+  return window.innerWidth < 768 || (window.innerWidth < 1024 && navigator.maxTouchPoints > 0);
+}
 function useIsMobile() {
-  const [isMobile, setIsMobile] = useState(typeof window!=="undefined"?window.innerWidth<768:false);
+  const [isMobile, setIsMobile] = useState(typeof window!=="undefined"?isMobileDevice():false);
   useEffect(()=>{
-    const handler=()=>setIsMobile(window.innerWidth<768);
+    const handler=()=>setIsMobile(isMobileDevice());
     window.addEventListener("resize",handler);
     return()=>window.removeEventListener("resize",handler);
   },[]);
@@ -1178,7 +1181,7 @@ function UploadScreen({onDone}) {
   const [loading, setLoading] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(true);
   const [showGuide, setShowGuide] = useState(false);
-  const [showHomeScreenTip, setShowHomeScreenTip] = useState(()=>window.innerWidth<768&&!localStorage.getItem("homeScreenTipDismissed"));
+  const [showHomeScreenTip, setShowHomeScreenTip] = useState(()=>isMobileDevice()&&!localStorage.getItem("homeScreenTipDismissed"));
   const [guideBank, setGuideBank] = useState(0);
   const [step, setStep] = useState("upload"); // "upload" | "balance"
   const [parsedTxns, setParsedTxns] = useState([]);
@@ -4478,11 +4481,10 @@ function AppInner() {
       setPremiumState(true);
       window.history.replaceState({},"",window.location.pathname);
     }
-    if(params.get("admin")==="ab7888" || window.location.hash==="admin=ab7888"){
+    if(params.get("admin")==="ab7888" || window.location.hash==="#admin=ab7888"){
       setPremium();
       setPremiumState(true);
       window.history.replaceState({},"",window.location.pathname);
-      if(window.location.hash) window.location.hash="";
     }
     // Fix viewport to prevent zoom on input focus (iOS)
     let meta = document.querySelector('meta[name="viewport"]');

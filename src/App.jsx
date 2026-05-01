@@ -249,17 +249,39 @@ function parseDate(val) {
     return null;
   }
   const s = String(val).trim();
-  const mo = {Jan:0,Feb:1,Mar:2,Apr:3,May:4,Jun:5,Jul:6,Aug:7,Sep:8,Oct:9,Nov:10,Dec:11};
+  const mo = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+  // DD-Mon-YY  e.g. 13-Mar-24
   const m1 = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2})$/);
-  if (m1) return new Date(2000+parseInt(m1[3]), mo[m1[2]], parseInt(m1[1]));
+  if (m1) return new Date(2000+parseInt(m1[3]), mo[m1[2].toLowerCase()], parseInt(m1[1]));
+  // DD-Mon-YYYY  e.g. 13-Mar-2024
   const m2 = s.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})$/);
-  if (m2) return new Date(parseInt(m2[3]), mo[m2[2]], parseInt(m2[1]));
+  if (m2) return new Date(parseInt(m2[3]), mo[m2[2].toLowerCase()], parseInt(m2[1]));
+  // DD/MM/YYYY
   const m3 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (m3) return new Date(parseInt(m3[3]), parseInt(m3[2])-1, parseInt(m3[1]));
-  const m4 = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  // YYYY-MM-DD
+  const m4 = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (m4) return new Date(parseInt(m4[1]), parseInt(m4[2])-1, parseInt(m4[3]));
+  // DD/MM/YY
   const m5 = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2})$/);
   if (m5) return new Date(2000+parseInt(m5[3]), parseInt(m5[2])-1, parseInt(m5[1]));
+  // DD Mon YYYY  e.g. 13 Mar 2024
+  const m6 = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/);
+  if (m6) return new Date(parseInt(m6[3]), mo[m6[2].toLowerCase()], parseInt(m6[1]));
+  // DD Mon YY  e.g. 13 Mar 24
+  const m7 = s.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{2})$/);
+  if (m7) return new Date(2000+parseInt(m7[3]), mo[m7[2].toLowerCase()], parseInt(m7[1]));
+  // DD Mon  (no year — Halifax, Lloyds PDFs) — infer year
+  const m8 = s.match(/^(\d{1,2})\s+([A-Za-z]{3})$/);
+  if (m8) {
+    const day=parseInt(m8[1]), month=mo[m8[2].toLowerCase()];
+    if (month===undefined) return null;
+    const now=new Date(), yr=now.getFullYear();
+    // If the month is more than 2 months in the future, assume previous year
+    const candidate=new Date(yr,month,day);
+    if (candidate>new Date(now.getFullYear(),now.getMonth()+2,now.getDate())) return new Date(yr-1,month,day);
+    return candidate;
+  }
   const d = new Date(s);
   if (!isNaN(d) && d.getFullYear() >= 2000) return d;
   return null;
@@ -350,12 +372,13 @@ async function readPdfFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  // Matches dates at start of text: dd/mm/yy, dd-mm-yyyy, dd Jan 24, 01-Jan-2024, etc.
-  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}\s*\d{2,4})/;
+  // Matches dates at start of text: "13 Mar", "13 Mar 24", "13 Mar 2024", dd/mm/yy, dd-Mon-yyyy, etc.
+  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{2,4})?)/;
   // Matches plain money values: 1,234.56 or -1234.56 (strip £ before testing)
   const moneyRx = /^-?[\d,]+\.\d{2}$/;
-  const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF|FPS|STO|CPT|TFI|INT)$/i;
+  const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF|FPS|STO|CPT|TFI|INT|Giro|Visa|Maestro|Contactless|LINK|STO|TFR|SEPA|SWIFT)$/i;
   const rows = [];
+  let lastDateStr = null; // carry forward date for banks that omit it on continuation lines
 
   // Column x-positions for debit/credit detection — persist across pages
   let creditX = null, debitX = null; // "paid in" / "money in" = credit; "paid out" / "money out" = debit
@@ -411,11 +434,17 @@ async function readPdfFile(file) {
         continue;
       }
 
-      // Skip lines that don't start with a date-like token
-      if (!dateRx.test(lineText.trimStart())) continue;
+      // Skip reference/continuation lines (Ref: XXXX, Narrative: etc.)
+      if (/^\s*Ref\s*:/i.test(lineText) || /^\s*Narrative\s*:/i.test(lineText)) continue;
+      // Skip "Start balance", "Balance brought forward", totals lines
+      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|total\s+(debit|credit)/i.test(lineText)) continue;
+
       const dateMatch = lineText.match(dateRx);
-      if (!dateMatch) continue;
-      const dateStr = dateMatch[0];
+      const hasDate = !!dateMatch;
+      // Lines with no date can still be transactions if we have a carried-forward date and money amounts
+      if (!hasDate && !lastDateStr) continue;
+      const dateStr = hasDate ? dateMatch[0] : lastDateStr;
+      if (hasDate) lastDateStr = dateStr;
 
       // Collect money amounts on this line
       const moneyItems = lineItems.filter(it => moneyRx.test(it.text.replace(/[£$,]/g, '')));

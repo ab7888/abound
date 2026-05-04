@@ -1000,7 +1000,7 @@ function HeroScreen({onEnter, onResume}) {
   function handleEnter(){setLeaving(true);setTimeout(onEnter,500);}
   function handleResume(){setLeaving(true);setTimeout(onResume,500);}
   const features=[
-    {dot:"#10b981",text:"No bank logins. Ever."},
+    {dot:"#10b981",text:"Your statement never leaves your device — we never see your data."},
     {dot:"#6366f1",text:"Upload your statement. See 6 weeks ahead."},
     {dot:"#f59e0b",text:"Built for people who want to actually understand their money."},
   ];
@@ -1261,7 +1261,6 @@ const BANK_GUIDES = [
 function UploadScreen({onDone}) {
   const [accounts, setAccounts] = useState([{id:1,file:null,name:""}]);
   const [loading, setLoading] = useState(false);
-  const [showPrivacy, setShowPrivacy] = useState(true);
   const [showGuide, setShowGuide] = useState(false);
   const [showHomeScreenTip, setShowHomeScreenTip] = useState(()=>isMobileDevice()&&!localStorage.getItem("homeScreenTipDismissed"));
   const [guideBank, setGuideBank] = useState(0);
@@ -1271,7 +1270,6 @@ function UploadScreen({onDone}) {
   const [missingBalanceAccounts, setMissingBalanceAccounts] = useState([]); // [{label, value}]
   const [balanceInputs, setBalanceInputs] = useState({});
   const hasMainFile = !!accounts[0].file;
-  useEffect(()=>{const t=setTimeout(()=>setShowPrivacy(false),3200);return()=>clearTimeout(t);},[]);
   function addCard(){setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]);}
   function removeAccount(id){setAccounts(a=>a.filter(x=>x.id!==id));}
   async function handleFile(id,file){setAccounts(a=>a.map(x=>x.id===id?{...x,file,name:file.name}:x));}
@@ -1424,10 +1422,10 @@ function UploadScreen({onDone}) {
     <div className="dark-screen" style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
-      {/* Privacy pulse */}
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,display:"flex",justifyContent:"center",padding:"10px",background:"rgba(16,185,129,0.07)",borderBottom:"1px solid rgba(16,185,129,0.12)",opacity:showPrivacy?1:0,transform:showPrivacy?"translateY(0)":"translateY(-100%)",transition:"all 0.5s ease"}}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#10b981",marginRight:8,boxShadow:"0 0 6px #10b981",flexShrink:0,alignSelf:"center"}}/>
-        <span style={{fontSize:12,color:"#6ee7b7",fontWeight:500}}>Your statement never leaves your device.</span>
+      {/* Privacy banner — permanent, not fading */}
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,display:"flex",justifyContent:"center",alignItems:"center",gap:8,padding:"9px 16px",background:"rgba(16,185,129,0.08)",borderBottom:"1px solid rgba(16,185,129,0.15)"}}>
+        <div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 6px #10b981",flexShrink:0}}/>
+        <span style={{fontSize:12,color:"#6ee7b7",fontWeight:600}}>Your statement is processed <strong style={{color:"#34d399"}}>entirely on your device</strong> — we never see, store, or transmit your bank data.</span>
       </div>
       <div style={{width:"100%",maxWidth:420,position:"relative",zIndex:1,animation:"fadeUp 0.6s ease both"}}>
         {/* Mobile: save to home screen tip */}
@@ -1512,6 +1510,10 @@ function UploadScreen({onDone}) {
           onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow=hasMainFile?"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)":"none";}}>
           {loading?"Reading files...":"Continue →"}
         </button>
+        <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><rect x="5" y="9" width="10" height="9" rx="2" stroke="#10b981" strokeWidth="1.5"/><path d="M7 9V6a3 3 0 0 1 6 0v3" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round"/></svg>
+          <span style={{fontSize:11,color:"#4b7a68",textAlign:"center",lineHeight:1.4}}>Your file is read locally in your browser. Nothing is uploaded to any server. We never see your transactions.</span>
+        </div>
       </div>
     </div>
   );

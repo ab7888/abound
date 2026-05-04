@@ -2377,20 +2377,17 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
           if(txt && txt !== "-" && /^\d/.test(txt)){el=td;break;}
         }
       } else if(targetSelector==="forecast-cell"){
-        const rows = document.querySelectorAll("tbody tr.abound-row");
-        let matchCount=0;
-        for(const row of rows){
-          const tds = [...row.querySelectorAll("td")];
-          let candidate=null;
-          for(let idx=9;idx<=14;idx++){
-            const td=tds[idx];
+        // Derive column index from the forecast header rather than hardcoding
+        const forecastHdrs = document.querySelectorAll("thead tr:first-child th[data-tour='forecast']");
+        const targetHdr = forecastHdrs[1] || forecastHdrs[0];
+        if(targetHdr){
+          const colIdx = targetHdr.cellIndex;
+          const rows = document.querySelectorAll("tbody tr.abound-row");
+          for(const row of rows){
+            const td = row.cells[colIdx];
             if(!td) continue;
-            const txt=td.textContent?.trim();
-            if(txt && txt!=="-" && /^\d/.test(txt)){candidate=td;break;}
-          }
-          if(candidate){
-            matchCount++;
-            if(matchCount===4){el=candidate;break;} // skip 3, use 4th
+            const txt = td.textContent?.trim();
+            if(txt && txt !== "-" && /\d/.test(txt)){el=td;break;}
           }
         }
       } else {

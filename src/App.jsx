@@ -2798,7 +2798,7 @@ function getLastWorkingDay(year, month) {
           out[acc][cat]=result;
         } else if(MONTHLY_CATS.includes(cat)){
           // Salary: replicate the most-recent calendar month's exact payments (amount + day) in future months
-          const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat&&t.amount>0);
+          const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat&&t.amount>0&&!/balance/i.test(t.narrative));
           if(!catTxns.length){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{
             // Find the most recent calendar month that had salary
@@ -2912,7 +2912,8 @@ function getLastWorkingDay(year, month) {
     const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
     const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
     const runningBals=Array(actualWeeks.length).fill(null);
-    knownBals.forEach((b,i)=>{if(b!==null)runningBals[i]=b;});
+    // weekBalances stores the post-transaction running balance (closing). Convert to opening by subtracting mainNet.
+    knownBals.forEach((b,i)=>{if(b!==null)runningBals[i]=b-mainNet[i];});
     for(let i=0;i<actualWeeks.length-1;i++){
       if(runningBals[i]!==null&&runningBals[i+1]===null)
         runningBals[i+1]=runningBals[i]+mainNet[i];
@@ -3126,8 +3127,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
     const runningBalances=Array(actualWeeks.length).fill(null);
-    // Pin every week that has a real balance from the statement
-    knownBalances.forEach((b,i)=>{if(b!==null)runningBalances[i]=b;});
+    // weekBalances stores post-transaction running balance (closing). Convert to opening by subtracting net.
+    knownBalances.forEach((b,i)=>{if(b!==null)runningBalances[i]=b-weeklyNetActual[i];});
     // Walk forward between pins (or from first pin to end)
     for(let i=0;i<actualWeeks.length-1;i++){
       if(runningBalances[i]!==null&&runningBalances[i+1]===null)

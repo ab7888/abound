@@ -91,6 +91,7 @@ const GLOBAL_CSS = `
   @keyframes slideInUp { from{opacity:0;transform:translateY(40px)} to{opacity:1;transform:translateY(0)} }
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
+  @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0d0c1e !important; }
@@ -461,7 +462,7 @@ async function readPdfFile(file) {
       // Skip reference/continuation lines (Ref: XXXX, Narrative: etc.)
       if (/^\s*Ref\s*:/i.test(lineText) || /^\s*Narrative\s*:/i.test(lineText)) continue;
       // Skip balance summary rows and section headers
-      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|ending.?balance|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
+      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|ending?.?\s*balance|end\s+bal\b|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
 
       const dateMatch = lineText.match(dateRx);
       const hasDate = !!dateMatch;
@@ -2571,10 +2572,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
 
   useEffect(()=>{
     setInvestigationOpen(false);
-    const sessionKey = "cashFlowTourSeenSession";
-    if(!sessionStorage.getItem(sessionKey)){
+    if(!localStorage.getItem("cashFlowTourSeen_v2")){
       const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},isMobile?800:1500);
-      sessionStorage.setItem(sessionKey,"1");
       return()=>clearTimeout(t);
     }
   },[]);
@@ -3829,14 +3828,28 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           );
         })()}
 
-        {/* Decorative line graph — bottom, dark mode desktop only */}
-        {!isMobile&&isDark&&(
-          <div style={{paddingTop:28,paddingBottom:8,pointerEvents:"none",opacity:0.55}}>
-            <IllustrationLineGraph
-              balances={[...combinedClosingBalances.actual.filter(v=>v!=null),...combinedClosingBalances.forecast.filter(v=>v!=null)]}
-              accent="#6366f1" accent2="#8b5cf6"/>
-          </div>
-        )}
+        {/* Subtle sparkline accent — desktop only */}
+        {!isMobile&&(()=>{
+          const vals=[...combinedClosingBalances.actual.filter(v=>v!=null),...combinedClosingBalances.forecast.filter(v=>v!=null)];
+          if(vals.length<2) return null;
+          const mn=Math.min(...vals), mx=Math.max(...vals), range=mx-mn||1;
+          const W=480, H=28, pad=0;
+          const pts=vals.map((v,i)=>{
+            const x=(i/(vals.length-1))*(W-pad*2)+pad;
+            const y=H-1-(((v-mn)/range)*(H-2));
+            return `${x.toFixed(1)},${y.toFixed(1)}`;
+          }).join(" ");
+          const isUp=vals[vals.length-1]>=vals[0];
+          const col=isUp?"#10b981":"#f87171";
+          return(
+            <div style={{paddingTop:20,paddingBottom:4,pointerEvents:"none",opacity:0.35,overflow:"hidden"}}>
+              <svg viewBox={`0 0 ${W} ${H}`} fill="none" style={{width:"100%",display:"block",height:28}}>
+                <polyline points={pts} stroke={col} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                {(()=>{const [lx,ly]=pts.split(" ").pop().split(",");return<circle cx={lx} cy={ly} r="3" fill={col}/>;})()}
+              </svg>
+            </div>
+          );
+        })()}
 
       </div>
 
@@ -4397,13 +4410,16 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
       })()}
 
       {/* Tour reopen button */}
-      <button onClick={reopenTour}
-        title="Tour & tips"
-        style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?16:24,width:isMobile?36:40,height:isMobile?36:40,borderRadius:"50%",background:"#6366f1",border:"none",color:"#fff",fontSize:16,cursor:"pointer",boxShadow:"0 4px 16px rgba(99,102,241,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s"}}
-        onMouseEnter={e=>{e.target.style.transform="scale(1.1)";e.target.style.boxShadow="0 6px 24px rgba(99,102,241,0.6)";}}
-        onMouseLeave={e=>{e.target.style.transform="";e.target.style.boxShadow="0 4px 16px rgba(99,102,241,0.4)";}}>
-        ?
-      </button>
+      {(()=>{
+        const tourSeen = !!localStorage.getItem("cashFlowTourSeen_v2");
+        return(
+          <button onClick={reopenTour} title="Tour & tips"
+            style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?16:24,height:isMobile?36:38,borderRadius:isMobile?18:19,background:"#6366f1",border:"none",color:"#fff",fontSize:isMobile?15:14,cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:isMobile?"0 12px":"0 14px",gap:5,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
+            <span style={{fontSize:isMobile?16:15,lineHeight:1}}>?</span>
+            {!isMobile&&<span style={{fontSize:12,letterSpacing:"0.02em"}}>Tour</span>}
+          </button>
+        );
+      })()}
     </div>
   );
 }

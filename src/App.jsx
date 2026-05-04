@@ -462,7 +462,7 @@ async function readPdfFile(file) {
       // Skip reference/continuation lines (Ref: XXXX, Narrative: etc.)
       if (/^\s*Ref\s*:/i.test(lineText) || /^\s*Narrative\s*:/i.test(lineText)) continue;
       // Skip balance summary rows and section headers
-      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|end(?:ing)?\s+balance|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
+      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|end(?:ing)?\s+balance|^\s*balance\b|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
 
       const dateMatch = lineText.match(dateRx);
       const hasDate = !!dateMatch;
@@ -584,6 +584,8 @@ function normaliseRows(rawRows, accountLabel) {
     }
 
     if (!date||!narrative||rawAmt===0) return null;
+    // Discard balance-summary rows that slipped through PDF parsing (e.g. "balance", "End balance")
+    if (/^(balance|end\s+balance|opening\s+balance|closing\s+balance|brought\s+forward|start\s+balance)$/i.test(narrative)) return null;
     const amount = Math.abs(rawAmt);
     const isIncome = isMainAccount ? rawAmt>0 : rawAmt<0;
     return {date, narrative, amount, isIncome, balance, account:accountLabel, category:null};
@@ -2078,6 +2080,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
   const [editCount, setEditCount] = useState(0);
   const [showUpdatedBanner, setShowUpdatedBanner] = useState(false);
   const [showMobileTip, setShowMobileTip] = useState(()=>!sessionStorage.getItem("reviewMobileTipSeen"));
+  const [undoStack, setUndoStack] = useState([]); // [{narrative,date,amount,prevCategory}]
   const [filterCat, setFilterCat] = useState("All");
   const [filterAccount, setFilterAccount] = useState("All");
   const [search, setSearch] = useState("");
@@ -2092,7 +2095,19 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
     return 0;
   }),[transactions,sortMode]);
   const filtered = useMemo(()=>sortedTxns.filter(t=>{if(filterCat!=="All"&&t.category!==filterCat)return false;if(filterAccount!=="All"&&t.account!==filterAccount)return false;if(search&&!t.narrative.toLowerCase().includes(search.toLowerCase()))return false;return true;}),[sortedTxns,filterCat,filterAccount,search]);
-  function changeCategory(txn,newCat){const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);onUpdate(updated);setEditCount(c=>c+1);if(onReviewEdit)onReviewEdit();if(editCount>=1)setShowUpdatedBanner(true);}
+  function changeCategory(txn,newCat){
+    setUndoStack(s=>[...s,{narrative:txn.narrative,date:txn.date,amount:txn.amount,prevCategory:txn.category}]);
+    const updated=transactions.map(t=>t.narrative===txn.narrative&&t.date===txn.date&&t.amount===txn.amount?{...t,category:newCat}:t);
+    onUpdate(updated);setEditCount(c=>c+1);if(onReviewEdit)onReviewEdit();if(editCount>=1)setShowUpdatedBanner(true);
+  }
+  function undoLastChange(){
+    if(!undoStack.length) return;
+    const last=undoStack[undoStack.length-1];
+    const reverted=transactions.map(t=>t.narrative===last.narrative&&t.date===last.date&&t.amount===last.amount?{...t,category:last.prevCategory}:t);
+    onUpdate(reverted);
+    setUndoStack(s=>s.slice(0,-1));
+    setEditCount(c=>Math.max(0,c-1));
+  }
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
   const inputStyle={padding:"7px 12px",border:"1px solid #1f1d35",borderRadius:8,fontSize:13,background:"#0f0e1a",color:"#e0e7ff",outline:"none",cursor:"pointer"};
   return(
@@ -2142,9 +2157,18 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
               </button>
             ))}
           </div>
-          <div style={{marginLeft:"auto",fontSize:12,color:"#4b5563",whiteSpace:"nowrap"}}>
-            {filtered.length} transaction{filtered.length!==1?"s":""}
-            {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
+          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+            <span style={{fontSize:12,color:"#4b5563"}}>
+              {filtered.length} transaction{filtered.length!==1?"s":""}
+              {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
+            </span>
+            <button onClick={undoLastChange} disabled={!undoStack.length} title="Undo last change"
+              style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,border:`1px solid ${undoStack.length?"#4338ca":"#1f1d35"}`,background:undoStack.length?"rgba(99,102,241,0.12)":"transparent",color:undoStack.length?"#a5b4fc":"#2d2a6e",fontSize:12,fontWeight:600,cursor:undoStack.length?"pointer":"default",transition:"all 0.15s"}}
+              onMouseEnter={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.22)";e.currentTarget.style.borderColor="#6366f1";}}}
+              onMouseLeave={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.12)";e.currentTarget.style.borderColor="#4338ca";}}}>
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M3 10a7 7 0 1 0 1.5-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 4v6h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              Undo
+            </button>
           </div>
         </div>
         {/* Mobile onboarding tip */}
@@ -3876,10 +3900,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9L18 7.6l-4 3.9.9 5.5L10 14.4 5.1 17l.9-5.5L2 7.6l5.6-.7L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
         </button>
       )}
-      <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen"
-        style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?62:72,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
-        <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
-      </button>
+      {isMobile&&(
+        <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen"
+          style={{position:"fixed",bottom:16,right:62,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
+          <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
+        </button>
+      )}
 
       {/* Add to Home Screen guide */}
       {showHomeScreenGuide&&(
@@ -4430,9 +4456,9 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
         const tourSeen = !!localStorage.getItem("cashFlowTourSeen_v2");
         return(
           <button onClick={reopenTour} title="Tour & tips"
-            style={{position:"fixed",bottom:isMobile?16:24,right:isMobile?16:24,height:isMobile?36:38,borderRadius:isMobile?18:19,background:"#6366f1",border:"none",color:"#fff",fontSize:isMobile?15:14,cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:isMobile?"0 12px":"0 14px",gap:5,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
-            <span style={{fontSize:isMobile?16:15,lineHeight:1}}>?</span>
-            {!isMobile&&<span style={{fontSize:12,letterSpacing:"0.02em"}}>Tour</span>}
+            style={{position:"fixed",bottom:isMobile?16:28,right:isMobile?16:28,height:isMobile?36:46,borderRadius:isMobile?18:23,background:"#6366f1",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:isMobile?"0 12px":"0 20px",gap:6,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
+            <span style={{fontSize:isMobile?16:18,lineHeight:1}}>?</span>
+            {!isMobile&&<span style={{fontSize:14,letterSpacing:"0.02em"}}>Tour</span>}
           </button>
         );
       })()}

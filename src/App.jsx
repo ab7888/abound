@@ -462,7 +462,7 @@ async function readPdfFile(file) {
       // Skip reference/continuation lines (Ref: XXXX, Narrative: etc.)
       if (/^\s*Ref\s*:/i.test(lineText) || /^\s*Narrative\s*:/i.test(lineText)) continue;
       // Skip balance summary rows and section headers
-      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|ending?.?\s*balance|end\s+bal\b|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
+      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|end(?:ing)?\s+balance|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
 
       const dateMatch = lineText.match(dateRx);
       const hasDate = !!dateMatch;
@@ -2746,7 +2746,8 @@ function getLastWorkingDay(year, month) {
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
     const MONTHLY_CATS=["Salary"];
     const EXACT_CATS=["Rent","Memberships"];
-    const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare","Transfers"];
+    const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
+    const OCCURRENCE_CATS=["Transfers"]; // rolling mean over non-zero weeks only
     const forecastCats=[...new Set([...categories, INTERCOMPANY_CATEGORY])];
     // Precompute non-recurring amounts by week/account/cat so rolling averages exclude one-offs
     const nrMap={};
@@ -2772,22 +2773,40 @@ function getLastWorkingDay(year, month) {
           });
           out[acc][cat]=result;
         } else if(MONTHLY_CATS.includes(cat)){
-          if(avg===0){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
+          // Salary: replicate the most-recent calendar month's exact payments (amount + day) in future months
+          const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat&&t.amount>0);
+          if(!catTxns.length){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{
-            out[acc][cat]=forecastWeeks.map(w=>{
-              const d=new Date(w.date);
-              while(d<=w.sunday){
-                const lwd=getLastWorkingDay(d.getFullYear(),d.getMonth());
-                if(d.getDate()===lwd) return avg;
-                d.setDate(d.getDate()+1);
-              }
-              return 0;
+            // Find the most recent calendar month that had salary
+            const latestDate=catTxns.reduce((a,t)=>t.date>a?t.date:a, new Date(0));
+            const latestMonth=latestDate.getMonth(), latestYear=latestDate.getFullYear();
+            // All salary transactions in that same calendar month = our template
+            const templateTxns=catTxns.filter(t=>t.date.getMonth()===latestMonth&&t.date.getFullYear()===latestYear);
+            const result=Array(forecastWeeks.length).fill(0);
+            templateTxns.forEach(t=>{
+              const dom=t.date.getDate();
+              forecastWeeks.forEach((w,i)=>{
+                const d=new Date(w.date);
+                while(d<=w.sunday){if(d.getDate()===dom){result[i]+=t.amount;break;}d.setDate(d.getDate()+1);}
+              });
             });
+            out[acc][cat]=result;
           }
         } else if(ROLLING_CATS.includes(cat)){
           const last6=actualVals.slice(-6);
-          const forecastVal=last6.reduce((a,b)=>a+b,0)/6;
+          const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1));
           out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
+        } else if(OCCURRENCE_CATS.includes(cat)){
+          // Transfers: rolling mean over non-zero weeks; show per-occurrence amount at actual frequency
+          const last6=actualVals.slice(-6);
+          const nonZero=last6.filter(v=>v>0);
+          const forecastVal=nonZero.length?Math.round(nonZero.reduce((a,b)=>a+b,0)/nonZero.length):0;
+          const n=nonZero.length, total=Math.max(last6.length,1), fw=Math.max(forecastWeeks.length,1);
+          out[acc][cat]=forecastWeeks.map((_,i)=>{
+            const slot=Math.floor(i*n/fw);
+            const prevSlot=Math.floor((i-1)*n/fw);
+            return (n>0&&slot>prevSlot)?forecastVal:0;
+          });
         } else {
           const last6=actualVals.slice(-6);
           const forecastVal=last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1);

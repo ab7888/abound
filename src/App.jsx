@@ -282,6 +282,19 @@ function parseDate(val) {
     if (candidate>new Date(now.getFullYear(),now.getMonth()+2,now.getDate())) return new Date(yr-1,month,day);
     return candidate;
   }
+  // MM/DD or DD/MM — no year (Chase US uses MM/DD; UK banks use DD/MM)
+  const m9 = s.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (m9) {
+    const a = parseInt(m9[1]), b = parseInt(m9[2]);
+    const now = new Date(), yr = now.getFullYear();
+    let month, day;
+    if (b > 12)      { month = a - 1; day = b; }  // b can't be month → MM/DD (Chase style)
+    else if (a > 12) { month = b - 1; day = a; }  // a can't be month → DD/MM (UK style)
+    else             { month = a - 1; day = b; }  // ambiguous → assume MM/DD (Chase/US default)
+    const candidate = new Date(yr, month, day);
+    if (candidate > new Date(yr, now.getMonth() + 2, now.getDate())) return new Date(yr - 1, month, day);
+    return candidate;
+  }
   const d = new Date(s);
   if (!isNaN(d) && d.getFullYear() >= 2000) return d;
   return null;
@@ -384,8 +397,9 @@ async function readPdfFile(file) {
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-  // Matches dates at start of text: "13 Mar", "13 Mar 24", "13 Mar 2024", dd/mm/yy, dd-Mon-yyyy, etc.
-  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{2,4})?)/;
+  // Matches dates at start of text: "13 Mar", "09/22" (Chase MM/DD), dd/mm/yy, dd-Mon-yyyy, etc.
+  // The 2-part MM/DD pattern is last so full dates (dd/mm/yyyy) match first.
+  const dateRx = /^(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{1,2}[\/\-][A-Za-z]{3}[\/\-]\d{2,4}|\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{2,4})?|\d{2}\/\d{2}(?!\/\d))/;
   // Matches plain money values: 1,234.56 or -1234.56 (strip £ before testing)
   const moneyRx = /^-?[\d,]+\.\d{2}$/;
   const TRANSACTION_TYPES = /^(D\/D|S\/O|BACS|DPC|CHQ|TFR|ATM|FP|BGC|OTH|CR|DR|VIS|MAE|C\/L|BP|CHAPS|DD|SO|BAC|TF|FPS|STO|CPT|TFI|INT|Giro|Visa|Maestro|Contactless|LINK|STO|TFR|SEPA|SWIFT)$/i;
@@ -446,8 +460,8 @@ async function readPdfFile(file) {
 
       // Skip reference/continuation lines (Ref: XXXX, Narrative: etc.)
       if (/^\s*Ref\s*:/i.test(lineText) || /^\s*Narrative\s*:/i.test(lineText)) continue;
-      // Skip "Start balance", "Balance brought forward", totals lines
-      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|total\s+(debit|credit)/i.test(lineText)) continue;
+      // Skip balance summary rows and section headers
+      if (/start.?balance|brought.?forward|closing.?balance|opening.?balance|beginning.?balance|ending.?balance|total\s+(debit|credit)|checking.?summary|deposits.?and.?addition|electronic.?withdrawal|ATM.*withdrawal/i.test(lineText)) continue;
 
       const dateMatch = lineText.match(dateRx);
       const hasDate = !!dateMatch;

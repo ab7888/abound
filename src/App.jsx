@@ -2817,9 +2817,15 @@ function getLastWorkingDay(year, month) {
             out[acc][cat]=result;
           }
         } else if(ROLLING_CATS.includes(cat)){
-          const last6=actualVals.slice(-6);
-          const forecastVal=Math.round(last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1));
-          out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
+          const buf=actualVals.slice(-6).map(Number);
+          const result=[];
+          for(let i=0;i<forecastWeeks.length;i++){
+            const avg=buf.reduce((a,b)=>a+b,0)/Math.max(buf.length,1);
+            result.push(Math.round(avg));
+            buf.shift();
+            buf.push(avg); // unrounded so next week's mean stays accurate
+          }
+          out[acc][cat]=result;
         } else if(OCCURRENCE_CATS.includes(cat)){
           // Transfers: rolling mean over non-zero weeks; show per-occurrence amount at actual frequency
           const last6=actualVals.slice(-6);

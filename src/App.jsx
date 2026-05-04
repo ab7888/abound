@@ -294,11 +294,23 @@ function getWeekMonday(date) {
 function getWeekSunday(mon) { const d=new Date(mon); d.setDate(d.getDate()+6); return d; }
 function fmt(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"2-digit"}); }
 function fmtDate(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); }
+const CURRENCIES = [
+  {code:"GBP", symbol:"£"}, {code:"USD", symbol:"$"}, {code:"EUR", symbol:"€"},
+  {code:"AUD", symbol:"A$"}, {code:"CAD", symbol:"C$"}, {code:"CHF", symbol:"Fr"},
+  {code:"SEK", symbol:"kr"}, {code:"NOK", symbol:"kr"}, {code:"DKK", symbol:"kr"},
+  {code:"SGD", symbol:"S$"}, {code:"HKD", symbol:"HK$"}, {code:"JPY", symbol:"¥"},
+  {code:"INR", symbol:"₹"}, {code:"ZAR", symbol:"R"}, {code:"NZD", symbol:"NZ$"},
+];
+const CURRENCY_KEY = "abound_currency_v1";
+function getCurrencySymbol() { return localStorage.getItem(CURRENCY_KEY) || "£"; }
+let _currencySymbol = getCurrencySymbol();
+function setCurrencySymbol(sym) { _currencySymbol = sym; localStorage.setItem(CURRENCY_KEY, sym); }
 function fmtMoney(v) {
   if (v===0||v===null||v===undefined) return "-";
   const n = Math.round(v);
-  if (n < 0) return `(${Math.abs(n).toLocaleString()})`;
-  return n.toLocaleString();
+  const sym = _currencySymbol;
+  if (n < 0) return `(${sym}${Math.abs(n).toLocaleString()})`;
+  return `${sym}${n.toLocaleString()}`;
 }
 function rollingAvg(vals) { const nz=vals.filter(v=>v>0); return nz.length?Math.round(nz.reduce((a,b)=>a+b,0)/nz.length):0; }
 function rollingAvgFiltered(vals) {
@@ -412,20 +424,18 @@ async function readPdfFile(file) {
       const lower = lineText.toLowerCase();
 
       // Detect column headers for credit/debit columns
-      // Handles: "Paid in / Paid out", "Money in / Money out", "Credit / Debit", "In / Out"
-      const hasCredit = lower.includes('paid in') || lower.includes('money in') || lower.includes('credit') || /\bin\b/.test(lower);
-      const hasDebit  = lower.includes('paid out') || lower.includes('money out') || lower.includes('debit') || /\bout\b/.test(lower);
+      // Handles: "Paid in/out", "Money in/out", "Credit/Debit", "Payments in/out" (Chase)
+      const hasCredit = lower.includes('paid in') || lower.includes('money in') || lower.includes('payments in') || lower.includes('credit') || /\bin\b/.test(lower);
+      const hasDebit  = lower.includes('paid out') || lower.includes('money out') || lower.includes('payments out') || lower.includes('debit') || /\bout\b/.test(lower);
       if (hasCredit && hasDebit) {
         let cX = null, dX = null;
         const joinedItems = lineItems.map((it, i) => ({...it, next: lineItems[i+1]?.text.toLowerCase()||'', prev: lineItems[i-1]?.text.toLowerCase()||''}));
         for (const it of joinedItems) {
           const t = it.text.toLowerCase();
-          if (t === 'paid in' || t === 'money in' || (t === 'in' && (it.prev === 'paid' || it.prev === 'money')))  cX = it.x;
-          if (t === 'paid out' || t === 'money out' || (t === 'out' && (it.prev === 'paid' || it.prev === 'money'))) dX = it.x;
-          if (t === 'paid' && it.next === 'in')  cX = it.x;
-          if (t === 'paid' && it.next === 'out') dX = it.x;
-          if (t === 'money' && it.next === 'in')  cX = it.x;
-          if (t === 'money' && it.next === 'out') dX = it.x;
+          if (t === 'paid in' || t === 'money in' || t === 'payments in' || (t === 'in' && (it.prev === 'paid' || it.prev === 'money' || it.prev === 'payments')))  cX = it.x;
+          if (t === 'paid out' || t === 'money out' || t === 'payments out' || (t === 'out' && (it.prev === 'paid' || it.prev === 'money' || it.prev === 'payments'))) dX = it.x;
+          if ((t === 'paid'||t === 'money'||t === 'payments') && it.next === 'in')  cX = it.x;
+          if ((t === 'paid'||t === 'money'||t === 'payments') && it.next === 'out') dX = it.x;
           if (t === 'credit' && (lower.includes('debit') || lower.includes('out'))) cX = it.x;
           if (t === 'debit'  && (lower.includes('credit') || lower.includes('in'))) dX = it.x;
         }
@@ -508,11 +518,16 @@ async function readPdfFile(file) {
   return rows;
 }
 
-function normaliseRows(rows, accountLabel) {
+function normaliseRows(rawRows, accountLabel) {
+  let rows = rawRows;
   if (!rows.length) return [];
   const keys = Object.keys(rows[0]);
   const isMainAccount = accountLabel === "Main Account";
   const toNum = s => Number(String(s||"").replace(/[£$€,\s]/g,""))||0;
+
+  // Filter Revolut declined/reverted rows before processing
+  const stateKey = keys.find(k=>/^state$/i.test(k.trim()));
+  if (stateKey) rows = rows.filter(r=>!/^(reverted|declined|failed|pending)$/i.test(String(r[stateKey]).trim()));
 
   const dateKey = keys.find(k=>/^(date|transaction.?date|started.?date|completed.?date)$/i.test(k.trim()))
                || keys.find(k=>/date/i.test(k)&&!/update|expiry/i.test(k));
@@ -585,14 +600,21 @@ function normalizeMerchant(narrative) {
 }
 
 async function callClaude(prompt, maxTokens=800) {
-  const res = await fetch("/api/categorise",{
-    method:"POST",
-    headers:{"content-type":"application/json"},
-    body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]})
-  });
-  if(!res.ok) throw new Error(`${res.status}`);
-  const data = await res.json();
-  return data.content[0].text.trim();
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), 8000);
+  try {
+    const res = await fetch("/api/categorise",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
+      signal: ctrl.signal,
+    });
+    if(!res.ok) throw new Error(`${res.status}`);
+    const data = await res.json();
+    return data.content[0].text.trim();
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
@@ -2489,6 +2511,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [goalTargetDate, setGoalTargetDate] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
+  const [currency, setCurrency] = useState(()=>getCurrencySymbol());
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [splitByCard, setSplitByCard] = useState(false);
   useEffect(()=>{
     if(!showThemeTip)return;
@@ -2555,14 +2579,14 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   };
 
   const TOUR_STEPS = [
-    {title:"Welcome to your Cash Flow",body:"This is your financial command centre. Every transaction you uploaded has been mapped into a weekly grid — actual history on the left, AI-powered forecast on the right.\n\nTake a 60-second tour to understand what you're looking at.",cta:"Show me around →",skip:"Skip tour",highlight:null},
-    {title:"Your actual spending",body:"These white columns show your real transactions, grouped by week and category. Everything you actually spent is captured here — nothing estimated.\n\nClick any number cell to instantly move that week's transactions to a different category.",cta:"Next →",highlight:"actual"},
-    {title:"Your 6-week forecast",body:"These purple columns predict what's coming based on your real patterns. Monthly bills land on their usual date. Daily spend like food uses a rolling average of your last 6 weeks.",cta:"Next →",highlight:"forecast"},
-    {title:"Plan a purchase",body:"Click any cell in the forecast columns to add a one-off planned expense — a new phone, a holiday, a car repair. It gets added to that week and automatically reduces your cash balance from that point forward.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
-    {title:"Cash Balance",body:"The most important row. Your predicted cash position at the end of each week, combining all your accounts.\n\nGreen = you're in the clear. Red = you're heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
-    {title:"Set a budget",body:"Click 'set' on any spend row to enter a weekly budget. Abound turns forecast cells red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
-    ...(!isMobile?[{title:"Check your categories",body:"AI categorisation is good but not perfect. Two minutes fixing any mistakes makes your forecast dramatically more accurate — things like a McDonald's landing in 'Other Payments' instead of Food.\n\nYou don't have to do it now.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
-    ...(!isMobile?[{title:"Grouped or split by card?",body:"By default all your accounts are combined so you see one clean view of where your money goes.\n\nUse the toggle above the table to switch to split-by-card — useful when you want to see exactly which card is spending what.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left to see forecast weeks. Tap any number to explore your spending.\n\nUse the side bar to run Financial Analysis and plan ahead.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
+    {title:"Welcome to Abound",body:"Your transactions are mapped into a weekly grid — history on the left, AI forecast on the right.\n\nTake a quick tour.",cta:"Show me around →",skip:"Skip tour",highlight:null},
+    {title:"Your actual spending",body:"White columns = real transactions, by week and category.\n\nClick any amount to move that week's transactions to a different category.",cta:"Next →",highlight:"actual"},
+    {title:"Your 6-week forecast",body:"Purple columns predict what's coming based on your patterns. Monthly bills land on their usual date; daily spend uses a 6-week rolling average.",cta:"Next →",highlight:"forecast"},
+    {title:"Plan a purchase",body:"Click any forecast cell to add a one-off expense — holiday, phone, car repair. It instantly adjusts your future cash balance.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
+    {title:"Cash Balance",body:"Your predicted end-of-week cash across all accounts.\n\nGreen = healthy. Red = heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
+    {title:"Set a budget",body:"Click any spend row to set a weekly budget. Forecast cells turn red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
+    ...(!isMobile?[{title:"Check your categories",body:"AI is good but not perfect. A quick review makes your forecast dramatically more accurate.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
+    ...(!isMobile?[{title:"Grouped or split by card?",body:"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left for forecast weeks. Tap any number to explore.\n\nUse the sidebar for Financial Analysis.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
   ];
 
   const getHighlightRect = () => {
@@ -3446,16 +3470,16 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
             {/* Tour card */}
-            <div style={{position:"fixed",bottom:isMobile?"1.5vh":32,right:isMobile?"1.5vw":28,left:"auto",width:isMobile?"46vw":360,maxWidth:isMobile?220:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:isMobile?"1.2vh 1.5vw":"22px 24px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?"0.5vh":12}}>
+            <div style={{position:"fixed",bottom:isMobile?"1.5vh":32,right:isMobile?"1.5vw":28,left:"auto",width:isMobile?"46vw":440,maxWidth:isMobile?220:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"1.2vh 1.5vw":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?"0.5vh":14}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:isMobile?"1.4vw":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?"0.4vh":6,textTransform:"uppercase",minFontSize:8}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
-                  <div style={{fontSize:isMobile?"clamp(11px,3.2vw,14px)":18,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+                  <div style={{fontSize:isMobile?"1.4vw":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?"0.4vh":7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?"clamp(11px,3.2vw,14px)":20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
-                <button onClick={closeTour} style={{fontSize:16,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
+                <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:isMobile?"clamp(9px,2.6vw,12px)":13,color:"#a1a1aa",lineHeight:isMobile?1.5:1.7,margin:i===0?"0 0 0.6vh":"0.6vh 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?"clamp(9px,2.6vw,12px)":14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 0.6vh":"0.6vh 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -3594,6 +3618,27 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
                 </div>
               ))}
+              {/* Currency picker */}
+              <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase"}}>Currency</div>
+                <button onClick={()=>setShowCurrencyPicker(p=>!p)}
+                  style={{height:34,padding:"0 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:"#a5b4fc",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                  {currency} <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                </button>
+                {showCurrencyPicker&&(
+                  <>
+                    <div style={{position:"fixed",inset:0,zIndex:9990}} onClick={()=>setShowCurrencyPicker(false)}/>
+                    <div style={{position:"absolute",top:"calc(100% + 6px)",right:0,zIndex:9991,background:T.tooltipBg,border:`1px solid ${T.border2}`,borderRadius:10,padding:"6px",minWidth:100,boxShadow:"0 8px 24px rgba(0,0,0,0.4)",display:"grid",gridTemplateColumns:"1fr 1fr",gap:2}}>
+                      {CURRENCIES.map(c=>(
+                        <button key={c.code} onClick={()=>{setCurrencySymbol(c.symbol);setCurrency(c.symbol);setShowCurrencyPicker(false);}}
+                          style={{padding:"5px 8px",borderRadius:6,border:"none",background:currency===c.symbol?"rgba(99,102,241,0.2)":"transparent",color:currency===c.symbol?"#a5b4fc":T.dimText,fontSize:11,fontWeight:600,cursor:"pointer",textAlign:"left",whiteSpace:"nowrap"}}>
+                          {c.symbol} {c.code}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
               <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                 <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{isDark?"Light mode":"Dark mode"}</div>
                 <button onClick={()=>{setIsDark(d=>!d);setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");}} title={isDark?"Switch to light mode":"Switch to dark mode"}

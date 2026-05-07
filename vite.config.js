@@ -2,9 +2,40 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+function stockApiDevPlugin() {
+  return {
+    name: 'stock-api-dev',
+    configureServer(server) {
+      server.middlewares.use('/api/stock-data', async (req, res) => {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { ticker } = JSON.parse(body);
+            const symbol = (ticker || '').trim().toUpperCase();
+            const url = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency`;
+            const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Abound/1.0)' } });
+            if (!r.ok) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
+            const data = await r.json();
+            const quote = data?.quoteResponse?.result?.[0];
+            if (!quote) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice ?? null }));
+          } catch (e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+      });
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    stockApiDevPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],

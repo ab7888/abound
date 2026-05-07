@@ -94,8 +94,8 @@ const GLOBAL_CSS = `
   @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
-    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: #0d0c1e !important; }
-    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: #0d0c1e !important; box-shadow: 6px 0 10px rgba(0,0,0,0.5); }
+    [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
+    [data-sticky-label2] { position: sticky !important; left: 26px; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; box-shadow: var(--sticky-shadow, 6px 0 10px rgba(0,0,0,0.5)); }
     [data-sticky-hdr] { position: sticky !important; left: 0; z-index: 6; }
   }
 `;
@@ -149,36 +149,33 @@ const MERCHANT_MAP = {
   Memberships: [
     "netflix","spotify","apple","itunes","icloud","apple.com","appstore",
     "amazon prime","prime video","disney","disney+","disneyplus",
-    "hbo","hulu","paramount","peacock","britbox","mubi","curzon","odeon","vue",
+    "hbo","hulu","paramount","peacock","britbox","mubi",
     "gymbox","puregym","virgin active","david lloyd","anytime fitness","planet fitness",
     "gym","fitness","crossfit","pilates","yoga","barry's","f45","orangetheory",
-    "audible","kindle","scribd","newspaper","times","guardian","ft.com","financial times",
+    "audible","kindle","scribd","times newspaper","guardian","ft.com","financial times",
     "sky","now tv","nowtv","bt sport","dazn","eurosport","discovery+",
-    "google","youtube","youtube premium","twitch","patreon",
-    "adobe","microsoft","office","dropbox","notion","slack","zoom","lastpass","1password",
-    "linkedin","indeed","cv-library","reed","totaljobs",
+    "youtube premium","twitch","patreon",
+    "adobe","microsoft","office 365","microsoft 365","dropbox",
     "duolingo","masterclass","coursera","udemy","skillshare",
-    "venmo","klarna","clearpay","laybuy",
-    "dating","hinge","tinder","bumble","match","eharmony",
-    "headspace","calm","meditation","therapy","betterhelp","nhs app",
+    "hinge","tinder","bumble","match.com","eharmony",
+    "headspace","calm","betterhelp",
     // Telecoms / mobile
     "o2","three","ee","ee limited","giffgaff","id mobile","smarty","tesco mobile","lebara","lyca","sky mobile","bt mobile","talkmobile","virgin mobile",
     "claude.ai","claude ai","anthropic",
     // Insurance
     "insurance","aviva","axa","direct line","directline","admiral","churchill","hastings direct",
-    "esure","elephant auto","saga","rac breakdown","green flag","aa breakdown","legal & general",
+    "esure","saga","rac breakdown","green flag","aa breakdown","legal & general",
     "legal and general","royal london","zurich","allianz","ageas","sun life","sunlife",
-    "nfu mutual","vitality health","bupa","cigna","aig life","one call","comparethemarket",
-    "confused.com","go compare","moneysupermarket","policy expert","simply business",
+    "nfu mutual","vitality health","cigna","aig life","one call",
     "pet plan","petplan","bought by many","waggel","animal friends",
     "home protect","homeprotect","policy bee","lv insurance","lv=","sheila's wheels",
-    "elephant auto","hastings","zenith insurance","intact insurance",
+    "hastings","zenith insurance","intact insurance",
     // Road tax / vehicle
     "dvla","vehicle tax","road tax","driver & vehicle","dvla licensing",
     // Utilities treated as subscriptions
     "water plus","affinity water","southern water direct",
     // Sports / clubs
-    "sparring partners","sparring","boxing club","martial arts","judo","karate","taekwondo",
+    "sparring partners","boxing club","martial arts","judo","karate","taekwondo",
     "swimming club","tennis club","golf club","squash club","badminton","cricket club",
     "football club","rugby club","cycling club","running club","triathlon"
   ],
@@ -679,7 +676,7 @@ Rules (be strict — follow these exactly):
 - Food: supermarkets (Tesco, Sainsbury's, Asda, Morrisons, Aldi, Lidl, Waitrose, M&S Food, Co-op, Iceland), restaurants, cafes, Pret, Costa, Starbucks, McDonald's, KFC, Nando's, Greggs, takeaways, Deliveroo, Just Eat, Uber Eats
 - Travel: TfL, Oyster, Uber, Bolt, Lyft, trains (Trainline, National Rail, Avanti, GWR, LNER, Eurostar), flights (EasyJet, Ryanair, BA, Wizz), parking, petrol/fuel stations (Shell, BP, Esso, Texaco)
 - Rent: rent, mortgage, letting agents, estate agents, property management companies, council tax, utilities (gas, electricity, water)
-- Memberships: (1) ALL phone/mobile contracts — O2, Vodafone, EE, Three, giffgaff, iD Mobile, Smarty, Tesco Mobile, Lebara, Sky Mobile, Virgin Mobile; (2) broadband/TV — BT, Virgin Media, Sky, TalkTalk, Plusnet; (3) streaming — Netflix, Spotify, Disney+, Amazon Prime, Apple TV, YouTube Premium; (4) gym memberships; (5) any subscription or SaaS — iCloud, Adobe, Microsoft 365, Google One; (6) ALL insurance — car insurance, home insurance, life insurance, pet insurance, travel insurance, breakdown cover, any narrative containing "insurance", "insure", "protection plan", "breakdown"; (7) DVLA vehicle tax, road tax; (8) Aviva, AXA, Direct Line, Admiral, Churchill, Hastings, Saga, RAC, AA, Legal & General, Royal London, Zurich, Allianz, Sun Life, BUPA Dental, Vitality
+- Memberships: ONLY use this for clearly recurring subscriptions — phone/mobile contracts (O2, Vodafone, EE, Three, giffgaff, iD Mobile, Smarty, Tesco Mobile, Lebara, Sky Mobile); broadband/TV (BT, Virgin Media, Sky, TalkTalk, Plusnet); streaming services (Netflix, Spotify, Disney+, Amazon Prime, Apple TV, YouTube Premium); gym memberships; explicitly subscription-based SaaS (iCloud, Adobe, Microsoft 365, Google One); insurance (car, home, life, pet — Aviva, AXA, Direct Line, Admiral, Churchill, Hastings, Saga, RAC, AA, Legal & General, Royal London, Zurich, Allianz, Sun Life, BUPA Dental, Vitality); DVLA vehicle tax, road tax. Do NOT use Memberships for one-off purchases, general online purchases, healthcare, or anything ambiguous — prefer Other Payments in doubt
 - Transfers: person-to-person bank transfers. Patterns: (1) "FIRSTNAME LASTNAME, PAYMENT" or "FIRSTNAME LASTNAME , MONTHLY"; (2) any narrative starting with a person's name followed by ", ... , VIA MOBILE" or containing "VIA MOBILE - LVP". Both sending and receiving money to/from friends or family. NOT business payments.
 - Online Shopping: Amazon purchases (NOT Amazon Prime), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, IKEA, B&Q, Wayfair, Dunelm, PayPal purchases (when clearly retail), any online retail
 - Healthcare: Boots, Superdrug, Specsavers, Vision Express, any pharmacy, optician, dentist, NHS charges, private GP, physio, counselling
@@ -773,7 +770,7 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
   monthlyOnceCandidates.forEach((monthMap, key)=>{
     const months = [...monthMap.keys()];
     const allMonthly = [...monthMap.values()].every(count=>count<=2);
-    if(months.length>=2 && allMonthly) monthlyMembershipKeys.add(key);
+    if(months.length>=3 && allMonthly) monthlyMembershipKeys.add(key);
   });
 
   onProgress({type:"done"});
@@ -1690,7 +1687,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
     use.forEach(t=>{totals[t.category]=(totals[t.category]||0)+t.amount;});
     return totals;
   },[categorised,categories]);
-  function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");}
+  function addCategory(){const t=newCat.trim().replace(/^\S/,c=>c.toUpperCase());if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");}
   function removeCategory(cat){if(baseCats.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setCategorised(t=>t.map(tx=>tx.category===cat?{...tx,category:"Other Payments"}:tx));}
   function saveRename(){if(!editVal.trim())return;const old=editingCat;setCategories(c=>c.map(x=>x===old?editVal:x));setCategorised(t=>t.map(tx=>tx.category===old?{...tx,category:editVal}:tx));setEditingCat(null);}
  const isMobile=useIsMobile();
@@ -1866,7 +1863,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);}
   function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
   function undoItem(narrative,fromCat){if(fromCat!=="Skip")setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));}
-  function addCategory(){const t=newCat.trim();if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
+  function addCategory(){const t=newCat.trim().replace(/^\S/,c=>c.toUpperCase());if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
   function removeCategory(cat){if(DEFAULT_CATEGORIES.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setItems(p=>p.map(x=>x.category===cat?{...x,category:"Other Payments"}:x));setBucketCounts(p=>{const n={...p};delete n[cat];return n;});}
   function handleConfirm(){const map={};items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t),categories);}
   const pct=allItems.length?Math.round(((sorted.length+skipped.length)/allItems.length)*100):100;
@@ -2650,6 +2647,12 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     openBalNullColor:"#c7d2fe",acctLabelColor:"#6b7280",acctDotColor:"#c7d2fe",
   };
 
+  useEffect(()=>{
+    const bg = isDark ? '#0d0c1e' : '#ffffff';
+    const shadow = isDark ? '6px 0 10px rgba(0,0,0,0.5)' : '6px 0 8px rgba(0,0,0,0.06)';
+    document.documentElement.style.setProperty('--sticky-bg', bg);
+    document.documentElement.style.setProperty('--sticky-shadow', shadow);
+  },[isDark]);
   useEffect(()=>{
     setInvestigationOpen(false);
     if(!localStorage.getItem("cashFlowTourSeen_v2")){

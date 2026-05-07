@@ -2434,7 +2434,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onFeedback={onFeedback}/></OrientationGate>}
+      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate>}
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
     </div>
   );
@@ -2532,7 +2532,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set(), onFeedback}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -2597,6 +2597,9 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [goalsAdvice, setGoalsAdvice] = useState("");
   const [goalsLoading, setGoalsLoading] = useState(false);
   const [forecastOverrides, setForecastOverrides] = useState([]); // {id,cat,newAmt,fromWeekKey,label}
+  const [rentEditing, setRentEditing] = useState(false);
+  const [rentAmtInput, setRentAmtInput] = useState("");
+  const [rentDayInput, setRentDayInput] = useState("");
   const [addingOverride, setAddingOverride] = useState(false);
   const [newOvCat, setNewOvCat] = useState("");
   const [newOvAmt, setNewOvAmt] = useState("");
@@ -4067,8 +4070,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {id:0,label:"End of month"},
           {id:1,label:"6-week outlook"},
           {id:2,label:"One-offs"},
-          {id:3,label:"Low point"},
-          {id:4,label:"Your plan"},
+          {id:3,label:"Tune forecast"},
+          {id:4,label:"Low point"},
+          {id:5,label:"Your plan"},
         ];
         return(
           <>
@@ -4283,13 +4287,146 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     )}
                     <button onClick={()=>setInvestigationStep(3)}
                       style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                      {hasOutliers?(anyExcluded?"See low point →":"Skip →"):"See low point →"}
+                      {hasOutliers?(anyExcluded?"Tune forecast →":"Skip →"):"Tune forecast →"}
                     </button>
                   </div>
                 )}
 
-                {/* Step 4: Low point */}
+                {/* Step 4: Tune your forecast */}
                 {investigationStep>=3&&investigationStep<4&&(()=>{
+                  const ord=n=>n+(n%10===1&&n!==11?"st":n%10===2&&n!==12?"nd":n%10===3&&n!==13?"rd":"th");
+                  // Rent detection
+                  const rentTxns=transactions.filter(t=>t.category==="Rent").sort((a,b)=>b.date-a.date);
+                  const detectedRent=rentTxns[0]||null;
+                  const rentAmt=detectedRent?.amount||0;
+                  const rentDay=detectedRent?.date?.getDate()||1;
+                  // Active rent override (from forecastOverrides)
+                  const activeRentOv=forecastOverrides.find(o=>o.cat==="Rent");
+                  // One-off candidates: spend txns appearing ≤2× that are large relative to category average
+                  const weekCount=Math.max(actualWeeks.length,1);
+                  const spendTxns=transactions.filter(t=>!t.isIncome&&!["Card Repayment","Salary"].includes(t.category));
+                  const byNarr={};
+                  spendTxns.forEach(t=>{if(!byNarr[t.narrative])byNarr[t.narrative]=[];byNarr[t.narrative].push(t);});
+                  const candidates=Object.values(byNarr)
+                    .filter(txns=>txns.length<=2)
+                    .map(txns=>{
+                      const t=[...txns].sort((a,b)=>b.amount-a.amount)[0];
+                      const catWeeklyAvg=transactions.filter(x=>x.category===t.category&&!x.isIncome).reduce((s,x)=>s+x.amount,0)/weekCount;
+                      const weeklyImpact=Math.round(t.amount/weekCount);
+                      const sixWeekImpact=weeklyImpact*6;
+                      return{...t,count:txns.length,catWeeklyAvg,weeklyImpact,sixWeekImpact};
+                    })
+                    .filter(c=>c.amount>=40&&c.amount>c.catWeeklyAvg*0.4)
+                    .sort((a,b)=>b.amount-a.amount)
+                    .slice(0,8);
+                  const markedCount=candidates.filter(c=>nonRecurring.has(c.narrative)).length;
+                  const totalSixWkSaving=candidates.filter(c=>nonRecurring.has(c.narrative)).reduce((s,c)=>s+c.sixWeekImpact,0);
+                  return(
+                    <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:18}}>
+                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 4 · Tune your forecast</div>
+
+                      {/* ── Rent verification ── */}
+                      {detectedRent&&(
+                        <div>
+                          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6}}>Your rent</div>
+                          {!rentEditing?(
+                            <div style={{padding:"12px 14px",background:T.summaryRow,border:`1px solid ${T.dimBorder}`,borderRadius:10}}>
+                              <div style={{fontSize:12,color:T.dimText,marginBottom:8,lineHeight:1.6}}>
+                                We're forecasting <span style={{color:"#e0e7ff",fontWeight:700}}>£{(activeRentOv?.newAmt||rentAmt).toLocaleString()}</span> rent landing on the <span style={{color:"#e0e7ff",fontWeight:700}}>{ord(rentDay)}</span> of each month.
+                              </div>
+                              <div style={{display:"flex",gap:8}}>
+                                <button onClick={()=>{setRentEditing(true);setRentAmtInput(String(activeRentOv?.newAmt||rentAmt));setRentDayInput(String(rentDay));}}
+                                  style={{padding:"6px 14px",background:"transparent",border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.dimText,fontSize:12,cursor:"pointer",fontWeight:600}}>
+                                  Edit amount
+                                </button>
+                                {!activeRentOv&&<div style={{fontSize:11,color:"#10b981",alignSelf:"center",marginLeft:4}}>✓ Looks right</div>}
+                                {activeRentOv&&<div style={{fontSize:11,color:"#10b981",alignSelf:"center",marginLeft:4}}>✓ Updated to £{activeRentOv.newAmt}</div>}
+                              </div>
+                            </div>
+                          ):(
+                            <div style={{padding:"12px 14px",background:T.summaryRow,border:`1px solid #4338ca`,borderRadius:10,display:"flex",flexDirection:"column",gap:10}}>
+                              <div style={{fontSize:11,color:T.dimText}}>Monthly rent amount</div>
+                              <input type="number" value={rentAmtInput} onChange={e=>setRentAmtInput(e.target.value)} placeholder="e.g. 1200"
+                                style={{padding:"8px 10px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.text,fontSize:14,fontWeight:700,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                              <div style={{fontSize:11,color:T.dimText}}>Day of month it lands (1–31)</div>
+                              <input type="number" min="1" max="31" value={rentDayInput} onChange={e=>setRentDayInput(e.target.value)} placeholder="e.g. 25"
+                                style={{padding:"8px 10px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.text,fontSize:14,fontWeight:700,outline:"none",width:"100%",boxSizing:"border-box"}}/>
+                              <div style={{display:"flex",gap:8}}>
+                                <button onClick={()=>{
+                                  const amt=parseFloat(rentAmtInput);
+                                  if(!isNaN(amt)&&amt>0){
+                                    setForecastOverrides(p=>[...p.filter(o=>o.cat!=="Rent"),{id:Date.now(),cat:"Rent",newAmt:amt,fromWeekKey:forecastWeeks[0]?.key||""}]);
+                                  }
+                                  setRentEditing(false);
+                                }} style={{flex:1,padding:"8px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                                  Save
+                                </button>
+                                <button onClick={()=>setRentEditing(false)} style={{padding:"8px 14px",background:"transparent",border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.dimText,fontSize:12,cursor:"pointer"}}>
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── One-off transaction review ── */}
+                      {candidates.length>0&&(
+                        <div>
+                          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Were any of these one-offs?</div>
+                          <p style={{fontSize:12,color:T.dimText,margin:"0 0 12px",lineHeight:1.6}}>
+                            These large or infrequent payments may be skewing your forecast. Mark any that won't happen again.
+                          </p>
+                          {markedCount>0&&(
+                            <div style={{padding:"9px 12px",background:"rgba(16,185,129,0.07)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
+                              <span style={{fontSize:16}}>✓</span>
+                              <span>{markedCount} marked — saves ~<strong>£{totalSixWkSaving.toLocaleString()}</strong> from your 6-week forecast</span>
+                            </div>
+                          )}
+                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                            {candidates.map((c,i)=>{
+                              const marked=nonRecurring.has(c.narrative);
+                              return(
+                                <div key={i} style={{borderRadius:10,border:`1.5px solid ${marked?"#6366f1":T.dimBorder}`,background:marked?"rgba(99,102,241,0.07)":T.summaryRow,overflow:"hidden",transition:"all 0.2s"}}>
+                                  <div style={{padding:"10px 13px",display:"flex",alignItems:"center",gap:10}}>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontSize:12,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.narrative}</div>
+                                      <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
+                                        {c.category} · <span style={{color:"#f87171",fontWeight:600}}>£{c.amount.toLocaleString()}</span>
+                                        {c.count===1?" · appeared once":" · appeared twice"}
+                                      </div>
+                                    </div>
+                                    <button onClick={()=>onToggleNonRecurring(c.narrative)}
+                                      style={{flexShrink:0,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${marked?"#6366f1":"rgba(255,255,255,0.15)"}`,background:marked?"rgba(99,102,241,0.2)":"transparent",color:marked?"#a5b4fc":"#6b7280",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s"}}>
+                                      {marked?"One-off ✓":"One-off?"}
+                                    </button>
+                                  </div>
+                                  {marked&&(
+                                    <div style={{borderTop:`1px solid rgba(99,102,241,0.2)`,padding:"7px 13px",background:"rgba(99,102,241,0.05)",fontSize:11,color:"#818cf8"}}>
+                                      Removes ~<strong style={{color:"#a5b4fc"}}>£{c.weeklyImpact}/week</strong> from your {c.category} forecast · saves £{c.sixWeekImpact} over 6 weeks
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {!detectedRent&&candidates.length===0&&(
+                        <p style={{fontSize:12,color:T.dimText,lineHeight:1.65}}>No unusual transactions detected — your spending looks consistent.</p>
+                      )}
+
+                      <button onClick={()=>setInvestigationStep(4)}
+                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)",alignSelf:"flex-start"}}>
+                        {markedCount>0||activeRentOv?"See forecast impact →":"See low point →"}
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Step 5: Low point */}
+                {investigationStep>=4&&investigationStep<5&&(()=>{
                   const lowIdx=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
                   const lowBal=lowIdx!==null?combinedClosingBalances.forecast[lowIdx]:null;
                   const lowWk=lowIdx!==null?forecastWeeks[lowIdx]:null;
@@ -4314,7 +4451,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                           <strong>Tip:</strong> Check the week of {lowWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} in the table — look for large outgoings hitting the same week as rent or bills.
                         </div>
                       )}
-                      <button onClick={()=>setInvestigationStep(4)}
+                      <button onClick={()=>setInvestigationStep(5)}
                         style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
                         Set my goals →
                       </button>
@@ -4322,8 +4459,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   );
                 })()}
 
-                {/* Step 5: Plan — forecast changes + savings goal + advice */}
-                {investigationStep>=4&&(()=>{
+                {/* Step 6: Plan — forecast changes + savings goal + advice */}
+                {investigationStep>=5&&(()=>{
                   const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
                   const isMonthly=cat=>MONTHLY_OV_CATS.includes(cat);
 

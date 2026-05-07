@@ -4479,7 +4479,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   const avgWeeklyNet=weeklyNets.reduce((a,b)=>a+b,0)/Math.max(weeklyNets.length,1);
                   const weeksToGoal=goalAmt>0&&avgWeeklyNet>0?Math.ceil(goalAmt/avgWeeklyNet):null;
                   const projDate=weeksToGoal?new Date(Date.now()+weeksToGoal*7*86400000):null;
-                  const targetDate=goalTargetDate?new Date(goalTargetDate):null;
+                  const targetDate=goalTargetDate?(([y,m])=>new Date(+y,+m-1))(goalTargetDate.split('-')):null;
                   const onTrack=projDate&&targetDate?projDate<=targetDate:null;
                   const pctSaved=goalAmt>0?Math.min(Math.max((forecastEndBal!==null?forecastEndBal-curBal:0)/goalAmt*100,0),100):0;
 
@@ -4585,7 +4585,7 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                           </div>
                           <div style={{flex:1}}>
                             <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>By (optional)</div>
-                            <input type="date" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
+                            <input type="month" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
                           </div>
                         </div>
 

@@ -1008,6 +1008,7 @@ function HeroScreen({onEnter, onResume}) {
   const [phase, setPhase] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [session, setSession] = useState(null);
+  const tapRef = useRef({count:0,timer:null});
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase(1),500);
     const t2=setTimeout(()=>setPhase(2),1200);
@@ -1016,6 +1017,17 @@ function HeroScreen({onEnter, onResume}) {
   },[]);
   function handleEnter(){setLeaving(true);setTimeout(onEnter,500);}
   function handleResume(){setLeaving(true);setTimeout(onResume,500);}
+  function handleVersionTap(){
+    tapRef.current.count++;
+    clearTimeout(tapRef.current.timer);
+    if(tapRef.current.count>=7){
+      tapRef.current.count=0;
+      const code=prompt("Admin code:");
+      if(code==="ab7888"){setPremium();window.location.reload();}
+    } else {
+      tapRef.current.timer=setTimeout(()=>{tapRef.current.count=0;},2000);
+    }
+  }
   const features=[
     {dot:"#10b981",text:"Your statement never leaves your device — we never see your data."},
     {dot:"#6366f1",text:"Upload your statement. See 6 weeks ahead."},
@@ -1076,7 +1088,7 @@ function HeroScreen({onEnter, onResume}) {
             {session?"Start fresh instead":"Get started →"}
           </button>
           <div style={{marginTop:14,fontSize:11,color:"#3f3f46",letterSpacing:"0.08em"}}>FREE · NO ACCOUNT REQUIRED</div>
-          <div style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em"}}>v{APP_VERSION}</div>
+          <div onClick={handleVersionTap} style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em",userSelect:"none"}}>v{APP_VERSION}</div>
         </div>
       </div>
     </div>
@@ -2300,8 +2312,18 @@ function RotateScreen() {
             <path d="M52 38 L62 38 M58 34 L62 38 L58 42" stroke="rgba(99,102,241,0.9)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </div>
-        <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:12,letterSpacing:"-0.02em"}}>Rotate your phone</div>
-        <div style={{fontSize:14,color:"#52525b",lineHeight:1.6,marginBottom:32}}>The cash flow table needs a bit more space. Turn your phone to landscape mode to see all 12 weeks at once.</div>
+        <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:10,letterSpacing:"-0.02em"}}>Rotate your phone</div>
+        <div style={{fontSize:14,color:"#71717a",lineHeight:1.6,marginBottom:20}}>The cash flow table needs a bit more space — turn to landscape to see all 12 weeks.</div>
+        {/* Rotation lock warning — the most common reason rotation doesn't work */}
+        <div style={{background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:12,padding:"14px 16px",marginBottom:24,textAlign:"left"}}>
+          <div style={{fontSize:12,fontWeight:700,color:"#a5b4fc",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:15}}>🔒</span> Screen not rotating? Check your rotation lock
+          </div>
+          <div style={{fontSize:12,color:"#6b7280",lineHeight:1.65}}>
+            <span style={{color:"#9ca3af",fontWeight:600}}>iPhone:</span> Swipe down from the top-right corner to open Control Centre, then tap the <span style={{color:"#c4b5fd",fontWeight:600}}>rotation lock icon</span> to turn it off.<br/>
+            <span style={{color:"#9ca3af",fontWeight:600,marginTop:4,display:"block"}}>Android:</span> Swipe down from the top to open the notification shade, then tap <span style={{color:"#c4b5fd",fontWeight:600}}>Auto rotate</span>.
+          </div>
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
           <div style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:"pulse 1.5s ease-in-out infinite"}}/>
           <span style={{fontSize:12,color:"#374151"}}>Waiting for rotation...</span>

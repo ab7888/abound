@@ -2911,19 +2911,21 @@ function getLastWorkingDay(year, month) {
     const mainNet=actualWeeks.map((_,i)=>mainIncome[i]-mainActuals[i]);
     const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
     const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
-    const runningBals=Array(actualWeeks.length).fill(null);
-    // weekBalances stores the post-transaction running balance (closing). Convert to opening by subtracting mainNet.
-    knownBals.forEach((b,i)=>{if(b!==null)runningBals[i]=b-mainNet[i];});
+    // closingBals[i] = end-of-week main-account balance (post all transactions)
+    const closingBals=Array(actualWeeks.length).fill(null);
+    knownBals.forEach((b,i)=>{if(b!==null)closingBals[i]=b;});
+    // Forward: closing[i+1] = closing[i] + net[i+1]
     for(let i=0;i<actualWeeks.length-1;i++){
-      if(runningBals[i]!==null&&runningBals[i+1]===null)
-        runningBals[i+1]=runningBals[i]+mainNet[i];
+      if(closingBals[i]!==null&&closingBals[i+1]===null)
+        closingBals[i+1]=closingBals[i]+mainNet[i+1];
     }
+    // Backward: closing[i-1] = closing[i] - net[i]
     for(let i=actualWeeks.length-1;i>0;i--){
-      if(runningBals[i]!==null&&runningBals[i-1]===null)
-        runningBals[i-1]=runningBals[i]-mainNet[i-1];
+      if(closingBals[i]!==null&&closingBals[i-1]===null)
+        closingBals[i-1]=closingBals[i]-mainNet[i];
     }
-    const actualClosing=runningBals.map((ob,i)=>ob!==null?ob+mainNet[i]-ccActuals[i]:null);
-    const lastActualBal=runningBals.filter(b=>b!==null).slice(-1)[0]??null;
+    const actualClosing=closingBals.map((b,i)=>b!==null?b-ccActuals[i]:null);
+    const lastActualBal=closingBals.filter(b=>b!==null).slice(-1)[0]??null;
     const mainFActuals=forecastWeeks.map((_,i)=>mainSpendCats.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
     const mainFIncome=forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
     const mainFNet=forecastWeeks.map((w,i)=>{
@@ -2932,7 +2934,7 @@ function getLastWorkingDay(year, month) {
     });
     const ccFActuals=forecastWeeks.map((_,i)=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
     const forecastBals=Array(forecastWeeks.length).fill(null);
-    if(lastActualBal!==null){forecastBals[0]=lastActualBal+mainNet[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
+    if(lastActualBal!==null){forecastBals[0]=lastActualBal;for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
     const forecastClosing=forecastBals.map((ob,i)=>ob!==null?ob+mainFNet[i]-ccFActuals[i]:null);
     return{actual:actualClosing,forecast:forecastClosing};
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events]);
@@ -3126,22 +3128,20 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
-    const runningBalances=Array(actualWeeks.length).fill(null);
-    // weekBalances stores post-transaction running balance (closing). Convert to opening by subtracting net.
-    knownBalances.forEach((b,i)=>{if(b!==null)runningBalances[i]=b-weeklyNetActual[i];});
-    // Walk forward between pins (or from first pin to end)
+    const closingBalances=Array(actualWeeks.length).fill(null);
+    knownBalances.forEach((b,i)=>{if(b!==null)closingBalances[i]=b;});
     for(let i=0;i<actualWeeks.length-1;i++){
-      if(runningBalances[i]!==null&&runningBalances[i+1]===null)
-        runningBalances[i+1]=runningBalances[i]+weeklyNetActual[i];
+      if(closingBalances[i]!==null&&closingBalances[i+1]===null)
+        closingBalances[i+1]=closingBalances[i]+weeklyNetActual[i+1];
     }
-    // Walk backward for any gaps before the first pin
     for(let i=actualWeeks.length-1;i>0;i--){
-      if(runningBalances[i]!==null&&runningBalances[i-1]===null)
-        runningBalances[i-1]=runningBalances[i]-weeklyNetActual[i-1];
+      if(closingBalances[i]!==null&&closingBalances[i-1]===null)
+        closingBalances[i-1]=closingBalances[i]-weeklyNetActual[i];
     }
-    const lastActualBal=runningBalances.filter(b=>b!==null).slice(-1)[0]??null;
+    const lastActualBal=closingBalances.filter(b=>b!==null).slice(-1)[0]??null;
+    const openingBalances=closingBalances.map((b,i)=>b!==null?b-weeklyNetActual[i]:null);
     const forecastBalances=Array(forecastWeeks.length).fill(null);
-    if(lastActualBal!==null){forecastBalances[0]=lastActualBal+weeklyNetActual[actualWeeks.length-1];for(let i=1;i<forecastWeeks.length;i++)forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];}
+    if(lastActualBal!==null){forecastBalances[0]=lastActualBal;for(let i=1;i<forecastWeeks.length;i++)forecastBalances[i]=forecastBalances[i-1]+weeklyNetForecast[i-1];}
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
     return(
       <>
@@ -3170,7 +3170,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             onMouseLeave={()=>setTooltip(null)}>
             Opening Balance <span style={{fontSize:9,color:T.dimBorder,verticalAlign:"super"}}>?</span>
           </td>
-          {runningBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          {openingBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
           {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",background:T.forecastCell,borderRight:`1px dashed ${T.dimBorder}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`}}/><td/><td/>

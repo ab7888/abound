@@ -1008,6 +1008,9 @@ function HeroScreen({onEnter, onResume}) {
   const [phase, setPhase] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [session, setSession] = useState(null);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [adminCode, setAdminCode] = useState("");
+  const [adminError, setAdminError] = useState(false);
   const tapRef = useRef({count:0,timer:null});
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase(1),500);
@@ -1022,11 +1025,14 @@ function HeroScreen({onEnter, onResume}) {
     clearTimeout(tapRef.current.timer);
     if(tapRef.current.count>=7){
       tapRef.current.count=0;
-      const code=prompt("Admin code:");
-      if(code==="ab7888"){setPremium();window.location.reload();}
+      setAdminCode("");setAdminError(false);setShowAdminModal(true);
     } else {
       tapRef.current.timer=setTimeout(()=>{tapRef.current.count=0;},2000);
     }
+  }
+  function submitAdminCode(){
+    if(adminCode==="ab7888"){setPremium();window.location.reload();}
+    else{setAdminError(true);setAdminCode("");}
   }
   const features=[
     {dot:"#10b981",text:"Your statement never leaves your device — we never see your data."},
@@ -1091,6 +1097,27 @@ function HeroScreen({onEnter, onResume}) {
           <div onClick={handleVersionTap} style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em",userSelect:"none"}}>v{APP_VERSION}</div>
         </div>
       </div>
+      {showAdminModal&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:24}} onClick={()=>setShowAdminModal(false)}>
+          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:28,width:"100%",maxWidth:300,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",marginBottom:16,letterSpacing:"0.04em"}}>ADMIN ACCESS</div>
+            <input
+              autoFocus
+              type="password"
+              value={adminCode}
+              onChange={e=>{setAdminCode(e.target.value);setAdminError(false);}}
+              onKeyDown={e=>e.key==="Enter"&&submitAdminCode()}
+              placeholder="Enter code"
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 14px",borderRadius:8,border:`1px solid ${adminError?"#ef4444":"#374151"}`,background:"#0d1117",color:"#f9fafb",fontSize:15,outline:"none",marginBottom:adminError?6:16,textAlign:"center",letterSpacing:"0.1em"}}
+            />
+            {adminError&&<div style={{fontSize:11,color:"#ef4444",marginBottom:12}}>Incorrect code</div>}
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setShowAdminModal(false)} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#6b7280",cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
+              <button onClick={submitAdminCode} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#6366f1",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>Unlock</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2149,6 +2149,11 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
   }
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
   const inputStyle={padding:"7px 12px",border:"1px solid #1f1d35",borderRadius:8,fontSize:13,background:"#0f0e1a",color:"#e0e7ff",outline:"none",cursor:"pointer"};
+  useEffect(()=>{
+    function onKey(e){if((e.metaKey||e.ctrlKey)&&e.key==="z"){e.preventDefault();undoLastChange();}}
+    window.addEventListener("keydown",onKey);
+    return()=>window.removeEventListener("keydown",onKey);
+  },[undoStack]);
   return(
     <div style={{flex:1,overflow:"auto",background:"#08070f"}}>
       <style>{GLOBAL_CSS}</style>
@@ -2171,9 +2176,18 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
       )}
       <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
         {/* Header */}
-        <div style={{marginBottom:20}}>
-          <h2 style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4,letterSpacing:"-0.02em"}}>Review Transactions</h2>
-          <p style={{fontSize:13,color:"#52525b",margin:0}}>Fix any miscategorised transactions to sharpen your forecast.</p>
+        <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+          <div>
+            <h2 style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4,letterSpacing:"-0.02em"}}>Review Transactions</h2>
+            <p style={{fontSize:13,color:"#52525b",margin:0}}>Fix any miscategorised transactions to sharpen your forecast.</p>
+          </div>
+          <button onClick={undoLastChange} disabled={!undoStack.length} title={isMobile?"Undo last change":"Undo last change (Ctrl+Z)"}
+            style={{flexShrink:0,display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:8,border:`1px solid ${undoStack.length?"#4338ca":"#27272a"}`,background:undoStack.length?"rgba(99,102,241,0.15)":"rgba(255,255,255,0.03)",color:undoStack.length?"#a5b4fc":"#3f3f46",fontSize:13,fontWeight:600,cursor:undoStack.length?"pointer":"not-allowed",transition:"all 0.15s",marginTop:2}}
+            onMouseEnter={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.25)";e.currentTarget.style.borderColor="#6366f1";}}}
+            onMouseLeave={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.15)";e.currentTarget.style.borderColor="#4338ca";}}}>
+            <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 10a7 7 0 1 0 1.5-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 4v6h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Undo{undoStack.length>0&&<span style={{background:"rgba(99,102,241,0.3)",borderRadius:4,padding:"1px 5px",fontSize:11}}>{undoStack.length}</span>}
+          </button>
         </div>
         {/* Filters */}
         <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap",alignItems:"center"}}>
@@ -2196,18 +2210,11 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
               </button>
             ))}
           </div>
-          <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,whiteSpace:"nowrap"}}>
+          <div style={{marginLeft:"auto",whiteSpace:"nowrap"}}>
             <span style={{fontSize:12,color:"#4b5563"}}>
               {filtered.length} transaction{filtered.length!==1?"s":""}
               {editCount>0&&<span style={{marginLeft:8,color:"#10b981",fontWeight:600}}>· {editCount} edited</span>}
             </span>
-            <button onClick={undoLastChange} disabled={!undoStack.length} title="Undo last change"
-              style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:7,border:`1px solid ${undoStack.length?"#4338ca":"#1f1d35"}`,background:undoStack.length?"rgba(99,102,241,0.12)":"transparent",color:undoStack.length?"#a5b4fc":"#2d2a6e",fontSize:12,fontWeight:600,cursor:undoStack.length?"pointer":"default",transition:"all 0.15s"}}
-              onMouseEnter={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.22)";e.currentTarget.style.borderColor="#6366f1";}}}
-              onMouseLeave={e=>{if(undoStack.length){e.currentTarget.style.background="rgba(99,102,241,0.12)";e.currentTarget.style.borderColor="#4338ca";}}}>
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><path d="M3 10a7 7 0 1 0 1.5-4.3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/><path d="M3 4v6h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Undo
-            </button>
           </div>
         </div>
         {/* Mobile onboarding tip */}

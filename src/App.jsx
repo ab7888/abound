@@ -1514,6 +1514,15 @@ function UploadScreen({onDone}) {
                 <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff"}}>How to export your bank statement</div>
                 <button onClick={()=>setShowGuide(false)} style={{fontSize:20,color:"#4b5563",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
               </div>
+              {/iPhone|iPod/.test(navigator.userAgent)&&/Safari/.test(navigator.userAgent)&&!/CriOS|FxiOS/.test(navigator.userAgent)&&(
+                <div style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:10,padding:"11px 13px",marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <span style={{fontSize:16,lineHeight:1,flexShrink:0}}>⚠️</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#fbbf24",marginBottom:3}}>iPhone Safari — use Desktop Site</div>
+                    <div style={{fontSize:11,color:"#9ca3af",lineHeight:1.55}}>Mobile Safari blocks file uploads on some bank sites. Tap <span style={{color:"#e0e7ff",fontWeight:600}}>aA</span> in the address bar, then choose <span style={{color:"#e0e7ff",fontWeight:600}}>Request Desktop Website</span> before downloading your statement.</div>
+                  </div>
+                </div>
+              )}
               <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
                 {BANK_GUIDES.map((g,i)=>(
                   <button key={i} onClick={()=>setGuideBank(i)}
@@ -2431,7 +2440,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      {activeTab==="cashflow"&&<OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate>}
+      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate></div>
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
     </div>
   );
@@ -2656,7 +2665,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   useEffect(()=>{
     setInvestigationOpen(false);
     if(!localStorage.getItem("cashFlowTourSeen_v2")){
-      const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},isMobile?800:1500);
+      const t=setTimeout(()=>{setTourStep(0);setTourVisible(true);},800);
       return()=>clearTimeout(t);
     }
   },[]);
@@ -3666,7 +3675,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </div>
       )}
 
-      {isMobile&&showAnalysisSuggestion&&(
+      {isMobile&&showAnalysisSuggestion&&!investigationOpen&&(
         <div style={{position:"fixed",right:0,top:"38%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
           <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
             <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>

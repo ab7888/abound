@@ -3397,7 +3397,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
 
   function GroupedSection(){
-    const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").filter(cat=>{
+    const spendCats=categories.filter(c=>c!=="Salary").filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;

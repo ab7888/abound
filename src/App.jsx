@@ -620,7 +620,7 @@ async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
     const res = await fetch("/api/categorise",{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({model:"claude-3-5-haiku-20241022",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
+      body:JSON.stringify({model:"claude-3-haiku-20240307",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
       signal: ctrl.signal,
     });
     if(!res.ok){

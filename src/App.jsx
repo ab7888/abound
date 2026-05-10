@@ -683,12 +683,13 @@ Rules (be strict — follow these exactly):
 - Card Repayment: outgoing payments TO a credit card — narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", or any "PAYMENT TO [CARD NAME]"
 - Salary: incoming credits from an employer — payroll, BACS from employer, wages. Also use Salary for any large incoming payment (£500+) where the source is not clearly a shop refund or person transfer.
 - Other Payments: ATM withdrawals, unclear bank transfers, cash, anything not matching above
+- IMPORTANT: Transactions marked [INCOMING CREDIT] are money coming IN (refunds, cashback, credits). Do NOT assign them Memberships, Food, Travel, Rent, or other spend categories. Use Salary (if employer/wages), Transfers (if from a person), or Other Payments.
 
 Every transaction MUST get a category — no nulls. If genuinely unsure → Other Payments.
 Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
 
 Transactions:
-${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}`).join("\n")}`;
+${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}${t.isIncome?" [INCOMING CREDIT]":""}`).join("\n")}`;
 
   {
     const BATCH = 30;
@@ -777,9 +778,14 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
   return withIncome.map(t=>{
     if (t.category!==null) return t;
     const cat = results.get(t.narrative+t.date+t.amount)||"Other Payments";
+    // Income should never be classified as a spend category
+    if(t.isIncome && !["Salary","Transfers","Other Payments"].includes(cat)){
+      return {...t, category:"Other Payments"};
+    }
     if(cat==="Other Payments"){
       const key = t.narrative.toLowerCase().replace(/[^a-z0-9 ]/g," ").replace(/\s+/g," ").trim();
-      if(monthlyMembershipKeys.has(key)) return {...t, category:"Memberships"};
+      // Don't promote income transactions to Memberships via the monthly heuristic
+      if(!t.isIncome && monthlyMembershipKeys.has(key)) return {...t, category:"Memberships"};
     }
     return {...t, category:cat};
   });
@@ -3602,17 +3608,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {currentStep?.cursorTarget&&(
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
-            {/* Tour card */}
-            <div style={{position:"fixed",bottom:isMobile?"1.5vh":32,right:isMobile?"1.5vw":28,left:"auto",width:isMobile?"46vw":440,maxWidth:isMobile?220:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"1.2vh 1.5vw":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?"0.5vh":14}}>
+            {/* Tour card — fixed to iPhone 13 Pro proportions (390×844) then scaled */}
+            {(()=>{const ts=isMobile?Math.min(window.innerWidth/390,window.innerHeight/844):1;return(
+            <div style={{position:"fixed",bottom:isMobile?13:32,right:isMobile?6:28,left:"auto",width:isMobile?180:440,maxWidth:isMobile?180:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"10px 8px":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)",transform:isMobile?`scale(${ts})`:"none",transformOrigin:"bottom right"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?4:14}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:isMobile?"1.4vw":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?"0.4vh":7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
-                  <div style={{fontSize:isMobile?"clamp(11px,3.2vw,14px)":20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+                  <div style={{fontSize:isMobile?6:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?13:20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
                 <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:isMobile?"clamp(9px,2.6vw,12px)":14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 0.6vh":"0.6vh 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?10:14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -3654,6 +3661,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 </div>
               )}
             </div>
+            );})()}
           </div>
         );
       })()}
@@ -4494,6 +4502,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
                   // Build Claude prompt with structured data
                   async function fetchGoalsAdvice2(){
+                    if(!goalsText.trim()) return;
                     setGoalsLoading(true);setGoalsAdvice("");
                     try{
                       const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
@@ -4506,15 +4515,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 - ${avgWeeklyNet>=0?"Saving £"+Math.round(avgWeeklyNet):"Spending £"+Math.round(Math.abs(avgWeeklyNet))+" more than coming in"} each week
 - Balance in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unclear"}
 - ${goalLine}${overrideLine?"\n- "+overrideLine:""}
-${goalsText.trim()?`\nWhat they said: "${goalsText}"`:""}
+- Goals: "${goalsText.trim()}"
 
 Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual numbers. Short sentences. Max 60 words total. No bullet points, no intro, just the advice.`;
-                      const payload={model:"claude-haiku-4-5-20251001",max_tokens:200,messages:[{role:"user",content:prompt}]};
-                      const r=await fetch("/api/categorise",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
-                      if(!r.ok)throw new Error();
-                      const d=await r.json();
-                      const text=d.content?.[0]?.text?.trim()||null;
-                      if(!text)throw new Error();
+                      const text=await callClaude(prompt,200);
                       setGoalsAdvice(text);
                     }catch(e){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
                     setGoalsLoading(false);
@@ -4627,16 +4631,20 @@ Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual number
                             </div>
                           );
                         })()}
-                        <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="Anything else? e.g. paying off a credit card, building an emergency fund..." rows={2}
-                          style={{...inputStyle,width:"100%",marginTop:8,resize:"vertical",lineHeight:1.5}}/>
+                        <div style={{marginTop:8}}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",marginBottom:4}}>Your goals <span style={{color:"#ef4444"}}>*</span></div>
+                          <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. paying off a credit card, building an emergency fund, saving for a holiday..." rows={3}
+                            style={{...inputStyle,width:"100%",resize:"vertical",lineHeight:1.5,border:`1px solid ${goalsText.trim()?"rgba(99,102,241,0.4)":"rgba(239,68,68,0.3)"}`}}/>
+                          {!goalsText.trim()&&<div style={{fontSize:10,color:"#ef4444",marginTop:3}}>Required — tell us your goals to get personalised advice</div>}
+                        </div>
                       </div>
 
                       {/* ── Claude advice ── */}
                       {(()=>{
                         return(
                           <div>
-                            <button onClick={fetchGoalsAdvice2} disabled={goalsLoading}
-                              style={{width:"100%",padding:"10px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:goalsLoading?"default":"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:"0 2px 10px rgba(99,102,241,0.3)",opacity:goalsLoading?0.7:1}}>
+                            <button onClick={fetchGoalsAdvice2} disabled={goalsLoading||!goalsText.trim()}
+                              style={{width:"100%",padding:"10px 0",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:(goalsLoading||!goalsText.trim())?"not-allowed":"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:goalsText.trim()?"0 2px 10px rgba(99,102,241,0.3)":"none",opacity:goalsLoading?0.7:1,transition:"all 0.2s"}}>
                               {goalsLoading?"Thinking...":"Get personalised advice →"}
                             </button>
                             {goalsLoading&&(

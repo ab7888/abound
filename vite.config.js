@@ -1,12 +1,25 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import https from 'https'
+
+function httpsGet(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' } }, (res) => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data) }); } catch(e) { reject(new Error('Invalid JSON')); } });
+    });
+    req.on('error', reject);
+    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
+  });
+}
 
 function stockApiDevPlugin() {
   return {
     name: 'stock-api-dev',
     configureServer(server) {
-      server.middlewares.use('/api/stock-data', async (req, res) => {
+      server.middlewares.use('/api/stock-data', (req, res) => {
         if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
         let body = '';
         req.on('data', chunk => { body += chunk; });
@@ -14,14 +27,13 @@ function stockApiDevPlugin() {
           try {
             const { ticker } = JSON.parse(body);
             const symbol = (ticker || '').trim().toUpperCase();
-            const url = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency`;
-            const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; Abound/1.0)' } });
-            if (!r.ok) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
-            const data = await r.json();
+            const url = `https://query2.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent`;
+            const { status, body: data } = await httpsGet(url);
+            if (status !== 200) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
             const quote = data?.quoteResponse?.result?.[0];
             if (!quote) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice ?? null }));
+            res.end(JSON.stringify({ ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice ?? null, change: quote.regularMarketChange ?? null, changePct: quote.regularMarketChangePercent ?? null }));
           } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: e.message }));

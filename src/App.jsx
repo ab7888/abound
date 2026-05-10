@@ -613,9 +613,9 @@ function normalizeMerchant(narrative) {
   return words.slice(0,2).join(" ");
 }
 
-async function callClaude(prompt, maxTokens=800) {
+async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
   const ctrl = new AbortController();
-  const timer = setTimeout(()=>ctrl.abort(), 8000);
+  const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
   try {
     const res = await fetch("/api/categorise",{
       method:"POST",
@@ -623,7 +623,10 @@ async function callClaude(prompt, maxTokens=800) {
       body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
       signal: ctrl.signal,
     });
-    if(!res.ok) throw new Error(`${res.status}`);
+    if(!res.ok){
+      const errBody=await res.json().catch(()=>({}));
+      throw new Error(errBody?.error?.message||`HTTP ${res.status}`);
+    }
     const data = await res.json();
     return data.content[0].text.trim();
   } finally {
@@ -4518,9 +4521,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 - Goals: "${goalsText.trim()}"
 
 Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual numbers. Short sentences. Max 60 words total. No bullet points, no intro, just the advice.`;
-                      const text=await callClaude(prompt,200);
+                      const text=await callClaude(prompt,200,30000);
                       setGoalsAdvice(text);
-                    }catch(e){setGoalsAdvice("Couldn't load advice right now. Please try again.");}
+                    }catch(e){
+                      console.error("Goals advice error:",e);
+                      setGoalsAdvice(`Couldn't load advice right now — ${e.message||"please try again"}.`);
+                    }
                     setGoalsLoading(false);
                   }
 

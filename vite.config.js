@@ -5,13 +5,13 @@ import https from 'https'
 
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' } }, (res) => {
+    const req = https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', 'Accept': 'application/json, text/plain, */*', 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://finance.yahoo.com/', 'Origin': 'https://finance.yahoo.com' } }, (res) => {
       let data = '';
       res.on('data', c => { data += c; });
-      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data) }); } catch(e) { reject(new Error('Invalid JSON')); } });
+      res.on('end', () => { try { resolve({ status: res.statusCode, body: JSON.parse(data) }); } catch(e) { resolve({ status: res.statusCode, body: null }); } });
     });
     req.on('error', reject);
-    req.setTimeout(8000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.setTimeout(10000, () => { req.destroy(); reject(new Error('Timeout')); });
   });
 }
 
@@ -27,13 +27,25 @@ function stockApiDevPlugin() {
           try {
             const { ticker } = JSON.parse(body);
             const symbol = (ticker || '').trim().toUpperCase();
-            const url = `https://query2.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent`;
-            const { status, body: data } = await httpsGet(url);
-            if (status !== 200) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
-            const quote = data?.quoteResponse?.result?.[0];
-            if (!quote) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
+            // Try quote API first
+            let result = null;
+            const q = await httpsGet(`https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent`);
+            const quote = q.status === 200 && q.body?.quoteResponse?.result?.[0];
+            if (quote && quote.regularMarketPrice != null) {
+              result = { ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice, change: quote.regularMarketChange ?? null, changePct: quote.regularMarketChangePercent ?? null };
+            }
+            // Fallback: chart API
+            if (!result) {
+              const c = await httpsGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`);
+              const meta = c.status === 200 && c.body?.chart?.result?.[0]?.meta;
+              if (meta && meta.regularMarketPrice != null) {
+                const prev = meta.previousClose ?? meta.chartPreviousClose ?? meta.regularMarketPrice;
+                result = { ticker: meta.symbol || symbol, name: meta.longName || meta.shortName || symbol, currency: meta.currency || 'USD', price: meta.regularMarketPrice, change: meta.regularMarketPrice - prev, changePct: prev ? ((meta.regularMarketPrice - prev) / prev) * 100 : null };
+              }
+            }
+            if (!result) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice ?? null, change: quote.regularMarketChange ?? null, changePct: quote.regularMarketChangePercent ?? null }));
+            res.end(JSON.stringify(result));
           } catch (e) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: e.message }));

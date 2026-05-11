@@ -347,16 +347,16 @@ function readExcelFile(file) {
           : XLSX.read(new Uint8Array(e.target.result), {type:"array"});
         const sheet = wb.Sheets[wb.SheetNames[0]];
         const allRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:"", raw:true});
-        const dateRx = /^date$/i;
-        const descRx = /^(description|narrative|details|merchant|payee|reference)$/i;
-        const amtRx  = /^(amount|value|debit|credit|trans)$/i;
+        const dateRx = /\bdate\b/i;
+        const descRx = /\b(description|narrative|details|merchant|payee|reference|transaction.?desc)\b/i;
+        const amtRx  = /\b(amount|debit|credit|value)\b/i;
         let headerRowIndex = -1;
         let dateKey, descKey, amtKey;
         for (let i = 0; i < Math.min(allRows.length, 20); i++) {
           const row = allRows[i].map(c => String(c).trim());
-          const dIdx = row.findIndex(c => dateRx.test(c));
+          const dIdx = row.findIndex(c => dateRx.test(c) && !/update|expiry|birth/i.test(c));
           const nIdx = row.findIndex(c => descRx.test(c));
-          const aIdx = row.findIndex(c => amtRx.test(c));
+          const aIdx = row.findIndex(c => amtRx.test(c) && !/balance|date/i.test(c));
           if (dIdx !== -1 && nIdx !== -1 && aIdx !== -1) {
             headerRowIndex = i;
             dateKey = row[dIdx]; descKey = row[nIdx]; amtKey = row[aIdx];
@@ -547,8 +547,8 @@ function normaliseRows(rawRows, accountLabel) {
                || keys.find(k=>/desc|narr|merchant|payee|detail|counter/i.test(k));
 
   // Detect split debit/credit column pattern (Lloyds, Halifax, Barclays, NatWest, Santander)
-  const creditKey = keys.find(k=>/^(money.?in|credit|paid.?in|deposit|money in \([^)]+\)|credit \([^)]+\))$/i.test(k.trim()));
-  const debitKey  = keys.find(k=>/^(money.?out|debit|paid.?out|withdrawal|money out \([^)]+\)|debit \([^)]+\))$/i.test(k.trim()));
+  const creditKey = keys.find(k=>/\b(credit|money.?in|paid.?in|deposit)\b/i.test(k.trim()) && !/\b(debit|out)\b/i.test(k.trim()));
+  const debitKey  = keys.find(k=>/\b(debit|money.?out|paid.?out|withdrawal)\b/i.test(k.trim()) && !/\b(credit|in)\b/i.test(k.trim()));
   const splitMode = !!(creditKey && debitKey);
 
   // Single-amount column fallback (Monzo, Starling, Revolut, Wise, Tide)

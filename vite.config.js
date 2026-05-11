@@ -27,20 +27,19 @@ function stockApiDevPlugin() {
           try {
             const { ticker } = JSON.parse(body);
             const symbol = (ticker || '').trim().toUpperCase();
-            // Try quote API first
+            // Chart API — returns current price + 6mo weekly history
+            const c = await httpsGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1wk`);
             let result = null;
-            const q = await httpsGet(`https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent`);
-            const quote = q.status === 200 && q.body?.quoteResponse?.result?.[0];
-            if (quote && quote.regularMarketPrice != null) {
-              result = { ticker: quote.symbol, name: quote.longName || quote.shortName || quote.symbol, currency: quote.currency || 'USD', price: quote.regularMarketPrice, change: quote.regularMarketChange ?? null, changePct: quote.regularMarketChangePercent ?? null };
-            }
-            // Fallback: chart API
-            if (!result) {
-              const c = await httpsGet(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`);
-              const meta = c.status === 200 && c.body?.chart?.result?.[0]?.meta;
+            if (c.status === 200 && c.body?.chart?.result?.[0]) {
+              const r = c.body.chart.result[0];
+              const meta = r.meta;
               if (meta && meta.regularMarketPrice != null) {
-                const prev = meta.previousClose ?? meta.chartPreviousClose ?? meta.regularMarketPrice;
-                result = { ticker: meta.symbol || symbol, name: meta.longName || meta.shortName || symbol, currency: meta.currency || 'USD', price: meta.regularMarketPrice, change: meta.regularMarketPrice - prev, changePct: prev ? ((meta.regularMarketPrice - prev) / prev) * 100 : null };
+                const timestamps = r.timestamp || [];
+                const closes = r.indicators?.quote?.[0]?.close || [];
+                const history = timestamps.map((ts, i) => ({ date: new Date(ts * 1000).toISOString().slice(0, 10), close: closes[i] })).filter(h => h.close != null);
+                const price = meta.regularMarketPrice;
+                const prev = meta.previousClose ?? meta.chartPreviousClose ?? price;
+                result = { ticker: meta.symbol || symbol, name: meta.longName || meta.shortName || symbol, currency: meta.currency || 'USD', price, change: price - prev, changePct: prev ? ((price - prev) / prev) * 100 : null, history };
               }
             }
             if (!result) { res.writeHead(404, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Ticker not found' })); return; }

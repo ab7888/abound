@@ -15,7 +15,7 @@ function httpsGet(url) {
       res.on("data", chunk => { data += chunk; });
       res.on("end", () => {
         try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
-        catch (e) { resolve({ status: res.statusCode, body: null, raw: data.slice(0, 200) }); }
+        catch (e) { resolve({ status: res.statusCode, body: null }); }
       });
     });
     req.on("error", reject);
@@ -23,9 +23,41 @@ function httpsGet(url) {
   });
 }
 
-// Try the v8 quote endpoint
-async function tryQuoteApi(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent`;
+async function fetchChartData(symbol) {
+  // Fetch 6 months of weekly data — covers actual weeks + gives forecast trend
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1wk`;
+  const { status, body } = await httpsGet(url);
+  if (status !== 200 || !body) return null;
+
+  const result = body?.chart?.result?.[0];
+  if (!result) return null;
+
+  const meta = result.meta;
+  if (!meta || meta.regularMarketPrice == null) return null;
+
+  const timestamps = result.timestamp || [];
+  const closes = result.indicators?.quote?.[0]?.close || [];
+
+  const history = timestamps
+    .map((ts, i) => ({ date: new Date(ts * 1000).toISOString().slice(0, 10), close: closes[i] }))
+    .filter(h => h.close != null);
+
+  const price = meta.regularMarketPrice;
+  const prev = meta.previousClose ?? meta.chartPreviousClose ?? price;
+
+  return {
+    ticker: meta.symbol || symbol,
+    name: meta.longName || meta.shortName || symbol,
+    currency: meta.currency || "USD",
+    price,
+    change: price - prev,
+    changePct: prev ? ((price - prev) / prev) * 100 : null,
+    history,
+  };
+}
+
+async function fetchQuoteOnly(symbol) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/quote?symbols=${encodeURIComponent(symbol)}&fields=regularMarketPrice,longName,shortName,currency,regularMarketChange,regularMarketChangePercent,previousClose`;
   const { status, body } = await httpsGet(url);
   if (status !== 200 || !body) return null;
   const quote = body?.quoteResponse?.result?.[0];
@@ -37,25 +69,7 @@ async function tryQuoteApi(symbol) {
     price: quote.regularMarketPrice,
     change: quote.regularMarketChange ?? null,
     changePct: quote.regularMarketChangePercent ?? null,
-  };
-}
-
-// Fallback: chart API (more permissive, different structure)
-async function tryChartApi(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
-  const { status, body } = await httpsGet(url);
-  if (status !== 200 || !body) return null;
-  const meta = body?.chart?.result?.[0]?.meta;
-  if (!meta || meta.regularMarketPrice == null) return null;
-  return {
-    ticker: meta.symbol || symbol,
-    name: meta.longName || meta.shortName || meta.symbol || symbol,
-    currency: meta.currency || "USD",
-    price: meta.regularMarketPrice,
-    change: meta.regularMarketPrice - (meta.previousClose ?? meta.chartPreviousClose ?? meta.regularMarketPrice),
-    changePct: meta.previousClose
-      ? ((meta.regularMarketPrice - meta.previousClose) / meta.previousClose) * 100
-      : null,
+    history: [],
   };
 }
 
@@ -68,7 +82,8 @@ export default async function handler(req, res) {
   const symbol = ticker.trim().toUpperCase();
 
   try {
-    const result = await tryQuoteApi(symbol) || await tryChartApi(symbol);
+    // Chart API gives us both current price and history — preferred
+    const result = await fetchChartData(symbol) || await fetchQuoteOnly(symbol);
     if (!result) return res.status(404).json({ error: `Ticker "${symbol}" not found` });
     res.status(200).json(result);
   } catch (err) {

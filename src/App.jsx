@@ -2602,10 +2602,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
       try{
         const res=await fetch('/api/stock-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ticker:s.ticker})});
         const d=await res.json();
-        if(d.currentPrice) setStockData(prev=>({...prev,[s.ticker]:d}));
+        if(d.price!=null) setStockData(prev=>({...prev,[s.ticker]:{...d,currentPrice:d.price}}));
       }catch(e){}
     });
-  },[]);
+  },[stocks.map(s=>s.ticker).join(',')]);
   const [highlightCashBal, setHighlightCashBal] = useState(false);
   const highlightCashBalTimer = useRef(null);
   const [goalsText, setGoalsText] = useState("");

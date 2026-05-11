@@ -4512,15 +4512,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                       const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
                       const goalLine=goalAmt>0?`Savings goal: £${goalAmt.toLocaleString()}${targetDate?" by "+targetDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"}):""}. Projected to reach it in ${weeksToGoal?Math.ceil(weeksToGoal/4.33)+" months":"unknown — spending exceeds income"}.`:"No specific savings goal set.";
                       const overrideLine=forecastOverrides.length?`Upcoming changes: ${forecastOverrides.map(o=>`${o.cat} → £${o.newAmt}${isMonthly(o.cat)?"/mo":"/wk"} from ${forecastWeeks.find(w=>w.key===o.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short"})||"soon"}`).join(", ")}.`:"";
-                      const prompt=`You're a straight-talking money friend giving quick advice. Here's the data:
-- Spending £${weeklySpend}/wk on average
-- Biggest spend: ${topCat?.c||"unknown"} at £${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk
-- ${avgWeeklyNet>=0?"Saving £"+Math.round(avgWeeklyNet):"Spending £"+Math.round(Math.abs(avgWeeklyNet))+" more than coming in"} each week
-- Balance in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unclear"}
+                      const prompt=`You're a brutally honest but warm money mate texting a friend. Their situation:
+- Weekly spend: £${weeklySpend}/wk — biggest chunk is ${topCat?.c||"unknown"} at £${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk
+- Net each week: ${avgWeeklyNet>=0?"saving £"+Math.round(avgWeeklyNet):"OVERSPENDING by £"+Math.round(Math.abs(avgWeeklyNet))}
+- Cash in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unclear"}
 - ${goalLine}${overrideLine?"\n- "+overrideLine:""}
-- Goals: "${goalsText.trim()}"
+- What they actually said they want: "${goalsText.trim()}"
 
-Give 2 sharp, specific tips. Talk like a mate, not a bank. Use the actual numbers. Short sentences. Max 60 words total. No bullet points, no intro, just the advice.`;
+Reply directly to what they said they want. Use their exact words back at them. Be specific with the numbers. Sound like a mate who's good with money — casual, direct, no waffle. No bullet points. 2-3 sentences max. Don't start with "Hey" or their name. Just get straight into it.`;
                       const text=await callClaude(prompt,200,30000);
                       setGoalsAdvice(text);
                     }catch(e){

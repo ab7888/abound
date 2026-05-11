@@ -1860,6 +1860,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [mobileAddingCat, setMobileAddingCat] = useState(false);
   const [mobileCatInput, setMobileCatInput] = useState("");
   const dragRef = useRef(null);
+  const [undoHistory, setUndoHistory] = useState([]);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
   const [swipeOffset, setSwipeOffset] = useState(0);
@@ -1878,14 +1879,16 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allBuckets=[...spendCats,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
   const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
   function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
-  function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);}
+  function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);setUndoHistory(h=>[...h,{narrative,cat}]);}
   function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
   function undoItem(narrative,fromCat){if(fromCat!=="Skip")setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));}
+  function undoLast(){if(!undoHistory.length)return;const last=undoHistory[undoHistory.length-1];undoItem(last.narrative,last.cat);setUndoHistory(h=>h.slice(0,-1));}
   function addCategory(){const t=newCat.trim().replace(/^\S/,c=>c.toUpperCase());if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
   function removeCategory(cat){if(DEFAULT_CATEGORIES.includes(cat))return;setCategories(c=>c.filter(x=>x!==cat));setItems(p=>p.map(x=>x.category===cat?{...x,category:"Other Payments"}:x));setBucketCounts(p=>{const n={...p};delete n[cat];return n;});}
   function handleConfirm(){const map={};items.forEach(i=>{map[i.narrative]=i.category==="Skip"?"Other Payments":i.category;});onDone(transactions.map(t=>t.category==="Other Payments"&&map[t.narrative]?{...t,category:map[t.narrative]}:t),categories);}
   const pct=allItems.length?Math.round(((sorted.length+skipped.length)/allItems.length)*100):100;
   const txnCountByCat=useMemo(()=>{const counts={};transactions.forEach(t=>{if(t.category&&t.category!=="Other Payments")counts[t.category]=(counts[t.category]||0)+1;});return counts;},[transactions,items]);
+  useEffect(()=>{const handler=e=>{if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undoLast();}};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);},[undoHistory]);
   const SWIPE_THRESHOLD=80,CATS_PER_PAGE=4;
   const totalPages=Math.ceil(allBuckets.length/CATS_PER_PAGE);
   const visibleMobileCats=allBuckets.slice(mobileCatPage*CATS_PER_PAGE,(mobileCatPage+1)*CATS_PER_PAGE);
@@ -1946,6 +1949,12 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
         <div style={{padding:"14px 20px 12px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5}}>DROP INTO A CATEGORY</div>
           <div style={{flex:1}}/>
+          {undoHistory.length>0&&(
+            <button onClick={undoLast} title="Undo last (Ctrl+Z)" style={{padding:"5px 12px",background:"rgba(99,102,241,0.10)",border:"1px solid #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              Undo
+            </button>
+          )}
           {showAddCat?(
             <div style={{display:"flex",gap:6}}>
               <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>

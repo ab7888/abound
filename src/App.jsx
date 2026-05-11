@@ -1860,7 +1860,6 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const [mobileAddingCat, setMobileAddingCat] = useState(false);
   const [mobileCatInput, setMobileCatInput] = useState("");
   const dragRef = useRef(null);
-  const hoveredCatRef = useRef(null);
   const [undoHistory, setUndoHistory] = useState([]);
   const touchStartX = useRef(null);
   const touchStartY = useRef(null);
@@ -1880,9 +1879,8 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const allBuckets=[...spendCats,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
   const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
   function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
-  function setHover(cat){if(hoveredCatRef.current===cat)return;hoveredCatRef.current=cat;setHoveredCat(cat);}
   function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);setUndoHistory(h=>[...h,{narrative,cat}]);}
-  function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHover(null);}
+  function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
   function undoItem(narrative,fromCat){if(fromCat!=="Skip")setBucketCounts(p=>({...p,[fromCat]:Math.max(0,(p[fromCat]||1)-1)}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:"Other Payments"}:x));}
   function undoLast(){if(!undoHistory.length)return;const last=undoHistory[undoHistory.length-1];undoItem(last.narrative,last.cat);setUndoHistory(h=>h.slice(0,-1));}
   function addCategory(){const t=newCat.trim().replace(/^\S/,c=>c.toUpperCase());if(!t||categories.includes(t))return;setCategories(c=>[...c,t]);setNewCat("");setShowAddCat(false);}
@@ -1919,7 +1917,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
           {visible.map((item,idx)=>{
             const isTop=idx===0;
             return(
-              <div key={item.narrative} draggable={isTop} onDragStart={e=>{dragRef.current=item.narrative;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',item.narrative);}} onDragEnd={()=>{dragRef.current=null;setHover(null);}}
+              <div key={item.narrative} draggable={isTop} onDragStart={e=>{dragRef.current=item.narrative;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',item.narrative);}} onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
                 style={{background:isTop?"linear-gradient(135deg,#1e1b38,#2d2a52)":"rgba(20,18,42,0.6)",border:`1px solid ${isTop?"#4338ca":"#1f1d35"}`,borderRadius:12,padding:isTop?"14px 14px 12px":"8px 14px",cursor:isTop?"grab":"default",opacity:isTop?1:0.5-(idx*0.08),transform:`scale(${1-idx*0.01})`,transformOrigin:"top center",userSelect:"none",flexShrink:0,boxShadow:isTop?"0 4px 20px rgba(0,0,0,0.4)":"none",transition:"opacity 0.2s"}}>
                 {isTop&&<div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:1,marginBottom:6}}>DRAG TO SORT ↗</div>}
                 <div style={{fontSize:isTop?13:11,fontWeight:isTop?600:400,color:isTop?"#e0e7ff":"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
@@ -1951,12 +1949,10 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
         <div style={{padding:"14px 20px 12px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
           <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5}}>DROP INTO A CATEGORY</div>
           <div style={{flex:1}}/>
-          {undoHistory.length>0&&(
-            <button onClick={undoLast} title="Undo last (Ctrl+Z)" style={{padding:"5px 12px",background:"rgba(99,102,241,0.10)",border:"1px solid #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-              Undo
-            </button>
-          )}
+          <button onClick={undoLast} disabled={!undoHistory.length} title="Undo last (Ctrl+Z)" style={{padding:"5px 12px",background:undoHistory.length?"rgba(99,102,241,0.10)":"rgba(255,255,255,0.03)",border:`1px solid ${undoHistory.length?"#4338ca":"#2d2a6e"}`,borderRadius:7,color:undoHistory.length?"#818cf8":"#374151",fontSize:11,fontWeight:700,cursor:undoHistory.length?"pointer":"default",display:"flex",alignItems:"center",gap:5,transition:"all 0.2s"}}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+            Undo
+          </button>
           {showAddCat?(
             <div style={{display:"flex",gap:6}}>
               <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>
@@ -1973,7 +1969,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
             const isDefault=DEFAULT_CATEGORIES.includes(cat);
             return(
-              <div key={cat} onDragEnter={e=>{e.preventDefault();setHover(cat);}} onDragOver={e=>{e.preventDefault();setHover(cat);}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHover(null);}} onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
+              <div key={cat} onDragEnter={e=>{e.preventDefault();setHoveredCat(cat);}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
                 style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}55`}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",boxShadow:isHovered?`0 0 24px ${color}33`:"none"}}>
                 {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:6,right:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
                 <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon(cat,isHovered?"#fff":color,24)}</div>
@@ -1985,7 +1981,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             );
           })}
           {catRepaymentInCats&&(()=>{const crHovered=hoveredCat==="Card Repayment";const crColor="#ec4899";const crCount=(txnCountByCat["Card Repayment"]||0)+(bucketCounts["Card Repayment"]||0);return(
-            <div key="Card Repayment" onDragEnter={e=>{e.preventDefault();setHover("Card Repayment");}} onDragOver={e=>{e.preventDefault();setHover("Card Repayment");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHover(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Card Repayment");}}
+            <div key="Card Repayment" onDragEnter={e=>{e.preventDefault();setHoveredCat("Card Repayment");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Card Repayment");}}
               style={{border:`2px ${crHovered?"solid":"dashed"} ${crHovered?crColor:`${crColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:crHovered?`${crColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:crHovered?`0 0 24px ${crColor}33`:"none"}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon("Card Repayment",crHovered?"#fff":crColor,24)}</div>
               <div style={{fontSize:13,fontWeight:700,color:crHovered?"#fff":crColor,textAlign:"center",lineHeight:1.3}}>Card Repayment</div>
@@ -1995,7 +1991,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
             </div>
           );})()}
           {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
-            <div onDragEnter={e=>{e.preventDefault();setHover("Skip");}} onDragOver={e=>{e.preventDefault();setHover("Skip");}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHover(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
+            <div onDragEnter={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
               style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,opacity:isHovered?1:0.35,marginTop:2}}><svg viewBox="0 0 20 20" width="24" height="24" fill="none"><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
               <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center",lineHeight:1.3}}>Not sure</div>

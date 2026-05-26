@@ -2894,13 +2894,14 @@ function getLastWorkingDay(year, month) {
             const templateTxns=catTxns.filter(t=>t.date.getMonth()===latestMonth&&t.date.getFullYear()===latestYear);
             const result=Array(forecastWeeks.length).fill(0);
             const lastActWk=actualWeeks[actualWeeks.length-1];
+            const todayMidnight=new Date();todayMidnight.setHours(0,0,0,0);
             templateTxns.forEach(t=>{
               const dom=t.date.getDate();
-              // If salary falls in the current partial week but after the statement cutoff, put it in forecast week 0
-              if(lastActWk){
-                const chk=new Date(lastActWk.date);
+              // If we're currently inside the last actual week and salary falls later this week, add to forecast week 0
+              if(lastActWk&&todayMidnight>=lastActWk.date&&todayMidnight<=lastActWk.sunday){
+                const chk=new Date(todayMidnight);chk.setDate(chk.getDate()+1);
                 while(chk<=lastActWk.sunday){
-                  if(chk.getDate()===dom&&chk>mostRecentDate){result[0]+=t.amount;break;}
+                  if(chk.getDate()===dom){result[0]+=t.amount;break;}
                   chk.setDate(chk.getDate()+1);
                 }
               }

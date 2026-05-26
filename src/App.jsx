@@ -2695,8 +2695,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     "Memberships":"Subscriptions — streaming, gym, phone contracts, insurance, road tax, and any recurring services.",
     "Transfers":"Money sent or received to/from friends and family — excluded from your spend totals as it's not really spending.",
     "Other Payments":"Transactions that didn't fit a specific category.",
-    "Card Repayment":"Money moved to pay your credit card. Excluded from Total Spend — it's not new spending.",
-    "Total Spend":"Sum of all real spend including Card Repayments — money that left this account.",
+    "Card Repayment":"Money moved to pay your credit card — not counted as spend in Net Movement.",
     "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
     "Cash Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
   };
@@ -2894,8 +2893,17 @@ function getLastWorkingDay(year, month) {
             // All salary transactions in that same calendar month = our template
             const templateTxns=catTxns.filter(t=>t.date.getMonth()===latestMonth&&t.date.getFullYear()===latestYear);
             const result=Array(forecastWeeks.length).fill(0);
+            const lastActWk=actualWeeks[actualWeeks.length-1];
             templateTxns.forEach(t=>{
               const dom=t.date.getDate();
+              // If salary falls in the current partial week but after the statement cutoff, put it in forecast week 0
+              if(lastActWk){
+                const chk=new Date(lastActWk.date);
+                while(chk<=lastActWk.sunday){
+                  if(chk.getDate()===dom&&chk>mostRecentDate){result[0]+=t.amount;break;}
+                  chk.setDate(chk.getDate()+1);
+                }
+              }
               forecastWeeks.forEach((w,i)=>{
                 const d=new Date(w.date);
                 while(d<=w.sunday){if(d.getDate()===dom){result[i]+=t.amount;break;}d.setDate(d.getDate()+1);}
@@ -2982,7 +2990,7 @@ function getLastWorkingDay(year, month) {
       });
     });
     return out;
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides,nonRecurring]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides,nonRecurring,mostRecentDate]);
 
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
@@ -3289,17 +3297,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/><td/>
           </tr>
         )}
-        <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
-          <td data-sticky-label style={{background:"rgba(255,255,255,0.03)"}}/>
-          <td data-sticky-label2 style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.03)"}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
-          {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
-          <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
-          {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
-          <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
-          <td/><td/>
-        </tr>
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
@@ -3447,17 +3444,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/><td/>
           </tr>
         )}
-        <tr className="abound-row" data-tour="totalspend" style={{background:"rgba(255,255,255,0.03)",borderBottom:"1px solid #2d2a6e"}}>
-          <td data-sticky-label style={{background:"rgba(255,255,255,0.03)"}}/>
-          <td data-sticky-label2 style={{padding:"8px 12px",fontSize:11,fontWeight:800,color:"#9ca3af",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.03)"}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Total Spend"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>TOTAL SPEND <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
-          {accActuals.map((v,i)=><td key={i} style={tdAmt("#c7d2fe",false,true)}>{fmtMoney(v)}</td>)}
-          <td style={tdTot(false)}>{fmtMoney(accActuals.reduce((a,b)=>a+b,0))}</td>
-          {accForecasts.map((v,i)=><td key={i} style={tdAmt(PURPLE,true,true)}>{fmtMoney(v)}</td>)}
-          <td style={tdTot(true)}>{fmtMoney(accForecasts.reduce((a,b)=>a+b,0))}</td>
-          <td/><td/>
-        </tr>
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}

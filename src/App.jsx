@@ -2894,12 +2894,13 @@ function getLastWorkingDay(year, month) {
             const templateTxns=catTxns.filter(t=>t.date.getMonth()===latestMonth&&t.date.getFullYear()===latestYear);
             const result=Array(forecastWeeks.length).fill(0);
             const lastActWk=actualWeeks[actualWeeks.length-1];
-            const todayMidnight=new Date();todayMidnight.setHours(0,0,0,0);
+            // Per-account cutoff: when did THIS account's data last update?
+            const accCutoff=transactions.filter(t=>t.account===acc).reduce((max,t)=>t.date>max?t.date:max,new Date(0));
             templateTxns.forEach(t=>{
               const dom=t.date.getDate();
-              // If we're currently inside the last actual week and salary falls later this week, add to forecast week 0
-              if(lastActWk&&todayMidnight>=lastActWk.date&&todayMidnight<=lastActWk.sunday){
-                const chk=new Date(todayMidnight);chk.setDate(chk.getDate()+1);
+              // If salary's DOM falls in the last actual week but after this account's data cutoff, it's pending — add to forecast week 0
+              if(lastActWk){
+                const chk=new Date(accCutoff);chk.setDate(chk.getDate()+1);
                 while(chk<=lastActWk.sunday){
                   if(chk.getDate()===dom){result[0]+=t.amount;break;}
                   chk.setDate(chk.getDate()+1);
@@ -2991,7 +2992,7 @@ function getLastWorkingDay(year, month) {
       });
     });
     return out;
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides,nonRecurring,mostRecentDate]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides,nonRecurring]);
 
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));

@@ -15,6 +15,50 @@ function httpsGet(url) {
   });
 }
 
+function extractStocksDevPlugin() {
+  return {
+    name: 'extract-stocks-dev',
+    configureServer(server) {
+      server.middlewares.use('/api/extract-stocks', (req, res) => {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let body = '';
+        req.on('data', chunk => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const { imageBase64, mediaType } = JSON.parse(body);
+            const validType = ['image/jpeg','image/png','image/gif','image/webp'].includes(mediaType) ? mediaType : 'image/jpeg';
+            const apiKey = env.ANTHROPIC_API_KEY || env.ANTHROPIC_KEY || '';
+            const r = await fetch('https://api.anthropic.com/v1/messages', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+              body: JSON.stringify({
+                model: 'claude-haiku-4-5-20251001', max_tokens: 512,
+                messages: [{ role: 'user', content: [
+                  { type: 'image', source: { type: 'base64', media_type: validType, data: imageBase64 } },
+                  { type: 'text', text: `Extract all stock/crypto/ETF holdings from this screenshot. Return ONLY a JSON array, no other text.\nEach item: {"ticker": "SYMBOL", "value": number_or_null}\n- ticker: the symbol without $ prefix (e.g. GOOGL, BTC-USD)\n- value: monetary value of the holding if shown, otherwise null\n- Ignore currency rows, totals, non-security items\nExample: [{"ticker":"AAPL","value":1250.50},{"ticker":"BTC-USD","value":null}]` },
+                ]}],
+              }),
+            });
+            const data = await r.json();
+            const text = data.content?.[0]?.text?.trim() || '';
+            const match = text.match(/\[[\s\S]*\]/);
+            if (!match) { res.writeHead(200, {'Content-Type':'application/json'}); res.end('[]'); return; }
+            const parsed = JSON.parse(match[0]);
+            const stocks = (Array.isArray(parsed) ? parsed : [])
+              .filter(s => s?.ticker)
+              .map(s => ({ ticker: s.ticker.trim().toUpperCase().replace(/^\$/, ''), value: typeof s.value === 'number' ? s.value : null }));
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(stocks));
+          } catch(e) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: e.message }));
+          }
+        });
+      });
+    },
+  };
+}
+
 function stockApiDevPlugin() {
   return {
     name: 'stock-api-dev',
@@ -62,6 +106,7 @@ return {
   plugins: [
     react(),
     stockApiDevPlugin(),
+    extractStocksDevPlugin(),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'favicon.svg', 'apple-touch-icon.png'],

@@ -613,19 +613,26 @@ function normalizeMerchant(narrative) {
   return words.slice(0,2).join(" ");
 }
 
+const SESSION_ID = crypto.randomUUID();
+
 async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
   const ctrl = new AbortController();
   const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
   try {
     const res = await fetch("/api/categorise",{
       method:"POST",
-      headers:{"content-type":"application/json"},
+      headers:{"content-type":"application/json","x-session-id":SESSION_ID},
       body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
       signal: ctrl.signal,
     });
     if(!res.ok){
       const errBody=await res.json().catch(()=>({}));
-      throw new Error(errBody?.error?.message||errBody?.message||errBody?.error||`HTTP ${res.status}`);
+      if(res.status===429 && errBody?.error==="limit_reached"){
+        const e=new Error(errBody.message||"Categorisation limit reached for this session.");
+        e.isLimitReached=true;
+        throw e;
+      }
+      throw new Error(errBody?.error?.message||errBody?.message||(typeof errBody?.error==="string"?errBody.error:null)||`HTTP ${res.status}`);
     }
     const data = await res.json();
     return data.content[0].text.trim();
@@ -635,6 +642,8 @@ async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
 }
 
 async function smartCategorise(transactions, userCategories, multipleAccounts, onProgress) {
+  let limitReachedEmitted = false;
+  function emitLimit(e) { if(e?.isLimitReached && !limitReachedEmitted){ limitReachedEmitted=true; onProgress({type:"limit_reached"}); } }
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
@@ -709,7 +718,8 @@ ${batch.map((t,i)=>`${i+1}. "${t.narrative}" £${Math.abs(t.amount).toFixed(2)}$
           const cat = cats[i];
           results.set(t.narrative+t.date+t.amount, allCats.includes(cat)?cat:merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats));
         });
-      } catch(_) {
+      } catch(e) {
+        emitLimit(e);
         batch.forEach(t=>results.set(t.narrative+t.date+t.amount, merchantLookup(t.narrative)||ruleBasedCat(t.narrative,allCats)));
       }
     }
@@ -752,7 +762,7 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
           txns.forEach(t=>results.set(t.narrative+t.date+t.amount, catName));
         });
         if(newCatsList.length>0) onProgress({type:"new_categories", categories:newCatsList});
-      } catch(_) {}
+      } catch(e) { emitLimit(e); }
     }
   }
 
@@ -1664,10 +1674,13 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
   const [step, setStep] = useState("loading");
   const [logLines, setLogLines] = useState([{text:"Starting AI categorisation...",done:false,active:true}]);
   const [autoCats, setAutoCats] = useState([]);
+  const [limitReached, setLimitReached] = useState(false);
   useEffect(()=>{
     (async()=>{
       const result = await smartCategorise(transactions, DEFAULT_CATEGORIES, multipleAccounts, update=>{
-        if(update?.type==="lookup_done"){
+        if(update?.type==="limit_reached"){
+          setLimitReached(true);
+        } else if(update?.type==="lookup_done"){
           setPct(10);
           setLogLines([
             {text:`Income & salary routed (${update.known} transactions)`,done:true,active:false},
@@ -1719,6 +1732,17 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
       <div style={{position:"fixed",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.025) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none"}}/>
 
       <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"16px 16px 120px":"40px 24px 120px",position:"relative",zIndex:1}}>
+
+        {/* AI limit reached notice */}
+        {limitReached&&(
+          <div style={{marginBottom:16,padding:"12px 16px",background:"rgba(251,191,36,0.06)",border:"1px solid rgba(251,191,36,0.2)",borderLeft:"3px solid #f59e0b",borderRadius:10,animation:"fadeUp 0.4s ease both",display:"flex",alignItems:"flex-start",gap:10}}>
+            <svg width="16" height="16" viewBox="0 0 20 20" fill="none" style={{flexShrink:0,marginTop:1}}><path d="M10 3L2 17h16L10 3z" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/><path d="M10 9v4M10 14.5v.5" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            <div>
+              <div style={{fontSize:13,fontWeight:700,color:"#fbbf24",marginBottom:2}}>AI categorisation limit reached</div>
+              <div style={{fontSize:12,color:"#92400e",lineHeight:1.5}}>Remaining transactions were categorised using built-in rules. You can still manually assign categories below.</div>
+            </div>
+          </div>
+        )}
 
         {/* Auto-created categories notice */}
         {autoCats.length>0&&(

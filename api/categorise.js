@@ -4,7 +4,7 @@
 const sessionCounts = new Map(); // sessionId → count
 const ipWindows    = new Map(); // ip → { count, windowStart }
 
-const SESSION_LIMIT  = 50;
+const SESSION_LIMIT  = 2; // temporary — set low for 429 testing
 const IP_LIMIT       = 200; // per rolling hour
 const IP_WINDOW_MS   = 60 * 60 * 1000;
 const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

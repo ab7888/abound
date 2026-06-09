@@ -1019,6 +1019,55 @@ function clearSession() {
   localStorage.removeItem(SESSION_KEY);
 }
 
+// ─── Forecast persistence ─────────────────────────────────────────────────────
+const FORECAST_KEY = "abound_last_forecast";
+const FORECAST_ACCURACY_KEY = "abound_prev_accuracy";
+
+function saveLastForecast(data) {
+  try { localStorage.setItem(FORECAST_KEY, JSON.stringify(data)); } catch {}
+}
+function loadLastForecast() {
+  try { const r = localStorage.getItem(FORECAST_KEY); return r ? JSON.parse(r) : null; } catch { return null; }
+}
+
+function computeAccuracy(saved, transactions) {
+  if (!saved?.weekStartDates?.length || !saved?.forecastByCategory) return null;
+  const mostRecentDate = transactions.reduce((max, t) => t.date > max ? t.date : max, new Date(0));
+  if (mostRecentDate.getTime() === 0) return null;
+  const lastMonday = getWeekMonday(mostRecentDate);
+  const actualWeekKeys = new Set(Array.from({length: 6}, (_, i) => {
+    const mon = new Date(lastMonday); mon.setDate(mon.getDate() - (5 - i) * 7);
+    return mon.toISOString().slice(0, 10);
+  }));
+  const overlapEntries = saved.weekStartDates.map((wk, i) => ({wk, i})).filter(({wk}) => actualWeekKeys.has(wk));
+  if (overlapEntries.length < 2) return null;
+  // Net spend per category per week (replicate weeklyByAccountCat sign convention)
+  const weeklyByCat = {};
+  transactions.forEach(t => {
+    if (t.category === "Salary" || t.category === "Card Repayment") return;
+    const key = getWeekMonday(t.date).toISOString().slice(0, 10);
+    if (!weeklyByCat[key]) weeklyByCat[key] = {};
+    weeklyByCat[key][t.category] = (weeklyByCat[key][t.category] || 0) + (-t.amount);
+  });
+  let totalForecast = 0, totalError = 0;
+  const catRows = [];
+  Object.entries(saved.forecastByCategory).forEach(([cat, fcstVals]) => {
+    let catForecast = 0, catActual = 0;
+    overlapEntries.forEach(({wk, i}) => {
+      catForecast += fcstVals[i] || 0;
+      catActual += Math.abs(weeklyByCat[wk]?.[cat] || 0);
+    });
+    if (catForecast < 1 && catActual < 1) return;
+    const diff = Math.round(catActual - catForecast);
+    const accuracy = catForecast > 0 ? Math.max(0, Math.round((1 - Math.abs(diff) / catForecast) * 100)) : null;
+    catRows.push({cat, forecast: Math.round(catForecast), actual: Math.round(catActual), diff, accuracy});
+    if (catForecast > 0) { totalForecast += catForecast; totalError += Math.abs(diff); }
+  });
+  catRows.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+  const overallAccuracy = totalForecast > 0 ? Math.max(0, Math.round((1 - totalError / totalForecast) * 100)) : null;
+  return {overallAccuracy, catRows, overlapWeeks: overlapEntries.length, savedAt: saved.savedAt};
+}
+
 // ─── SCREEN 0: Hero ───────────────────────────────────────────────────────────
 function HeroScreen({onEnter, onResume}) {
   const [phase, setPhase] = useState(0);
@@ -1272,6 +1321,175 @@ function SessionCompleteScreen({txnCount, onRestart}) {
         <div style={{fontSize:15,color:"#a1a1aa",marginBottom:8}}>6 weeks of history mapped</div>
         <div style={{fontSize:15,color:"#a1a1aa",marginBottom:48}}>12 weeks forecast ahead</div>
         <div style={{fontSize:13,color:"#3f3f46"}}>See you next time.</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Forecast Accuracy Screen ─────────────────────────────────────────────────
+function ForecastAccuracyScreen({savedForecast, transactions, categories, onContinue, precomputed=null}) {
+  const isMobile = useIsMobile();
+  const currency = getCurrencySymbol();
+  const accuracy = useMemo(
+    () => precomputed || (savedForecast && transactions ? computeAccuracy(savedForecast, transactions) : null),
+    [] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+  const [aiInsight, setAiInsight] = useState(null);
+  const [insightLoading, setInsightLoading] = useState(false);
+
+  useEffect(() => {
+    if (precomputed || !accuracy?.catRows?.length) return;
+    const top = accuracy.catRows[0];
+    if (!top || Math.abs(top.diff) < 5) return;
+    const dir = top.diff > 0 ? "more" : "less";
+    const prompt = `A cash flow forecast predicted ${top.cat} spending of ${currency}${top.forecast} but actual was ${currency}${top.actual} — ${currency}${Math.abs(top.diff)} ${dir} than forecast. In one friendly sentence under 20 words (no jargon), what commonly causes this kind of miss?`;
+    setInsightLoading(true);
+    callClaude(prompt, 80, 8000).then(t => setAiInsight(t)).catch(() => {}).finally(() => setInsightLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!accuracy) { onContinue(); return null; }
+
+  const score = accuracy.overallAccuracy;
+  const scoreColor = score === null ? "#6b7280" : score >= 80 ? "#10b981" : score >= 60 ? "#f59e0b" : "#ef4444";
+  const savedDate = accuracy.savedAt
+    ? new Date(accuracy.savedAt).toLocaleDateString("en-GB", {day:"numeric", month:"short"})
+    : "last session";
+  const r = 34, circ = 2 * Math.PI * r;
+
+  return (
+    <div style={{position:"fixed",inset:0,background:"#08070f",zIndex:9000,overflowY:"auto",fontFamily:"'Inter',system-ui,sans-serif"}}>
+      <style>{GLOBAL_CSS}</style>
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.08) 0%,transparent 60%)",pointerEvents:"none"}}/>
+      <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"20px 16px 100px":"48px 24px 80px",position:"relative",zIndex:1}}>
+        <img src={logo} alt="Abound" style={{height:30,marginBottom:32,opacity:0.9}}/>
+
+        {/* Header */}
+        <div style={{marginBottom:28,animation:"fadeUp 0.5s ease both"}}>
+          <h1 style={{fontSize:isMobile?22:26,fontWeight:800,color:"#fff",letterSpacing:"-0.03em",margin:"0 0 8px"}}>
+            How accurate was your last forecast?
+          </h1>
+          <p style={{fontSize:13,color:"#52525b",margin:0}}>
+            Based on your statement from {savedDate} · {accuracy.overlapWeeks} week{accuracy.overlapWeeks!==1?"s":""} of data compared
+          </p>
+        </div>
+
+        {/* Accuracy ring + score */}
+        <div style={{display:"flex",alignItems:"center",gap:20,marginBottom:28,padding:"20px",background:"rgba(255,255,255,0.02)",border:"1px solid #1f1d35",borderRadius:14,animation:"fadeUp 0.5s ease 0.05s both"}}>
+          <div style={{position:"relative",width:80,height:80,flexShrink:0}}>
+            <svg width="80" height="80" viewBox="0 0 80 80" style={{transform:"rotate(-90deg)"}}>
+              <circle cx="40" cy="40" r={r} fill="none" stroke="#1f1d35" strokeWidth="6"/>
+              <circle cx="40" cy="40" r={r} fill="none" stroke={scoreColor} strokeWidth="6"
+                strokeDasharray={circ}
+                strokeDashoffset={circ * (1 - (score || 0) / 100)}
+                strokeLinecap="round"
+                style={{transition:"stroke-dashoffset 1.2s cubic-bezier(0.16,1,0.3,1) 0.3s"}}
+              />
+            </svg>
+            <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800,color:scoreColor,fontVariantNumeric:"tabular-nums"}}>
+              {score !== null ? `${score}%` : "—"}
+            </div>
+          </div>
+          <div>
+            <div style={{fontSize:11,fontWeight:700,color:"#52525b",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:4}}>Forecast accuracy</div>
+            <div style={{fontSize:14,color:"#a1a1aa",lineHeight:1.5}}>
+              {score === null ? "Not enough data to score accurately."
+                : score >= 80 ? "Your forecast was highly accurate."
+                : score >= 60 ? "A few categories drifted from the forecast."
+                : "Your spending differed significantly from the forecast."}
+            </div>
+          </div>
+        </div>
+
+        {/* Category breakdown */}
+        {accuracy.catRows.length > 0 && (
+          <div style={{marginBottom:24,animation:"fadeUp 0.5s ease 0.1s both"}}>
+            <div style={{fontSize:11,fontWeight:700,color:"#52525b",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>By category</div>
+            {isMobile ? (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {accuracy.catRows.map(row => {
+                  const ac = row.accuracy===null?"#52525b":row.accuracy>=80?"#10b981":row.accuracy>=60?"#f59e0b":"#ef4444";
+                  return (
+                    <div key={row.cat} style={{display:"flex",alignItems:"center",padding:"11px 14px",background:"rgba(255,255,255,0.02)",border:"1px solid #1f1d35",borderRadius:10,gap:10}}>
+                      <div style={{flex:1,fontSize:13,fontWeight:600,color:"#e0e7ff"}}>{row.cat}</div>
+                      <div style={{fontSize:12,color:"#52525b",textAlign:"right"}}>
+                        <span style={{color:"#a1a1aa"}}>{currency}{row.actual}</span>
+                        <span style={{color:"#2d2a4e"}}> / </span>
+                        <span>{currency}{row.forecast}</span>
+                      </div>
+                      {row.accuracy !== null && (
+                        <div style={{fontSize:12,fontWeight:700,color:ac,minWidth:34,textAlign:"right"}}>{row.accuracy}%</div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{background:"rgba(255,255,255,0.02)",border:"1px solid #1f1d35",borderRadius:12,overflow:"hidden"}}>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead>
+                    <tr style={{borderBottom:"1px solid #1f1d35"}}>
+                      {["Category","Forecast","Actual","Difference","Accuracy"].map((h,i) => (
+                        <th key={h} style={{padding:"9px 14px",fontSize:10,fontWeight:700,color:"#3f3f46",letterSpacing:"0.07em",textTransform:"uppercase",textAlign:i===0?"left":"right"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {accuracy.catRows.map((row, ri) => {
+                      const dc = row.diff > 0 ? "#ef4444" : "#10b981";
+                      const ac = row.accuracy===null?"#52525b":row.accuracy>=80?"#10b981":row.accuracy>=60?"#f59e0b":"#ef4444";
+                      return (
+                        <tr key={row.cat} style={{borderBottom:ri<accuracy.catRows.length-1?"1px solid #0f0e1f":"none"}}
+                          onMouseEnter={e=>e.currentTarget.style.background="rgba(255,255,255,0.02)"}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <td style={{padding:"10px 14px",fontSize:13,color:"#e0e7ff",fontWeight:600}}>{row.cat}</td>
+                          <td style={{padding:"10px 14px",fontSize:13,color:"#52525b",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{currency}{row.forecast}</td>
+                          <td style={{padding:"10px 14px",fontSize:13,color:"#a1a1aa",textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{currency}{row.actual}</td>
+                          <td style={{padding:"10px 14px",fontSize:13,color:dc,textAlign:"right",fontVariantNumeric:"tabular-nums",fontWeight:600}}>
+                            {row.diff > 0 ? "+" : ""}{currency}{Math.abs(row.diff)}
+                          </td>
+                          <td style={{padding:"10px 14px",textAlign:"right"}}>
+                            {row.accuracy !== null
+                              ? <span style={{fontSize:11,fontWeight:700,color:ac,background:`${ac}1a`,padding:"2px 8px",borderRadius:20}}>{row.accuracy}%</span>
+                              : <span style={{fontSize:12,color:"#2d2a4e"}}>—</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* AI insight — only shown on first view, not modal replay */}
+        {!precomputed && (
+          <div style={{marginBottom:32,padding:"14px 16px",background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.15)",borderLeft:"3px solid rgba(99,102,241,0.4)",borderRadius:10,animation:"fadeUp 0.5s ease 0.15s both"}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:6}}>AI insight</div>
+            {insightLoading
+              ? <div style={{fontSize:13,color:"#3f3f46",fontStyle:"italic"}}>Analysing your biggest miss...</div>
+              : aiInsight
+                ? <div style={{fontSize:13,color:"#a1a1aa",lineHeight:1.6}}>{aiInsight}</div>
+                : accuracy.catRows[0]
+                  ? <div style={{fontSize:13,color:"#52525b"}}>Biggest miss: {accuracy.catRows[0].cat} ({accuracy.catRows[0].diff>0?"+":""}{currency}{Math.abs(accuracy.catRows[0].diff)} vs forecast)</div>
+                  : <div style={{fontSize:13,color:"#3f3f46"}}>No significant misses detected.</div>
+            }
+          </div>
+        )}
+
+        {/* CTAs */}
+        <div style={{display:"flex",gap:10,flexDirection:isMobile?"column":"row",animation:"fadeUp 0.5s ease 0.2s both"}}>
+          <button onClick={onContinue}
+            style={{flex:1,padding:"14px 24px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:14,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:"0 0 0 1px rgba(99,102,241,0.4),0 8px 24px rgba(99,102,241,0.25)"}}>
+            {precomputed ? "Close" : "See full forecast →"}
+          </button>
+          {!precomputed && (
+            <button onClick={onContinue}
+              style={{padding:"14px 24px",background:"none",color:"#52525b",border:"1px solid #1f1d35",borderRadius:12,fontSize:14,cursor:"pointer"}}>
+              Dismiss
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -2654,6 +2872,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [goalTargetDate, setGoalTargetDate] = useState("");
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
+  const [showAccuracyModal, setShowAccuracyModal] = useState(false);
+  const [prevAccuracyData] = useState(()=>{try{const r=localStorage.getItem(FORECAST_ACCURACY_KEY);return r?JSON.parse(r):null;}catch{return null;}});
   const [currency, setCurrency] = useState(()=>getCurrencySymbol());
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [splitByCard, setSplitByCard] = useState(false);
@@ -2839,6 +3059,28 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     }, 300);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tourStep, tourVisible, isMobile]);
+
+  // Save current forecast once on mount so the next session can compare against it
+  useEffect(()=>{
+    const fwks = forecastWeeks; const fd = forecastData; const accts = accounts; const cats = categories;
+    if (!fwks.length || !Object.keys(fd).length) return;
+    const existing = loadLastForecast();
+    if (existing?.savedAt?.slice(0,10) === new Date().toISOString().slice(0,10)) return;
+    const spendCats = cats.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const forecastByCategory = {};
+    spendCats.forEach(cat=>{
+      const vals = fwks.map((_,i)=>accts.reduce((s,acc)=>s+(fd[acc]?.[cat]?.[i]||0),0));
+      if (vals.some(v=>v>0)) forecastByCategory[cat]=vals;
+    });
+    if (!Object.keys(forecastByCategory).length) return;
+    saveLastForecast({
+      savedAt: new Date().toISOString(),
+      weekStartDates: fwks.map(w=>w.key),
+      forecastByCategory,
+      forecastCashBalance: combinedClosingBalances.forecast,
+      forecastTotalSpend: totalForecastByWeek.reduce((a,b)=>a+b,0),
+    });
+  },[]);// eslint-disable-line react-hooks/exhaustive-deps
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
@@ -3824,6 +4066,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {/* Grouped / By card toggle — desktop inline, mobile via fixed right bar */}
         {!isMobile&&(
           <div data-tour="view-toggle" style={{display:"flex",alignItems:"center",justifyContent:"flex-end",marginBottom:8,gap:10}}>
+            {prevAccuracyData?.overallAccuracy!=null&&(
+              <button onClick={()=>setShowAccuracyModal(true)}
+                style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",height:28,background:"rgba(99,102,241,0.08)",border:"1px solid rgba(99,102,241,0.2)",borderRadius:8,fontSize:11,fontWeight:600,color:"#818cf8",cursor:"pointer",flexShrink:0,whiteSpace:"nowrap"}}>
+                <svg width="11" height="11" viewBox="0 0 20 20" fill="none"><path d="M3 15l4-6 4 3 4-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Last forecast: {prevAccuracyData.overallAccuracy}% accurate
+              </button>
+            )}
             <button onClick={openStocks} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:stocks.length?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.3)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:stocks.length?"#10b981":"#818cf8",cursor:"pointer",flexShrink:0}}>
               <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
               {stocks.length?`Stocks (${stocks.length})`:"+ Stocks"}
@@ -4706,6 +4955,11 @@ Reply directly to what they said they want. Use their exact words back at them. 
           </button>
         );
       })()}
+
+      {/* Forecast accuracy modal — triggered by badge */}
+      {showAccuracyModal&&prevAccuracyData&&(
+        <ForecastAccuracyScreen precomputed={prevAccuracyData} onContinue={()=>setShowAccuracyModal(false)}/>
+      )}
     </div>
   );
 }
@@ -4929,6 +5183,7 @@ function AppInner() {
   const [categorisedTransactions, setCategorisedTransactions] = useState([]);
   const [sortedTransactions, setSortedTransactions] = useState([]);
   const [finalCategories, setFinalCategories] = useState([]);
+  const [prevForecast, setPrevForecast] = useState(null);
 
   function handleResume() {
     const s = loadSession();
@@ -4942,6 +5197,17 @@ function AppInner() {
     setSortedTransactions(txns);
     setFinalCategories(cats);
     saveSession(txns, cats);
+    // Check if the saved forecast from a previous session overlaps with new actual data
+    const saved = loadLastForecast();
+    if (saved?.weekStartDates?.length) {
+      const result = computeAccuracy(saved, txns);
+      if (result) {
+        try { localStorage.setItem(FORECAST_ACCURACY_KEY, JSON.stringify(result)); } catch {}
+        setPrevForecast(saved);
+        setScreen("forecast-accuracy");
+        return;
+      }
+    }
     setScreen("main");
   }
 
@@ -4967,6 +5233,9 @@ function AppInner() {
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
       {showUpgradeModal&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>{setShowUpgradeModal(false);incrementAiRuns();setScreen("categorise");}}/>}
       {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
+      {screen==="forecast-accuracy"&&prevForecast&&(
+        <ForecastAccuracyScreen savedForecast={prevForecast} transactions={sortedTransactions} categories={finalCategories} onContinue={()=>setScreen("main")}/>
+      )}
       {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}

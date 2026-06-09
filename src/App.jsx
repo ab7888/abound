@@ -10,7 +10,7 @@ class ErrorBoundary extends Component {
     if(!this.state.crashed) return this.props.children;
     return(
       <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#09081a",padding:32,textAlign:"center",fontFamily:"'Inter',system-ui,sans-serif"}}>
-        <img src={logo} alt="Abound" style={{height:40,marginBottom:24,opacity:0.7}}/>
+        <img src={logo} alt="Abound" style={{height:40,marginBottom:24,opacity:0.7,mixBlendMode:"screen"}}/>
         <div style={{fontSize:22,fontWeight:800,color:"#e0e7ff",marginBottom:8}}>Something went wrong</div>
         <div style={{fontSize:14,color:"#6b7280",marginBottom:28,lineHeight:1.6,maxWidth:340}}>
           An unexpected error occurred. Your data hasn't been lost — try refreshing the page.
@@ -1118,7 +1118,7 @@ function HeroScreen({onEnter, onResume}) {
           <div style={{padding:"10px 20px",borderRadius:16,background:"rgba(8,7,15,0.92)",border:"1px solid rgba(99,102,241,0.15)",boxShadow:"0 0 40px rgba(99,102,241,0.08)",animation:"logoBgFade 0.3s ease both"}}>
             {/* overflow:hidden + width animation = left-to-right wipe */}
             <div style={{overflow:"hidden",height:52,animation:"logoWipe 1s cubic-bezier(0.4,0,0.2,1) 0.2s both"}}>
-              <img src={logo} alt="Abound" style={{height:52,display:"block",minWidth:"100%"}}/>
+              <img src={logo} alt="Abound" style={{height:52,display:"block",minWidth:"100%",mixBlendMode:"screen"}}/>
             </div>
           </div>
         </div>
@@ -1232,7 +1232,7 @@ function FeedbackScreen({txnCount, onDone}) {
       <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.1) 0%,transparent 55%)",pointerEvents:"none"}}/>
       <div style={{width:"100%",maxWidth:520,position:"relative",zIndex:1,animation:"fadeUp 0.5s ease both"}}>
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32}}>
-          <img src={logo} alt="Abound" style={{height:30,opacity:0.95}}/>
+          <img src={logo} alt="Abound" style={{height:30,opacity:0.95,mixBlendMode:"screen"}}/>
           <div style={{width:1,height:28,background:"#1f1d35"}}/>
           <div>
             <div style={{fontSize:18,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>How did we do?</div>
@@ -1361,7 +1361,7 @@ function ForecastAccuracyScreen({savedForecast, transactions, categories, onCont
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.08) 0%,transparent 60%)",pointerEvents:"none"}}/>
       <div style={{maxWidth:680,margin:"0 auto",padding:isMobile?"20px 16px 100px":"48px 24px 80px",position:"relative",zIndex:1}}>
-        <img src={logo} alt="Abound" style={{height:30,marginBottom:32,opacity:0.9}}/>
+        <img src={logo} alt="Abound" style={{height:30,marginBottom:32,opacity:0.9,mixBlendMode:"screen"}}/>
 
         {/* Header */}
         <div style={{marginBottom:28,animation:"fadeUp 0.5s ease both"}}>
@@ -1500,7 +1500,7 @@ function LoadingScreen({pct, message, done, logLines=[]}) {
   return (
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#08070f",padding:40}}>
       <style>{GLOBAL_CSS}</style>
-      <img src={logo} alt="Abound" style={{height:40,marginBottom:48,opacity:0.9}}/>
+      <img src={logo} alt="Abound" style={{height:40,marginBottom:48,opacity:0.9,mixBlendMode:"screen"}}/>
       {done?(
         <div style={{textAlign:"center",animation:"fadeUp 0.6s ease both"}}>
           <div style={{width:44,height:44,borderRadius:"50%",background:"rgba(16,185,129,0.12)",border:"2px solid #10b981",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,margin:"0 auto 16px",color:"#10b981"}}>✓</div>
@@ -1980,7 +1980,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
 
         {/* Header */}
         <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:32,animation:"fadeUp 0.5s ease both"}}>
-          <img src={logo} alt="Abound" style={{height:isMobile?28:34,opacity:0.95}}/>
+          <img src={logo} alt="Abound" style={{height:isMobile?28:34,opacity:0.95,mixBlendMode:"screen"}}/>
           <div style={{width:1,height:28,background:"#1f1d35"}}/>
           <div>
             <div style={{fontSize:isMobile?16:19,fontWeight:800,color:"#fff",letterSpacing:"-0.02em"}}>{"Your spending breakdown"}</div>
@@ -2361,7 +2361,7 @@ const MobileSort=()=>{
     <div style={{height:"100vh",maxHeight:"100vh",background:"#0f0e1a",display:"flex",flexDirection:"column",fontFamily:"'Inter',system-ui,sans-serif",overflow:"hidden"}}>
       <style>{GLOBAL_CSS}</style>
       <div style={{padding:"0 24px",background:"#0a0818",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:16,flexShrink:0,height:54}}>
-        <img src={logo} alt="Abound" style={{height:28}}/>
+        <img src={logo} alt="Abound" style={{height:28,mixBlendMode:"screen"}}/>
         <div style={{width:1,height:24,background:"#1f1d35"}}/>
         <span style={{fontSize:14,fontWeight:800,color:"#fff"}}>Sort transactions</span>
         <div style={{flex:1,display:"flex",alignItems:"center",gap:10,maxWidth:320}}>
@@ -2657,7 +2657,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
       <style>{GLOBAL_CSS}</style>
 
       <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:isMobile&&activeTab==="cashflow"?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
-        <img src={logo} alt="Abound" style={{height:36,marginRight:24}}/>
+        <img src={logo} alt="Abound" style={{height:36,marginRight:24,mixBlendMode:"screen"}}/>
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
         </button>
@@ -4088,7 +4088,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
                 <th data-sticky-hdr style={{padding:isMobile?"10px 6px":"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:isMobile?108:130}}>
-                  {!isMobile&&<img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6}}/>}
+                  {!isMobile&&<img src={logo} alt="" style={{height:20,verticalAlign:"middle",marginRight:6,mixBlendMode:"screen"}}/>}
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>

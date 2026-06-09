@@ -92,6 +92,7 @@ const GLOBAL_CSS = `
   @keyframes logoWipe { from{width:0} to{width:100%} }
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
+  @keyframes skeletonPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
@@ -614,6 +615,32 @@ function normalizeMerchant(narrative) {
 }
 
 const SESSION_ID = crypto.randomUUID();
+
+async function callClaudeMessages(messages, maxTokens=800, timeoutMs=15000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch("/api/categorise",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-session-id":SESSION_ID},
+      body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages}),
+      signal: ctrl.signal,
+    });
+    if(!res.ok){
+      const errBody=await res.json().catch(()=>({}));
+      if(res.status===429 && errBody?.error==="limit_reached"){
+        const e=new Error(errBody.message||"Categorisation limit reached for this session.");
+        e.isLimitReached=true;
+        throw e;
+      }
+      throw new Error(errBody?.error?.message||errBody?.message||(typeof errBody?.error==="string"?errBody.error:null)||`HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    return data.content[0].text.trim();
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
   const ctrl = new AbortController();
@@ -2234,10 +2261,10 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
           );})()}
           {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
             <div onDragEnter={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
-              style={{border:`2px dashed ${isHovered?"#6b7280":"#2d2a6e"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.01)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,opacity:isHovered?1:0.35,marginTop:2}}><svg viewBox="0 0 20 20" width="24" height="24" fill="none"><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#374151"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
-              <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#374151",textAlign:"center",lineHeight:1.3}}>Not sure</div>
-              <div style={{fontSize:10,fontWeight:600,color:count>0?"#6b7280":"#2d2a6e",background:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:"1px solid #1f1d35"}}>
+              style={{border:`2px dashed ${isHovered?"#9ca3af":"#374151"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,opacity:isHovered?1:0.6,marginTop:2}}><svg viewBox="0 0 20 20" width="24" height="24" fill="none"><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
+              <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#6b7280",textAlign:"center",lineHeight:1.3}}>Not sure</div>
+              <div style={{fontSize:10,fontWeight:600,color:count>0?"#6b7280":"#374151",background:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:"1px solid #1f1d35"}}>
                 {count>0?`${count} txn${count>1?"s":""}`:isHovered?"drop here":"stays in Other Payments"}
               </div>
             </div>
@@ -2305,7 +2332,7 @@ const MobileSort=()=>{
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
               {allBuckets.map(cat=>{
                 const isSkip=cat==="Skip";
-                const color=isSkip?"#6b7280":catColor(cat,spendCats.indexOf(cat));
+                const color=isSkip?"#9ca3af":catColor(cat,spendCats.indexOf(cat));
                 const count=isSkip?skipped.length:(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
                 return(
                   <button key={cat}
@@ -2505,7 +2532,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setOneOffTip({x:r.left,y:r.bottom+8});}}
                   onMouseLeave={()=>setOneOffTip(null)}
                   style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,borderRadius:"50%",background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.3)",color:"rgba(255,255,255,0.6)",fontSize:9,fontWeight:700,cursor:"help",flexShrink:0,lineHeight:1}}>
-                  ?
+                  ⓘ
                 </span>
                 <span style={{fontSize:9,color:"rgba(99,102,241,0.5)",letterSpacing:"0.06em",fontStyle:"italic"}}>+ ONE-OFF</span>
               </div>
@@ -2631,6 +2658,325 @@ function RotateScreen() {
   );
 }
 
+// ─── Insights Screen ──────────────────────────────────────────────────────────
+function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
+  const isMobile = useIsMobile();
+  const spendCats = useMemo(()=>categories.filter(c=>c!=="Salary"&&c!=="Card Repayment"),[categories]);
+
+  const { weekCount, avgWeeklySpend, netCashFlow, trajectory, topCat, catTotals, salaryTotal, currSym } = useMemo(()=>{
+    const sym=getCurrencySymbol();
+    const allWks=[...new Set(transactions.map(t=>getWeekMonday(t.date).toISOString().slice(0,10)))].sort();
+    const recentWks=allWks.slice(-8);
+    const prevWks=allWks.slice(-16,-8);
+    function wkSpend(wks){return wks.map(wk=>transactions.filter(t=>getWeekMonday(t.date).toISOString().slice(0,10)===wk&&spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0));}
+    const rSpend=wkSpend(recentWks);
+    const pSpend=wkSpend(prevWks);
+    const rAvg=rSpend.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);
+    const pAvg=pSpend.reduce((a,b)=>a+b,0)/Math.max(prevWks.length,1);
+    const traj=pAvg>0?(rAvg>pAvg*1.05?"up":rAvg<pAvg*0.95?"down":"flat"):"flat";
+    const salTot=transactions.filter(t=>t.category==="Salary").reduce((s,t)=>s+Math.abs(t.amount),0);
+    const spTot=transactions.filter(t=>spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0);
+    const cTotals={};
+    spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
+    const topC=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
+    return {weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),trajectory:traj,topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),currSym:sym};
+  },[transactions,spendCats]);
+
+  const [cards,setCards]=useState(null);
+  const [loading,setLoading]=useState(false);
+  const [fetchError,setFetchError]=useState(null);
+  const [lastFetch,setLastFetch]=useState(null);
+  const [dismissed,setDismissed]=useState({});
+  const [refreshing,setRefreshing]=useState(false);
+  const [chatOpen,setChatOpen]=useState(false);
+  const [chatCtx,setChatCtx]=useState("");
+  const [chatApiHistory,setChatApiHistory]=useState([]);
+  const [chatDisplay,setChatDisplay]=useState([]);
+  const [chatInput,setChatInput]=useState("");
+  const [chatLoading,setChatLoading]=useState(false);
+  const [showPremiumGate,setShowPremiumGate]=useState(false);
+  const chatEndRef=useRef(null);
+
+  useEffect(()=>{
+    try{const raw=JSON.parse(localStorage.getItem("abound_dismissed_insights")||"{}");const now=Date.now();const valid=Object.fromEntries(Object.entries(raw).filter(([,ts])=>now-ts<7*24*60*60*1000));setDismissed(valid);}catch{}
+    try{const cached=JSON.parse(localStorage.getItem("abound_last_insights")||"null");if(cached&&Array.isArray(cached.cards)&&Date.now()-cached.timestamp<24*60*60*1000){setCards(cached.cards);setLastFetch(new Date(cached.timestamp));return;}}catch{}
+    fetchInsights();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[chatDisplay,chatLoading]);
+
+  function buildPrompt(){
+    const weeksNote=weekCount<4?`(only ${weekCount} week${weekCount!==1?"s":""} of data — estimates only) `:"";
+    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>`  - ${c}: ${currSym}${v}`).join("\n");
+    return `You are a concise personal finance advisor. Based on the data below, generate 4-6 actionable insight cards ${weeksNote}for a cash flow app.
+
+Financial data:
+- Weeks of data: ${weekCount}
+- Avg weekly spend: ${currSym}${avgWeeklySpend}
+- Total salary/income: ${currSym}${salaryTotal}
+- Net cash flow: ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}
+- Spend trend: ${trajectory==="up"?"increasing":trajectory==="down"?"decreasing":"stable"}
+- Spend by category (total):
+${catLines||"  - (no category data)"}
+
+Return ONLY a valid JSON array (no other text). Each item:
+{"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk"${weekCount<4?',"estimated":true':""}}
+
+Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=saving suggestions, recurring_charge=subscription patterns. Use the actual numbers. Be specific.`;
+  }
+
+  async function fetchInsights(isRefresh=false){
+    if(isRefresh)setRefreshing(true); else setLoading(true);
+    setFetchError(null);
+    try{
+      const text=await callClaude(buildPrompt(),900,35000);
+      const match=text.match(/\[[\s\S]*\]/);
+      if(!match)throw new Error("Invalid response format");
+      const parsed=JSON.parse(match[0]);
+      if(!Array.isArray(parsed))throw new Error("Expected an array");
+      const now=Date.now();
+      setCards(parsed);setLastFetch(new Date(now));
+      localStorage.setItem("abound_last_insights",JSON.stringify({cards:parsed,timestamp:now}));
+    }catch(e){
+      setFetchError(e.message||"Unknown error");
+      try{const cached=JSON.parse(localStorage.getItem("abound_last_insights")||"null");if(cached?.cards){setCards(cached.cards);setLastFetch(new Date(cached.timestamp));}}catch{}
+    }
+    setLoading(false);setRefreshing(false);
+  }
+
+  function dismissCard(id){
+    const next={...dismissed,[id]:Date.now()};
+    setDismissed(next);
+    try{localStorage.setItem("abound_dismissed_insights",JSON.stringify(next));}catch{}
+  }
+
+  function openChatForCard(card){
+    setChatCtx(`Insight: "${card.title}" — ${card.body}${card.metric?` (${card.metric})`:""}. `);
+    setChatApiHistory([]);setChatDisplay([]);setChatInput("");
+    setChatOpen(true);
+  }
+
+  async function sendChat(msg){
+    if(!msg.trim()||chatLoading)return;
+    const financialCtx=`You are a personal finance advisor for Abound. Context: ${chatCtx}Financial summary: ${weekCount} weeks of data, avg ${currSym}${avgWeeklySpend}/wk spending, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top spending: ${topCat}. Be concise and specific.`;
+    const apiMsgs=chatApiHistory.length===0
+      ?[{role:"user",content:`${financialCtx}\n\nUser question: ${msg}`}]
+      :[...chatApiHistory,{role:"user",content:msg}];
+    setChatDisplay(prev=>[...prev,{role:"user",content:msg}]);
+    setChatInput("");setChatLoading(true);
+    try{
+      const text=await callClaudeMessages(apiMsgs,500,25000);
+      setChatApiHistory([...apiMsgs,{role:"assistant",content:text}]);
+      setChatDisplay(prev=>[...prev,{role:"assistant",content:text}]);
+    }catch(e){
+      setChatApiHistory([...apiMsgs]);
+      setChatDisplay(prev=>[...prev,{role:"assistant",content:`Sorry, couldn't respond — ${e.message||"please try again"}.`}]);
+    }
+    setChatLoading(false);
+  }
+
+  const CARD_CFG={
+    forecast_risk:{color:"#f59e0b",bg:"rgba(245,158,11,0.07)",border:"rgba(245,158,11,0.25)",label:"Forecast Risk"},
+    spending_anomaly:{color:"#f59e0b",bg:"rgba(245,158,11,0.07)",border:"rgba(245,158,11,0.25)",label:"Anomaly"},
+    savings_opportunity:{color:"#34d399",bg:"rgba(52,211,153,0.07)",border:"rgba(52,211,153,0.25)",label:"Save"},
+    recurring_charge:{color:"#6366f1",bg:"rgba(99,102,241,0.07)",border:"rgba(99,102,241,0.25)",label:"Recurring"},
+  };
+
+  const isPro=isPremium();
+  const visibleCards=cards?cards.filter(c=>!dismissed[c.id]):null;
+  const isEstimated=weekCount<4;
+
+  function staleLbl(){
+    if(!lastFetch)return null;
+    const mins=Math.round((Date.now()-lastFetch.getTime())/60000);
+    if(mins<2)return"just now";
+    if(mins<60)return`${mins}m ago`;
+    return`${Math.round(mins/60)}h ago`;
+  }
+  const trajIcon=trajectory==="up"?"↑":trajectory==="down"?"↓":"→";
+  const trajColor=trajectory==="up"?"#f59e0b":trajectory==="down"?"#34d399":"#a5b4fc";
+
+  const chatPanel=(
+    <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
+      <div style={{padding:"11px 14px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+        <div style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 6px rgba(99,102,241,0.7)"}}/>
+        <span style={{fontSize:12,fontWeight:700,color:"#e0e7ff",flex:1}}>Ask about this insight</span>
+        <button onClick={()=>setChatOpen(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+      </div>
+      {chatCtx&&chatDisplay.length===0&&(
+        <div style={{padding:"9px 14px",fontSize:11,color:"#6b7280",borderBottom:"1px solid #1f1d35",lineHeight:1.5,flexShrink:0}}>{chatCtx}</div>
+      )}
+      <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+        {chatDisplay.map((msg,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+            <div style={{maxWidth:"86%",padding:"8px 11px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"10px 10px 10px 2px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",fontSize:12,color:"#e0e7ff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {chatLoading&&(
+          <div style={{display:"flex",gap:4,alignItems:"center",padding:"4px 2px"}}>
+            {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
+          </div>
+        )}
+        <div ref={chatEndRef}/>
+      </div>
+      <div style={{padding:"9px 12px",borderTop:"1px solid #1f1d35",display:"flex",gap:6,flexShrink:0}}>
+        <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
+          placeholder="Ask a question… (Enter to send)" rows={2}
+          style={{flex:1,background:"#12112a",border:"1px solid #2d2a6e",borderRadius:7,color:"#e0e7ff",fontSize:12,padding:"7px 10px",resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
+        <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading}
+          style={{padding:"0 12px",background:chatInput.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:chatInput.trim()?"#fff":"#374151",border:"none",borderRadius:7,fontSize:14,fontWeight:700,cursor:chatInput.trim()?"pointer":"not-allowed",flexShrink:0,alignSelf:"stretch"}}>
+          ↑
+        </button>
+      </div>
+    </div>
+  );
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"#09081a",overflow:"hidden",position:"relative"}}>
+      {/* Zone 1: Snapshot Bar */}
+      <div style={{flexShrink:0,padding:isMobile?"10px 14px":"11px 24px",background:"#0c0b1d",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12}}>
+        <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+          <span style={{fontSize:isMobile?16:20,fontWeight:800,color:netCashFlow>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
+            {netCashFlow>=0?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()}
+          </span>
+          <span style={{fontSize:10,color:"#374151",fontWeight:500}}>net cash</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",background:`${trajColor}15`,border:`1px solid ${trajColor}35`,borderRadius:20}}>
+          <span style={{fontSize:12,color:trajColor}}>{trajIcon}</span>
+          <span style={{fontSize:9,fontWeight:700,color:trajColor,textTransform:"uppercase",letterSpacing:"0.06em"}}>{trajectory==="up"?"Spend ↑":trajectory==="down"?"Spend ↓":"Stable"}</span>
+        </div>
+        {!loading&&cards?.[0]?.title&&(
+          <div style={{flex:1,fontSize:11,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:isMobile?"none":"block"}}>
+            {cards[0].title}
+          </div>
+        )}
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+          {lastFetch&&<span style={{fontSize:9,color:"#374151"}}>{staleLbl()}</span>}
+          <button onClick={()=>fetchInsights(true)} disabled={loading||refreshing}
+            style={{padding:"3px 8px",background:"none",border:"1px solid #1f1d35",borderRadius:6,fontSize:9,color:loading||refreshing?"#1f1d35":"#4b5563",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
+            <svg width="9" height="9" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1 1 2.1 4.6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M4 6v4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {/* Zone 2 + Zone 3 layout */}
+      <div style={{flex:1,overflow:"hidden",display:"flex",position:"relative"}}>
+        {/* Zone 2: Insight Feed */}
+        <div style={{flex:1,overflowY:"auto",padding:isMobile?"14px 12px":"20px 24px",display:"flex",flexDirection:"column",gap:10}}>
+          {/* Sparse data notice */}
+          {isEstimated&&!loading&&(
+            <div style={{padding:"9px 13px",background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.18)",borderRadius:8,fontSize:11,color:"#818cf8",display:"flex",gap:7,alignItems:"center",flexShrink:0}}>
+              <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="#818cf8" strokeWidth="1.8"/><path d="M10 9v5M10 7v.5" stroke="#818cf8" strokeWidth="1.8" strokeLinecap="round"/></svg>
+              Less than 4 weeks of data — insights are estimated. Accuracy improves with more history.
+            </div>
+          )}
+          {/* Skeleton loader */}
+          {loading&&!cards&&[0,1,2,3].map(i=>(
+            <div key={i} style={{borderRadius:10,border:"1px solid #1a1830",padding:"14px 16px",background:"#0c0b1d",animation:"skeletonPulse 1.6s ease-in-out infinite",animationDelay:`${i*150}ms`}}>
+              <div style={{height:9,width:"32%",background:"#1a1830",borderRadius:4,marginBottom:9}}/>
+              <div style={{height:12,width:"62%",background:"#161525",borderRadius:4,marginBottom:6}}/>
+              <div style={{height:8,width:"82%",background:"#161525",borderRadius:4,marginBottom:4}}/>
+              <div style={{height:8,width:"52%",background:"#161525",borderRadius:4}}/>
+            </div>
+          ))}
+          {/* Error state — no cache available */}
+          {fetchError&&!cards&&(
+            <div style={{padding:"28px 16px",textAlign:"center"}}>
+              <div style={{fontSize:13,color:"#6b7280",marginBottom:6}}>Couldn't load insights</div>
+              <div style={{fontSize:11,color:"#374151",marginBottom:14,lineHeight:1.5}}>{fetchError}</div>
+              <button onClick={()=>fetchInsights()} style={{padding:"7px 16px",background:"rgba(99,102,241,0.12)",color:"#818cf8",border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,fontSize:12,cursor:"pointer"}}>Try again</button>
+            </div>
+          )}
+          {/* Error banner — with stale cache */}
+          {fetchError&&cards&&(
+            <div style={{padding:"8px 12px",background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,fontSize:11,color:"#f87171",display:"flex",alignItems:"center",gap:8}}>
+              <svg width="11" height="11" viewBox="0 0 20 20" fill="none"><path d="M10 6v5M10 13v.5" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/><circle cx="10" cy="10" r="8" stroke="#f87171" strokeWidth="1.8"/></svg>
+              Showing cached insights — refresh failed.
+              <button onClick={()=>fetchInsights()} style={{marginLeft:"auto",fontSize:10,color:"#f87171",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Retry</button>
+            </div>
+          )}
+          {/* Cards */}
+          {visibleCards&&visibleCards.map((card,idx)=>{
+            const cfg=CARD_CFG[card.type]||CARD_CFG.forecast_risk;
+            const isLocked=!isPro&&idx>=1;
+            return(
+              <div key={card.id||idx} style={{borderRadius:10,border:`1px solid ${cfg.border}`,borderLeft:`3px solid ${cfg.color}`,background:cfg.bg,padding:"14px 16px",position:"relative",filter:isLocked?"blur(3.5px)":"none",userSelect:isLocked?"none":"auto",pointerEvents:isLocked?"none":"auto",animation:"fadeUp 0.3s ease both",animationDelay:`${idx*60}ms`}}>
+                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7}}>
+                  <span style={{fontSize:9,fontWeight:800,color:cfg.color,textTransform:"uppercase",letterSpacing:"0.08em",padding:"2px 6px",background:`${cfg.color}15`,borderRadius:4}}>{cfg.label}</span>
+                  {card.estimated&&<span style={{fontSize:9,color:"#4b5563",padding:"2px 6px",background:"rgba(75,85,99,0.12)",border:"1px solid rgba(75,85,99,0.18)",borderRadius:4}}>Estimated</span>}
+                  {card.metric&&<span style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:cfg.color,fontVariantNumeric:"tabular-nums"}}>{card.metric}</span>}
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:5,lineHeight:1.3}}>{card.title}</div>
+                <div style={{fontSize:11,color:"#9ca3af",lineHeight:1.6}}>{card.body}</div>
+                <div style={{display:"flex",gap:6,marginTop:10,justifyContent:"flex-end"}}>
+                  <button onClick={()=>openChatForCard(card)}
+                    style={{padding:"5px 11px",background:"none",border:`1px solid ${cfg.color}45`,color:cfg.color,borderRadius:6,fontSize:10,fontWeight:600,cursor:"pointer"}}>
+                    Ask AI
+                  </button>
+                  <button onClick={()=>dismissCard(card.id||String(idx))}
+                    style={{padding:"5px 8px",background:"none",border:"1px solid #1f1d35",color:"#4b5563",borderRadius:6,fontSize:10,cursor:"pointer"}}>
+                    ✕
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+          {/* Premium gate */}
+          {!isPro&&visibleCards&&visibleCards.length>1&&(
+            <div style={{borderRadius:10,border:"1px solid rgba(99,102,241,0.25)",background:"linear-gradient(135deg,rgba(30,27,75,0.85),rgba(12,10,30,0.85))",padding:"20px",textAlign:"center",animation:"fadeUp 0.3s ease both"}}>
+              <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.3)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:14}}>🔒</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:5}}>Unlock all insights</div>
+              <div style={{fontSize:11,color:"#818cf8",marginBottom:14,lineHeight:1.5}}>Get all {visibleCards.length} personalised insights plus the focused AI chat.</div>
+              <button onClick={()=>setShowPremiumGate(true)}
+                style={{padding:"8px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 12px rgba(99,102,241,0.4)"}}>
+                Upgrade to Premium
+              </button>
+            </div>
+          )}
+          {/* All dismissed */}
+          {visibleCards&&visibleCards.length===0&&!loading&&(
+            <div style={{textAlign:"center",padding:"52px 20px"}}>
+              <div style={{fontSize:13,color:"#374151",marginBottom:10}}>All insights dismissed</div>
+              <button onClick={()=>{setDismissed({});try{localStorage.removeItem("abound_dismissed_insights");}catch{}}}
+                style={{fontSize:11,color:"#818cf8",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
+                Show again
+              </button>
+            </div>
+          )}
+          <div style={{height:isMobile?80:20,flexShrink:0}}/>
+        </div>
+
+        {/* Zone 3: Desktop right panel */}
+        {!isMobile&&chatOpen&&(
+          <div style={{width:320,background:"#0c0b1d",borderLeft:"1px solid #1f1d35",display:"flex",flexDirection:"column",flexShrink:0,animation:"slideInRight 0.3s cubic-bezier(0.16,1,0.3,1) both"}}>
+            {chatPanel}
+          </div>
+        )}
+      </div>
+
+      {/* Zone 3: Mobile bottom sheet */}
+      {isMobile&&(
+        <>
+          {chatOpen&&<div onClick={()=>setChatOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:799,animation:"fadeIn 0.2s ease both"}}/>}
+          <div style={{position:"fixed",bottom:chatOpen?0:"-62vh",left:0,right:0,height:"62vh",background:"#0c0b1d",borderTop:"1px solid #1f1d35",borderRadius:"16px 16px 0 0",zIndex:800,display:"flex",flexDirection:"column",transition:"bottom 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:chatOpen?"0 -8px 32px rgba(0,0,0,0.45)":"none",overflow:"hidden"}}>
+            <div style={{display:"flex",justifyContent:"center",padding:"8px 0 2px",cursor:"pointer",flexShrink:0}} onClick={()=>setChatOpen(false)}>
+              <div style={{width:32,height:4,borderRadius:2,background:"rgba(128,120,200,0.35)"}}/>
+            </div>
+            {chatPanel}
+          </div>
+        </>
+      )}
+
+      {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
+    </div>
+  );
+}
+
 // ─── Main Shell ───────────────────────────────────────────────────────────────
 
 function OrientationGate({children}) {
@@ -2651,6 +2997,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const runsUsed = getAiRunsUsed();
   const runsLeft = Math.max(0, FREE_AI_RUNS - runsUsed);
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
+  function goToInsights(){setActiveTab("insights");}
   function toggleNonRecurring(narrative){setNonRecurring(s=>{const n=new Set(s);n.has(narrative)?n.delete(narrative):n.add(narrative);return n;});}
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
@@ -2664,6 +3011,9 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         {!isMobile&&<button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
+        </button>}
+        {!isMobile&&<button onClick={goToInsights} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="insights"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="insights"?700:500,color:activeTab==="insights"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>Insights
         </button>}
         {/* Plan badge */}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -2698,8 +3048,9 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
-      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate></div>
+      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate></div>
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
+      {activeTab==="insights"&&<InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
     </div>
   );
 }
@@ -2796,7 +3147,7 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -2806,15 +3157,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
-  const [showAnalysisSuggestion, setShowAnalysisSuggestion] = useState(false);
   const [showStockSuggestion, setShowStockSuggestion] = useState(false);
-  const [showAnalysisTipAfterStock, setShowAnalysisTipAfterStock] = useState(false);
-  function triggerAnalysisTip(){
-    if(!localStorage.getItem("abound_analysis_tip_seen")){
-      localStorage.setItem("abound_analysis_tip_seen","1");
-      setTimeout(()=>setShowAnalysisTipAfterStock(true), 600);
-    }
-  }
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
   function showTooltip(text, x, y) {
@@ -2836,13 +3179,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     setCtxMenu({x:e.clientX, y:e.clientY, account, cat, weekKey, txns, selectedKeys});
   }
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
-  const [investigationStep, setInvestigationStep] = useState(0);
-  const [investigationOpen, setInvestigationOpen] = useState(false);
   const [showPremiumGate, setShowPremiumGate] = useState(false);
   const [showStockSetup, setShowStockSetup] = useState(false);
   const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
   const [stockData, setStockData] = useState({});
-  function openAnalysis(){if(!isPremium()){setShowPremiumGate(true);return;}setInvestigationOpen(true);}
   function openStocks(){if(!isPremium()){setShowPremiumGate(true);return;}setShowStockSetup(true);}
   function saveStocks(s){setStocks(s);try{localStorage.setItem("abound_stocks_v1",JSON.stringify(s));}catch{}}
   useEffect(()=>{
@@ -2857,19 +3197,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   },[stocks.map(s=>s.ticker).join(',')]);
   const [highlightCashBal, setHighlightCashBal] = useState(false);
   const highlightCashBalTimer = useRef(null);
-  const [goalsText, setGoalsText] = useState("");
-  const [goalsAdvice, setGoalsAdvice] = useState("");
-  const [goalsLoading, setGoalsLoading] = useState(false);
-  const [forecastOverrides, setForecastOverrides] = useState([]); // {id,cat,newAmt,fromWeekKey,label}
-  const [rentEditing, setRentEditing] = useState(false);
-  const [rentAmtInput, setRentAmtInput] = useState("");
-  const [rentDayInput, setRentDayInput] = useState("");
-  const [addingOverride, setAddingOverride] = useState(false);
-  const [newOvCat, setNewOvCat] = useState("");
-  const [newOvAmt, setNewOvAmt] = useState("");
-  const [newOvFrom, setNewOvFrom] = useState("");
-  const [goalAmount, setGoalAmount] = useState("");
-  const [goalTargetDate, setGoalTargetDate] = useState("");
+  const [forecastOverrides, setForecastOverrides] = useState([]); // used in forecast useMemo
   const [isDark, setIsDark] = useState(true);
   const [showThemeTip, setShowThemeTip] = useState(()=>!localStorage.getItem("themeTipSeen"));
   const [showAccuracyModal, setShowAccuracyModal] = useState(false);
@@ -2952,7 +3280,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     {title:"Cash Balance",body:"Your predicted end-of-week cash across all accounts.\n\nGreen = healthy. Red = heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Click any spend row to set a weekly budget. Forecast cells turn red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
     ...(!isMobile?[{title:"Check your categories",body:"AI is good but not perfect. A quick review makes your forecast dramatically more accurate.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
-    ...(!isMobile?[{title:"Grouped or split by card?",body:"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left for forecast weeks. Tap any number to explore.\n\nUse the sidebar for Financial Analysis.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
+    ...(!isMobile?[{title:"Grouped or split by card?",body:"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left for forecast weeks. Tap any number to explore.\n\nUse the sidebar to go to Insights or Review.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
   ];
 
   const getHighlightRect = () => {
@@ -2978,7 +3306,6 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
         localStorage.setItem("abound_stock_prompt_seen","1");
         setTimeout(()=>setShowStockSuggestion(true),2000);
       }
-      setTimeout(()=>setShowAnalysisSuggestion(true),25000);
     } else if(!localStorage.getItem("abound_stock_prompt_seen")){
       localStorage.setItem("abound_stock_prompt_seen","1");
       setTimeout(()=>setShowStockSetup(true),800);
@@ -3365,7 +3692,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
         onMouseLeave={()=>setTooltip(null)}>
         {label}
-        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span>}
+        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span>}
       </td>
     );
   }
@@ -3391,7 +3718,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
           {isRepayment&&<span style={{fontSize:9,marginRight:4}}>↔</span>}
           {cat}
-          <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>?</span>
+          <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
@@ -3531,7 +3858,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:T.dimText,cursor:"help"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(ROW_TOOLTIPS["Opening Balance"],r.left,r.bottom+6);}}
             onMouseLeave={()=>setTooltip(null)}>
-            Opening Balance <span style={{fontSize:9,color:T.dimBorder,verticalAlign:"super"}}>?</span>
+            Opening Balance <span style={{fontSize:9,color:T.dimBorder,verticalAlign:"super"}}>ⓘ</span>
           </td>
           {openingBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
@@ -3569,7 +3896,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
@@ -3599,7 +3926,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
           {cat}
-          <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>?</span>
+          <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
@@ -3716,7 +4043,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>?</span></td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
@@ -3802,7 +4129,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                         </div>
                       )}
                       <div style={{minWidth:0}}>
-                        <div style={{fontSize:11,fontWeight:600,color:T.text,lineHeight:1.3,wordBreak:"break-word"}}>{truncate(t.narrative)}</div>
+                        <div style={{fontSize:11,fontWeight:600,color:T.text,lineHeight:1.3,wordBreak:"break-word"}}>{t.narrative}</div>
                         <div style={{fontSize:10,color:"#6b7280",marginTop:1}}>
                           £{Math.abs(t.amount).toFixed(2)} · {fmtDate(t.date)}
                         </div>
@@ -3947,21 +4274,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </div>
       )}
 
-      {isMobile&&showAnalysisSuggestion&&!investigationOpen&&(
-        <div style={{position:"fixed",right:0,top:"38%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"72vw"}}>
-          <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:"10px 0 0 10px",padding:"10px 12px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
-            <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
-              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Financial Analysis
-            </div>
-            <div style={{fontSize:10,color:"#818cf8",lineHeight:1.4,marginBottom:8}}>End-of-month projections &amp; goal planning.</div>
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>{setShowAnalysisSuggestion(false);openAnalysis();}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Open →</button>
-              <button onClick={()=>setShowAnalysisSuggestion(false)} style={{padding:"5px 8px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:6,fontSize:10,cursor:"pointer"}}>✕</button>
-            </div>
-          </div>
-        </div>
-      )}
 
      {/* Main table area */}
       <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"8px 0 0":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
@@ -4125,7 +4437,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <td data-sticky-label colSpan={2} style={{padding:"9px 12px",fontSize:13,fontWeight:800,color:"#6366f1",cursor:"help",background:T.cashBalRow}}
                   onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
                   onMouseLeave={()=>setTooltip(null)}>
-                  CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>?</span>
+                  CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>ⓘ</span>
                 </td>
                 {combinedClosingBalances.actual.map((v,i)=>(
                   <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#374151":v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.border}`,fontVariantNumeric:"tabular-nums",background:v!==null&&v>=0?"rgba(16,185,129,0.07)":v!==null?"rgba(239,68,68,0.07)":"transparent"}}>
@@ -4315,634 +4627,44 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
 
       {/* Stock setup prompt */}
-      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);triggerAnalysisTip();}} onDismiss={()=>{setShowStockSetup(false);triggerAnalysisTip();}} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);}} onDismiss={()=>setShowStockSetup(false)} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
 
-      {/* Financial Analysis tip — appears once after stock modal is closed */}
-      {showAnalysisTipAfterStock&&(
-        <div style={{position:"fixed",bottom:72,right:16,zIndex:950,maxWidth:260,animation:"tooltipIn 0.35s cubic-bezier(0.16,1,0.3,1) both"}}>
-          <div style={{background:"linear-gradient(135deg,#1e1b4b,#1a1830)",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:10,padding:"12px 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.55)"}}>
-            <div style={{fontSize:12,fontWeight:800,color:"#e0e7ff",marginBottom:4,display:"flex",alignItems:"center",gap:7}}>
-              <svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 17l4-8 4 4 3-5 3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Financial Analysis
+      {/* Mobile floating sidebar */}
+      {isMobile&&(
+        <div style={{position:'fixed',right:0,top:'50%',transform:'translateY(-50%)',zIndex:810,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
+          {/* Review */}
+          <button onClick={onGoToReview} data-tour='view-toggle'
+            style={{position:'relative',background:'linear-gradient(180deg,#6366f1,#4f46e5)',color:'#fff',border:'none',borderRadius:'8px 0 0 8px',padding:'13px 8px',fontSize:10,fontWeight:800,cursor:'pointer',letterSpacing:'0.07em',boxShadow:'-3px 0 14px rgba(99,102,241,0.45)',writingMode:'vertical-rl'}}>
+            {showReviewPrompt&&<span style={{position:'absolute',top:6,right:6,width:7,height:7,borderRadius:'50%',background:'#ef4444',flexShrink:0,display:'block'}}/>}
+            Review
+          </button>
+          {/* Insights */}
+          <button onClick={onGoToInsights}
+            style={{background:'rgba(30,27,56,0.95)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)',borderRight:'none',borderRadius:'8px 0 0 8px',padding:'13px 8px',fontSize:10,fontWeight:700,cursor:'pointer',letterSpacing:'0.07em',boxShadow:'-3px 0 10px rgba(0,0,0,0.35)',writingMode:'vertical-rl'}}>
+            Insights
+          </button>
+          {/* Grouped toggle */}
+          <button onClick={()=>setSplitByCard(s=>!s)}
+            style={{background:'rgba(30,27,56,0.95)',border:'1px solid rgba(99,102,241,0.2)',borderRight:'none',borderRadius:'8px 0 0 8px',padding:'8px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:4,boxShadow:'-2px 0 8px rgba(0,0,0,0.3)',cursor:'pointer'}}>
+            <span style={{fontSize:8,color:'#6b7280',fontWeight:600,writingMode:'vertical-rl',letterSpacing:'0.06em',lineHeight:1}}>{splitByCard?'By card':'Grouped'}</span>
+            <div style={{position:'relative',width:20,height:11,borderRadius:6,background:splitByCard?'#6366f1':'#374151',transition:'background 0.2s',flexShrink:0}}>
+              <span style={{position:'absolute',top:2,left:splitByCard?11:2,width:7,height:7,borderRadius:'50%',background:'#fff',transition:'left 0.2s',display:'block'}}/>
             </div>
-            <div style={{fontSize:11,color:"#818cf8",lineHeight:1.45,marginBottom:10}}>See your end-of-month balance, 6-week outlook, and goal planning — all in one place.</div>
-            <div style={{display:"flex",gap:7}}>
-              <button onClick={()=>{setShowAnalysisTipAfterStock(false);openAnalysis();}} style={{flex:1,padding:"6px 10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:11,fontWeight:700,cursor:"pointer"}}>Open →</button>
-              <button onClick={()=>setShowAnalysisTipAfterStock(false)} style={{padding:"6px 9px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:7,fontSize:12,cursor:"pointer"}}>✕</button>
+          </button>
+          {/* Stocks */}
+          <button onClick={openStocks}
+            style={{background:stocks.length?'rgba(16,185,129,0.12)':'rgba(30,27,56,0.95)',color:stocks.length?'#10b981':'#6b7280',border:`1px solid ${stocks.length?'rgba(16,185,129,0.35)':'rgba(99,102,241,0.2)'}`,borderRight:'none',borderRadius:'8px 0 0 8px',padding:'12px 7px',fontSize:10,fontWeight:700,cursor:'pointer',writingMode:'vertical-rl',boxShadow:'-2px 0 8px rgba(0,0,0,0.3)'}}>
+            {stocks.length?`Stocks(${stocks.length})`:'Stocks'}
+          </button>
+          {/* Free / Premium badge */}
+          {(()=>{const pro=isPremium();return(
+            <div onClick={pro?undefined:()=>setShowPremiumGate(true)}
+              style={{background:pro?'rgba(16,185,129,0.12)':'rgba(99,102,241,0.1)',border:`1px solid ${pro?'rgba(16,185,129,0.3)':'rgba(99,102,241,0.2)'}`,borderRight:'none',borderRadius:'8px 0 0 8px',padding:'7px 5px',cursor:pro?'default':'pointer',boxShadow:'-2px 0 6px rgba(0,0,0,0.25)'}}>
+              <div style={{writingMode:'vertical-rl',fontSize:8,fontWeight:800,color:pro?'#10b981':'#818cf8',letterSpacing:'0.08em',whiteSpace:'nowrap'}}>{pro?'Premium':'Free'}</div>
             </div>
-          </div>
+          );})()}
         </div>
       )}
-
-      {/* Investigation Panel — fixed right drawer */}
-      {(()=>{
-        const today=new Date();
-        const endOfMonth=new Date(today.getFullYear(),today.getMonth()+1,0);
-        const eomActualIdx=actualWeeks.reduce((best,w,i)=>{const d=Math.abs(w.date-endOfMonth);return best===-1||d<Math.abs(actualWeeks[best].date-endOfMonth)?i:best;},-1);
-        const eomActualBal=eomActualIdx>=0?combinedClosingBalances.actual[eomActualIdx]:null;
-        const eomFcIdx=forecastWeeks.reduce((best,w,i)=>{const d=Math.abs(w.date-endOfMonth);return best===-1||d<Math.abs(forecastWeeks[best].date-endOfMonth)?i:best;},-1);
-        const eomFcBal=eomFcIdx>=0?combinedClosingBalances.forecast[eomFcIdx]:null;
-        const eomBal=eomFcBal!==null&&eomFcBal!==undefined?eomFcBal:eomActualBal;
-        const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
-        const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
-        const hasOutliers=detectedOutliers.length>0;
-        const anyExcluded=detectedOutliers.some(o=>excludedWeeks[o.cat]?.has(o.weekKey));
-        function markOneOff(cat,weekKey){
-          setExcludedWeeks(prev=>{const next={...prev};const s=new Set(next[cat]||[]);s.add(weekKey);next[cat]=s;return next;});
-          const cashBalEl=document.querySelector('[data-tour="cashbalance"]');
-          if(cashBalEl) cashBalEl.scrollIntoView({behavior:"smooth",block:"center"});
-          setHighlightCashBal(true);
-          if(highlightCashBalTimer.current) clearTimeout(highlightCashBalTimer.current);
-          highlightCashBalTimer.current=setTimeout(()=>setHighlightCashBal(false),3000);
-        }
-
-        const drawerW=isMobile?"100%":370;
-        const steps=[
-          {id:0,label:"End of month"},
-          {id:1,label:"6-week outlook"},
-          {id:2,label:"One-offs"},
-          {id:3,label:"Tune forecast"},
-          {id:4,label:"Low point"},
-          {id:5,label:"Your plan"},
-        ];
-        return(
-          <>
-            {/* Collapsed tab */}
-            {!investigationOpen&&(
-              isMobile ? (
-                <div style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
-                  {/* Review */}
-                  <button onClick={onGoToReview} data-tour="view-toggle"
-                    style={{position:"relative",background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"13px 8px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.07em",boxShadow:"-3px 0 14px rgba(99,102,241,0.45)",writingMode:"vertical-rl"}}>
-                    {showReviewPrompt&&<span style={{position:"absolute",top:6,right:6,width:7,height:7,borderRadius:"50%",background:"#ef4444",flexShrink:0,display:"block"}}/>}
-                    Review
-                  </button>
-                  {/* Analysis */}
-                  <button onClick={openAnalysis}
-                    style={{background:"rgba(30,27,56,0.95)",color:"#818cf8",border:"1px solid rgba(99,102,241,0.3)",borderRight:"none",borderRadius:"8px 0 0 8px",padding:"13px 8px",fontSize:10,fontWeight:700,cursor:"pointer",letterSpacing:"0.07em",boxShadow:"-3px 0 10px rgba(0,0,0,0.35)",writingMode:"vertical-rl"}}>
-                    Analysis
-                  </button>
-                  {/* Grouped toggle */}
-                  <button onClick={()=>setSplitByCard(s=>!s)}
-                    style={{background:"rgba(30,27,56,0.95)",border:"1px solid rgba(99,102,241,0.2)",borderRight:"none",borderRadius:"8px 0 0 8px",padding:"8px 9px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,boxShadow:"-2px 0 8px rgba(0,0,0,0.3)",cursor:"pointer"}}>
-                    <span style={{fontSize:8,color:"#6b7280",fontWeight:600,writingMode:"vertical-rl",letterSpacing:"0.06em",lineHeight:1}}>{splitByCard?"By card":"Grouped"}</span>
-                    <div style={{position:"relative",width:20,height:11,borderRadius:6,background:splitByCard?"#6366f1":"#374151",transition:"background 0.2s",flexShrink:0}}>
-                      <span style={{position:"absolute",top:2,left:splitByCard?11:2,width:7,height:7,borderRadius:"50%",background:"#fff",transition:"left 0.2s",display:"block"}}/>
-                    </div>
-                  </button>
-                  {/* Stocks */}
-                  <button onClick={openStocks}
-                    style={{background:stocks.length?"rgba(16,185,129,0.12)":"rgba(30,27,56,0.95)",color:stocks.length?"#10b981":"#6b7280",border:`1px solid ${stocks.length?"rgba(16,185,129,0.35)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"12px 7px",fontSize:10,fontWeight:700,cursor:"pointer",writingMode:"vertical-rl",boxShadow:"-2px 0 8px rgba(0,0,0,0.3)"}}>
-                    {stocks.length?`Stocks(${stocks.length})`:"Stocks"}
-                  </button>
-                  {/* Free / Premium badge */}
-                  {(()=>{const pro=isPremium();return(
-                    <div onClick={pro?undefined:()=>setShowPremiumGate(true)}
-                      style={{background:pro?"rgba(16,185,129,0.12)":"rgba(99,102,241,0.1)",border:`1px solid ${pro?"rgba(16,185,129,0.3)":"rgba(99,102,241,0.2)"}`,borderRight:"none",borderRadius:"8px 0 0 8px",padding:"7px 5px",cursor:pro?"default":"pointer",boxShadow:"-2px 0 6px rgba(0,0,0,0.25)"}}>
-                      <div style={{writingMode:"vertical-rl",fontSize:8,fontWeight:800,color:pro?"#10b981":"#818cf8",letterSpacing:"0.08em",whiteSpace:"nowrap"}}>{pro?"Premium":"Free"}</div>
-                    </div>
-                  );})()}
-                </div>
-              ) : (
-                <button onClick={openAnalysis}
-                  style={{position:"fixed",right:0,top:"50%",transform:"translateY(-50%)",zIndex:810,background:"linear-gradient(180deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:"8px 0 0 8px",padding:"14px 7px",fontSize:10,fontWeight:800,cursor:"pointer",letterSpacing:"0.1em",writingMode:"vertical-rl",textOrientation:"mixed",boxShadow:"-4px 0 20px rgba(99,102,241,0.35)"}}>
-                  ANALYSIS
-                </button>
-              )
-            )}
-
-            {/* Mobile backdrop */}
-            {isMobile&&investigationOpen&&<div onClick={()=>setInvestigationOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:799,animation:"fadeIn 0.2s ease both"}}/>}
-            {/* Drawer */}
-            <div style={isMobile?{
-              position:"fixed",bottom:investigationOpen?0:"-78vh",left:0,right:0,height:"78vh",
-              background:T.drawerBg,borderTop:`1px solid ${T.drawerBorderColor}`,
-              borderRadius:"20px 20px 0 0",zIndex:800,display:"flex",flexDirection:"column",
-              transition:"bottom 0.38s cubic-bezier(0.16,1,0.3,1)",
-              boxShadow:investigationOpen?"0 -12px 48px rgba(0,0,0,0.4)":"none",overflow:"hidden"
-            }:{
-              position:"fixed",right:investigationOpen?0:-370,top:57,bottom:0,width:370,
-              background:T.drawerBg,borderLeft:`1px solid ${T.drawerBorderColor}`,
-              zIndex:800,display:"flex",flexDirection:"column",
-              transition:"right 0.35s cubic-bezier(0.16,1,0.3,1)",
-              boxShadow:investigationOpen?"-12px 0 48px rgba(0,0,0,0.3)":"none",overflow:"hidden"
-            }}>
-              {/* Mobile drag handle */}
-              {isMobile&&<div style={{display:"flex",justifyContent:"center",padding:"10px 0 4px",flexShrink:0,cursor:"pointer"}} onClick={()=>setInvestigationOpen(false)}><div style={{width:36,height:4,borderRadius:2,background:"rgba(128,120,200,0.4)"}}/></div>}
-              {/* Drawer header */}
-              <div style={{background:T.drawerHdrBg,padding:isMobile?"11px 16px":"13px 16px",display:"flex",alignItems:"center",gap:10,borderBottom:`1px solid ${T.drawerBorderColor}`,flexShrink:0}}>
-                <div style={{width:7,height:7,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 8px rgba(99,102,241,0.7)"}}/>
-                <span style={{fontSize:13,fontWeight:800,color:T.drawerHdrText,flex:1,letterSpacing:"-0.01em"}}>Financial Analysis</span>
-                {/* Step dots */}
-                <div style={{display:"flex",gap:5}}>
-                  {steps.map((s,i)=>(
-                    <button key={s.id} onClick={()=>setInvestigationStep(s.id)} title={s.label}
-                      style={{width:20,height:20,borderRadius:"50%",border:`1.5px solid ${investigationStep>=s.id?"#6366f1":T.dimBorder}`,background:investigationStep>=s.id?"#6366f1":"transparent",color:investigationStep>=s.id?"#fff":T.dimText,fontSize:9,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s",flexShrink:0}}>
-                      {investigationStep>s.id?"✓":s.id+1}
-                    </button>
-                  ))}
-                </div>
-                <button onClick={()=>setInvestigationOpen(false)}
-                  style={{width:isMobile?32:24,height:isMobile?32:24,borderRadius:8,border:`1px solid ${T.dimBorder}`,background:isMobile?"rgba(99,102,241,0.12)":"transparent",color:isMobile?"#a5b4fc":T.dimText,fontSize:isMobile?20:16,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,lineHeight:1,marginLeft:4}}>
-                  ×
-                </button>
-              </div>
-
-              {/* Scrollable steps */}
-              <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>
-
-                {/* Step 1: End of month */}
-                <div style={{padding:"18px 20px",borderBottom:investigationStep>=1?`1px solid ${T.dimBorderMid}`:"none"}}>
-                  <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 1 · End of month</div>
-                  <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
-                    <span style={{fontSize:30,fontWeight:800,color:eomBal!==null?(eomBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
-                      {eomBal!==null?`${eomBal>=0?"":"−"}£${Math.round(Math.abs(eomBal)).toLocaleString()}`:"—"}
-                    </span>
-                    <span style={{fontSize:12,color:"#6b7280"}}>end of {today.toLocaleDateString("en-GB",{month:"long"})}</span>
-                  </div>
-                  <p style={{fontSize:12,color:"#9ca3af",margin:"0 0 14px",lineHeight:1.65}}>
-                    {eomBal===null?"Your actuals already extend past end of month."
-                      :eomBal>=0
-                        ?"You're on track to finish the month in the green. Any surplus now is money that can work harder for you."
-                        :"You're projected to finish the month in the negative. Check which categories are eating into your balance."}
-                  </p>
-                  {investigationStep===0&&(
-                    <button onClick={()=>setInvestigationStep(1)}
-                      style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                      See 6-week outlook →
-                    </button>
-                  )}
-                </div>
-
-                {/* Step 2: 6-week forecast */}
-                {investigationStep>=1&&(
-                  <div style={{padding:"18px 20px",borderBottom:investigationStep>=2?`1px solid ${T.dimBorderMid}`:"none"}}>
-                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 2 · 6-week forecast</div>
-                    <div style={{display:"flex",alignItems:"baseline",gap:8,marginBottom:8}}>
-                      <span style={{fontSize:30,fontWeight:800,color:forecastEndBal!==null?(forecastEndBal>=0?"#10b981":"#ef4444"):"#6b7280",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
-                        {forecastEndBal!==null?`${forecastEndBal>=0?"":"−"}£${Math.round(Math.abs(forecastEndBal)).toLocaleString()}`:"—"}
-                      </span>
-                      <span style={{fontSize:12,color:"#6b7280"}}>in 6 weeks</span>
-                    </div>
-                    <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
-                      {forecastEndBal===null?"Not enough forecast data yet."
-                        :forecastEndBal>=0
-                          ?(lastActualBal!==null&&forecastEndBal>lastActualBal
-                            ?`Up £${Math.round(forecastEndBal-lastActualBal).toLocaleString()} from today — you're in a strong position to start building towards a goal.`
-                            :"Your balance is holding steady. Spending and income look balanced.")
-                          :"Your balance is forecast to go negative. Even small cuts to your biggest categories can shift this."}
-                    </p>
-                    {(()=>{
-                      const budgetItems=Object.entries(budgets).map(([key,budget])=>{
-                        const [acc,cat]=key.split("::");
-                        const avgAct=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)/Math.max(actualWeeks.length,1);
-                        return{key,cat,budget,avgAct,over:avgAct>budget};
-                      }).filter(x=>x.budget>0);
-                      if(!budgetItems.length) return null;
-                      const overCount=budgetItems.filter(x=>x.over).length;
-                      return(
-                        <div style={{marginBottom:14,padding:"10px 12px",background:T.summaryRow,border:`1px solid ${T.dimBorderMid}`,borderRadius:8}}>
-                          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",marginBottom:8,textTransform:"uppercase",letterSpacing:"0.08em"}}>
-                            Budget health · {overCount>0?<span style={{color:"#ef4444"}}>{overCount} over</span>:<span style={{color:"#10b981"}}>all on track</span>}
-                          </div>
-                          {budgetItems.map(x=>{
-                            const pct=Math.min((x.avgAct/x.budget)*100,100);
-                            return(
-                              <div key={x.key} style={{marginBottom:6}}>
-                                <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
-                                  <span style={{fontSize:11,color:T.catText}}>{x.cat}</span>
-                                  <span style={{fontSize:11,color:x.over?"#ef4444":"#10b981",fontWeight:700}}>£{Math.round(x.avgAct)}<span style={{color:"#4b5563",fontWeight:400}}> / £{x.budget}</span></span>
-                                </div>
-                                <div style={{height:3,background:T.progressTrack,borderRadius:99}}>
-                                  <div style={{height:"100%",width:`${pct}%`,background:x.over?"#ef4444":"#10b981",borderRadius:99}}/>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                    {investigationStep===1&&(
-                      <button onClick={()=>setInvestigationStep(2)}
-                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                        Dig into spending →
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Step 3: One-off weeks */}
-                {investigationStep>=2&&(
-                  <div style={{padding:"18px 20px",borderBottom:investigationStep>=3?`1px solid ${T.dimBorderMid}`:"none"}}>
-                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:8,textTransform:"uppercase"}}>Step 3 · One-off spending</div>
-                    <div style={{fontSize:14,fontWeight:800,color:T.text,marginBottom:6}}>Was anything a one-off?</div>
-                    <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
-                      {hasOutliers
-                        ?`We spotted ${detectedOutliers.length} unusually high week${detectedOutliers.length>1?"s":""} — things like holidays or a big one-time purchase. Marking them keeps your forecast accurate.`
-                        :"Your spending looks consistent — no unusual spikes detected."}
-                    </p>
-                    {hasOutliers&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:14}}>
-                        {detectedOutliers.map((o,i)=>{
-                          const isExcl=excludedWeeks[o.cat]?.has(o.weekKey);
-                          return(
-                            <div key={i} style={{borderRadius:10,border:`1.5px solid ${isExcl?"#6366f1":T.dimBorder}`,background:isExcl?"rgba(99,102,241,0.08)":T.summaryRow,overflow:"hidden",transition:"all 0.2s"}}>
-                              <div style={{padding:"11px 14px",display:"flex",alignItems:"center",gap:10}}>
-                                <div style={{flex:1}}>
-                                  <div style={{fontSize:12,fontWeight:700,color:T.text,marginBottom:2}}>{o.cat}</div>
-                                  <div style={{fontSize:11,color:"#6b7280"}}>{o.weekLabel} · <span style={{color:"#f87171"}}>£{Math.round(o.amount).toLocaleString()}</span> vs typical £{Math.round(o.typicalAmt).toLocaleString()}</div>
-                                </div>
-                                {isExcl&&<div style={{fontSize:11,color:"#10b981",fontWeight:700,flexShrink:0}}>✓ One-off</div>}
-                              </div>
-                              {!isExcl&&(
-                                <div style={{borderTop:`1px solid ${T.dimBorderMid}`,padding:"10px 14px",background:"rgba(99,102,241,0.05)",display:"flex",gap:8}}>
-                                  <button onClick={()=>markOneOff(o.cat,o.weekKey)}
-                                    style={{flex:1,padding:"8px 0",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.4)"}}>
-                                    Yes, mark as one-off →
-                                  </button>
-                                  <button onClick={()=>setInvestigationStep(3)}
-                                    style={{padding:"8px 12px",background:"transparent",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:7,fontSize:12,cursor:"pointer",flexShrink:0}}>
-                                    No
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                    {hasOutliers&&anyExcluded&&(
-                      <div style={{padding:"10px 14px",background:"rgba(16,185,129,0.06)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:14}}>
-                        Forecast updated — excluded from your averages.
-                      </div>
-                    )}
-                    <button onClick={()=>setInvestigationStep(3)}
-                      style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                      {hasOutliers?(anyExcluded?"Tune forecast →":"Skip →"):"Tune forecast →"}
-                    </button>
-                  </div>
-                )}
-
-                {/* Step 4: Tune your forecast */}
-                {investigationStep>=3&&investigationStep<4&&(()=>{
-                  const ord=n=>n+(n%10===1&&n!==11?"st":n%10===2&&n!==12?"nd":n%10===3&&n!==13?"rd":"th");
-                  // Rent detection
-                  const rentTxns=transactions.filter(t=>t.category==="Rent").sort((a,b)=>b.date-a.date);
-                  const detectedRent=rentTxns[0]||null;
-                  const rentAmt=detectedRent?.amount||0;
-                  const rentDay=detectedRent?.date?.getDate()||1;
-                  // Active rent override (from forecastOverrides)
-                  const activeRentOv=forecastOverrides.find(o=>o.cat==="Rent");
-                  // One-off candidates: spend txns appearing ≤2× that are large relative to category average
-                  const weekCount=Math.max(actualWeeks.length,1);
-                  const spendTxns=transactions.filter(t=>!t.isIncome&&!["Card Repayment","Salary"].includes(t.category));
-                  const byNarr={};
-                  spendTxns.forEach(t=>{if(!byNarr[t.narrative])byNarr[t.narrative]=[];byNarr[t.narrative].push(t);});
-                  const candidates=Object.values(byNarr)
-                    .filter(txns=>txns.length<=2)
-                    .map(txns=>{
-                      const t=[...txns].sort((a,b)=>b.amount-a.amount)[0];
-                      const catWeeklyAvg=transactions.filter(x=>x.category===t.category&&!x.isIncome).reduce((s,x)=>s+x.amount,0)/weekCount;
-                      const weeklyImpact=Math.round(t.amount/weekCount);
-                      const sixWeekImpact=weeklyImpact*6;
-                      return{...t,count:txns.length,catWeeklyAvg,weeklyImpact,sixWeekImpact};
-                    })
-                    .filter(c=>c.amount>=40&&c.amount>c.catWeeklyAvg*0.4)
-                    .sort((a,b)=>b.amount-a.amount)
-                    .slice(0,8);
-                  const markedCount=candidates.filter(c=>nonRecurring.has(c.narrative)).length;
-                  const totalSixWkSaving=candidates.filter(c=>nonRecurring.has(c.narrative)).reduce((s,c)=>s+c.sixWeekImpact,0);
-                  return(
-                    <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:18}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 4 · Tune your forecast</div>
-
-                      {/* ── Rent verification ── */}
-                      {detectedRent&&(
-                        <div>
-                          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:6}}>Your rent</div>
-                          {!rentEditing?(
-                            <div style={{padding:"12px 14px",background:T.summaryRow,border:`1px solid ${T.dimBorder}`,borderRadius:10}}>
-                              <div style={{fontSize:12,color:T.dimText,marginBottom:8,lineHeight:1.6}}>
-                                We're forecasting <span style={{color:"#e0e7ff",fontWeight:700}}>£{(activeRentOv?.newAmt||rentAmt).toLocaleString()}</span> rent landing on the <span style={{color:"#e0e7ff",fontWeight:700}}>{ord(rentDay)}</span> of each month.
-                              </div>
-                              <div style={{display:"flex",gap:8}}>
-                                <button onClick={()=>{setRentEditing(true);setRentAmtInput(String(activeRentOv?.newAmt||rentAmt));setRentDayInput(String(rentDay));}}
-                                  style={{padding:"6px 14px",background:"transparent",border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.dimText,fontSize:12,cursor:"pointer",fontWeight:600}}>
-                                  Edit amount
-                                </button>
-                                {!activeRentOv&&<div style={{fontSize:11,color:"#10b981",alignSelf:"center",marginLeft:4}}>✓ Looks right</div>}
-                                {activeRentOv&&<div style={{fontSize:11,color:"#10b981",alignSelf:"center",marginLeft:4}}>✓ Updated to £{activeRentOv.newAmt}</div>}
-                              </div>
-                            </div>
-                          ):(
-                            <div style={{padding:"12px 14px",background:T.summaryRow,border:`1px solid #4338ca`,borderRadius:10,display:"flex",flexDirection:"column",gap:10}}>
-                              <div style={{fontSize:11,color:T.dimText}}>Monthly rent amount</div>
-                              <input type="number" value={rentAmtInput} onChange={e=>setRentAmtInput(e.target.value)} placeholder="e.g. 1200"
-                                style={{padding:"8px 10px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.text,fontSize:14,fontWeight:700,outline:"none",width:"100%",boxSizing:"border-box"}}/>
-                              <div style={{fontSize:11,color:T.dimText}}>Day of month it lands (1–31)</div>
-                              <input type="number" min="1" max="31" value={rentDayInput} onChange={e=>setRentDayInput(e.target.value)} placeholder="e.g. 25"
-                                style={{padding:"8px 10px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.text,fontSize:14,fontWeight:700,outline:"none",width:"100%",boxSizing:"border-box"}}/>
-                              <div style={{display:"flex",gap:8}}>
-                                <button onClick={()=>{
-                                  const amt=parseFloat(rentAmtInput);
-                                  if(!isNaN(amt)&&amt>0){
-                                    setForecastOverrides(p=>[...p.filter(o=>o.cat!=="Rent"),{id:Date.now(),cat:"Rent",newAmt:amt,fromWeekKey:forecastWeeks[0]?.key||""}]);
-                                  }
-                                  setRentEditing(false);
-                                }} style={{flex:1,padding:"8px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                                  Save
-                                </button>
-                                <button onClick={()=>setRentEditing(false)} style={{padding:"8px 14px",background:"transparent",border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.dimText,fontSize:12,cursor:"pointer"}}>
-                                  Cancel
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* ── One-off transaction review ── */}
-                      {candidates.length>0&&(
-                        <div>
-                          <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:4}}>Were any of these one-offs?</div>
-                          <p style={{fontSize:12,color:T.dimText,margin:"0 0 12px",lineHeight:1.6}}>
-                            These large or infrequent payments may be skewing your forecast. Mark any that won't happen again.
-                          </p>
-                          {markedCount>0&&(
-                            <div style={{padding:"9px 12px",background:"rgba(16,185,129,0.07)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:8,fontSize:12,color:"#6ee7b7",marginBottom:12,display:"flex",alignItems:"center",gap:8}}>
-                              <span style={{fontSize:16}}>✓</span>
-                              <span>{markedCount} marked — saves ~<strong>£{totalSixWkSaving.toLocaleString()}</strong> from your 6-week forecast</span>
-                            </div>
-                          )}
-                          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                            {candidates.map((c,i)=>{
-                              const marked=nonRecurring.has(c.narrative);
-                              return(
-                                <div key={i} style={{borderRadius:10,border:`1.5px solid ${marked?"#6366f1":T.dimBorder}`,background:marked?"rgba(99,102,241,0.07)":T.summaryRow,overflow:"hidden",transition:"all 0.2s"}}>
-                                  <div style={{padding:"10px 13px",display:"flex",alignItems:"center",gap:10}}>
-                                    <div style={{flex:1,minWidth:0}}>
-                                      <div style={{fontSize:12,fontWeight:700,color:T.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.narrative}</div>
-                                      <div style={{fontSize:11,color:"#6b7280",marginTop:2}}>
-                                        {c.category} · <span style={{color:"#f87171",fontWeight:600}}>£{c.amount.toLocaleString()}</span>
-                                        {c.count===1?" · appeared once":" · appeared twice"}
-                                      </div>
-                                    </div>
-                                    <button onClick={()=>onToggleNonRecurring(c.narrative)}
-                                      style={{flexShrink:0,padding:"6px 12px",borderRadius:20,border:`1.5px solid ${marked?"#6366f1":"rgba(255,255,255,0.15)"}`,background:marked?"rgba(99,102,241,0.2)":"transparent",color:marked?"#a5b4fc":"#6b7280",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",transition:"all 0.15s"}}>
-                                      {marked?"One-off ✓":"One-off?"}
-                                    </button>
-                                  </div>
-                                  {marked&&(
-                                    <div style={{borderTop:`1px solid rgba(99,102,241,0.2)`,padding:"7px 13px",background:"rgba(99,102,241,0.05)",fontSize:11,color:"#818cf8"}}>
-                                      Removes ~<strong style={{color:"#a5b4fc"}}>£{c.weeklyImpact}/week</strong> from your {c.category} forecast · saves £{c.sixWeekImpact} over 6 weeks
-                                    </div>
-                                  )}
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-
-                      {!detectedRent&&candidates.length===0&&(
-                        <p style={{fontSize:12,color:T.dimText,lineHeight:1.65}}>No unusual transactions detected — your spending looks consistent.</p>
-                      )}
-
-                      <button onClick={()=>setInvestigationStep(4)}
-                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)",alignSelf:"flex-start"}}>
-                        {markedCount>0||activeRentOv?"See forecast impact →":"See low point →"}
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                {/* Step 5: Low point */}
-                {investigationStep>=4&&investigationStep<5&&(()=>{
-                  const lowIdx=combinedClosingBalances.forecast.reduce((worst,v,i)=>v!==null&&(worst===null||v<combinedClosingBalances.forecast[worst])?i:worst,null);
-                  const lowBal=lowIdx!==null?combinedClosingBalances.forecast[lowIdx]:null;
-                  const lowWk=lowIdx!==null?forecastWeeks[lowIdx]:null;
-                  const isRisky=lowBal!==null&&lastActualBal!==null&&lowBal<lastActualBal*0.7;
-                  return(
-                    <div style={{padding:"18px 20px"}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",marginBottom:10,textTransform:"uppercase"}}>Step 4 · Low point</div>
-                      <div style={{display:"flex",alignItems:"baseline",gap:12,marginBottom:10}}>
-                        <span style={{fontSize:36,fontWeight:800,color:"#ef4444",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.03em"}}>
-                          {lowBal!==null?`${lowBal>=0?"":"−"}£${Math.round(Math.abs(lowBal)).toLocaleString()}`:"—"}
-                        </span>
-                        {lowWk&&<span style={{fontSize:14,fontWeight:700,color:"#e0e7ff",background:"rgba(99,102,241,0.15)",padding:"2px 8px",borderRadius:5}}>{lowWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"2-digit"})}</span>}
-                      </div>
-                      <p style={{fontSize:12,color:T.dimText,margin:"0 0 14px",lineHeight:1.65}}>
-                        {lowBal===null?"No forecast data available."
-                          :isRisky
-                            ?`That week is your tightest point — a ${Math.round((1-(lowBal/(lastActualBal||1)))*100)}% drop from today's balance. Multiple bills may land at once. Make sure you have enough buffer going in.`
-                            :"Your balance stays relatively stable throughout the forecast period — no alarming dips detected."}
-                      </p>
-                      {isRisky&&lowWk&&(
-                        <div style={{padding:"11px 14px",background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.25)",borderLeft:"3px solid #ef4444",borderRadius:8,fontSize:12,color:"#fca5a5",lineHeight:1.65,marginBottom:14}}>
-                          <strong>Tip:</strong> Check the week of {lowWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} in the table — look for large outgoings hitting the same week as rent or bills.
-                        </div>
-                      )}
-                      <button onClick={()=>setInvestigationStep(5)}
-                        style={{padding:"9px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 10px rgba(99,102,241,0.3)"}}>
-                        Set my goals →
-                      </button>
-                    </div>
-                  );
-                })()}
-
-                {/* Step 6: Plan — forecast changes + savings goal + advice */}
-                {investigationStep>=5&&(()=>{
-                  const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
-                  const isMonthly=cat=>MONTHLY_OV_CATS.includes(cat);
-
-                  // Savings goal trajectory
-                  const curBal=lastActualBal??0;
-                  const goalAmt=parseFloat(goalAmount)||0;
-                  const targetBal=curBal+goalAmt;
-                  const weeklyNets=forecastWeeks.map((_,i)=>{
-                    const inc=accounts.reduce((s,acc)=>s+(forecastData[acc]?.["Salary"]?.[i]||0),0);
-                    const sp=accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0);
-                    return inc-sp;
-                  });
-                  const avgWeeklyNet=weeklyNets.reduce((a,b)=>a+b,0)/Math.max(weeklyNets.length,1);
-                  const weeksToGoal=goalAmt>0&&avgWeeklyNet>0?Math.ceil(goalAmt/avgWeeklyNet):null;
-                  const projDate=weeksToGoal?new Date(Date.now()+weeksToGoal*7*86400000):null;
-                  const targetDate=goalTargetDate?(([y,m])=>new Date(+y,+m-1))(goalTargetDate.split('-')):null;
-                  const onTrack=projDate&&targetDate?projDate<=targetDate:null;
-                  const pctSaved=goalAmt>0?Math.min(Math.max((forecastEndBal!==null?forecastEndBal-curBal:0)/goalAmt*100,0),100):0;
-
-                  // Build Claude prompt with structured data
-                  async function fetchGoalsAdvice2(){
-                    if(!goalsText.trim()) return;
-                    setGoalsLoading(true);setGoalsAdvice("");
-                    try{
-                      const weeklySpend=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0)/Math.max(actualWeeks.length,1));
-                      const topCat=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment").map(c=>({c,total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)})).sort((a,b)=>b.total-a.total)[0];
-                      const goalLine=goalAmt>0?`Savings goal: £${goalAmt.toLocaleString()}${targetDate?" by "+targetDate.toLocaleDateString("en-GB",{month:"long",year:"numeric"}):""}. Projected to reach it in ${weeksToGoal?Math.ceil(weeksToGoal/4.33)+" months":"unknown — spending exceeds income"}.`:"No specific savings goal set.";
-                      const overrideLine=forecastOverrides.length?`Upcoming changes: ${forecastOverrides.map(o=>`${o.cat} → £${o.newAmt}${isMonthly(o.cat)?"/mo":"/wk"} from ${forecastWeeks.find(w=>w.key===o.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short"})||"soon"}`).join(", ")}.`:"";
-                      const prompt=`You're a brutally honest but warm money mate texting a friend. Their situation:
-- Weekly spend: £${weeklySpend}/wk — biggest chunk is ${topCat?.c||"unknown"} at £${Math.round((topCat?.total||0)/Math.max(actualWeeks.length,1))}/wk
-- Net each week: ${avgWeeklyNet>=0?"saving £"+Math.round(avgWeeklyNet):"OVERSPENDING by £"+Math.round(Math.abs(avgWeeklyNet))}
-- Cash in 6 weeks: ${forecastEndBal!==null?"£"+Math.round(forecastEndBal).toLocaleString():"unclear"}
-- ${goalLine}${overrideLine?"\n- "+overrideLine:""}
-- What they actually said they want: "${goalsText.trim()}"
-
-Reply directly to what they said they want. Use their exact words back at them. Be specific with the numbers. Sound like a mate who's good with money — casual, direct, no waffle. No bullet points. 2-3 sentences max. Don't start with "Hey" or their name. Just get straight into it.`;
-                      const text=await callClaude(prompt,200,30000);
-                      setGoalsAdvice(text);
-                    }catch(e){
-                      console.error("Goals advice error:",e);
-                      setGoalsAdvice(`Couldn't load advice right now — ${e.message||"please try again"}.`);
-                    }
-                    setGoalsLoading(false);
-                  }
-
-                  const inputStyle={padding:"7px 10px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:7,color:T.text,fontSize:12,outline:"none",fontFamily:"inherit",boxSizing:"border-box"};
-
-                  return(
-                    <div style={{padding:"18px 20px",display:"flex",flexDirection:"column",gap:18}}>
-                      <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase"}}>Step 5 · Your plan</div>
-
-                      {/* ── Forecast changes ── */}
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                          <span style={{fontSize:13,fontWeight:800,color:T.text}}>Upcoming changes</span>
-                          <button onClick={()=>{ setAddingOverride(v=>!v); setNewOvCat(categories[0]||"Salary"); setNewOvAmt(""); setNewOvFrom(forecastWeeks[0]?.key||""); }}
-                            style={{fontSize:11,padding:"4px 10px",background:addingOverride?T.dimBorder:"linear-gradient(135deg,#6366f1,#4f46e5)",color:addingOverride?T.text:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontWeight:700}}>
-                            {addingOverride?"Cancel":"+ Add change"}
-                          </button>
-                        </div>
-                        <p style={{fontSize:11,color:"#6b7280",margin:"0 0 10px",lineHeight:1.5}}>Tell us if your salary, rent, or spending is about to change — we'll update the forecast.</p>
-
-                        {forecastOverrides.length>0&&(
-                          <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:10}}>
-                            {forecastOverrides.map(ov=>(
-                              <div key={ov.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",background:"rgba(99,102,241,0.06)",border:`1px solid ${T.dimBorder}`,borderRadius:7}}>
-                                <div style={{flex:1,minWidth:0}}>
-                                  <span style={{fontSize:12,color:T.catText,fontWeight:600}}>{ov.cat}</span>
-                                  <span style={{fontSize:11,color:"#6b7280"}}> → £{ov.newAmt.toLocaleString()}{isMonthly(ov.cat)?"/mo":"/wk"} from {forecastWeeks.find(w=>w.key===ov.fromWeekKey)?.date.toLocaleDateString("en-GB",{month:"short",day:"numeric"})||"now"}</span>
-                                </div>
-                                <button onClick={()=>setForecastOverrides(p=>p.filter(x=>x.id!==ov.id))} style={{color:"#4b5563",background:"none",border:"none",cursor:"pointer",fontSize:14,lineHeight:1,flexShrink:0}}>×</button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-
-                        {addingOverride&&(
-                          <div style={{padding:"12px",background:T.summaryRow,border:`1px solid ${T.dimBorder}`,borderRadius:8,display:"flex",flexDirection:"column",gap:8}}>
-                            <div style={{display:"flex",gap:8}}>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Category</div>
-                                <select value={newOvCat} onChange={e=>setNewOvCat(e.target.value)} style={{...inputStyle,width:"100%",cursor:"pointer"}}>
-                                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
-                                </select>
-                              </div>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>New amount ({isMonthly(newOvCat)?"£/mo":"£/wk"})</div>
-                                <input type="number" value={newOvAmt} onChange={e=>setNewOvAmt(e.target.value)} placeholder="0" style={{...inputStyle,width:"100%"}}/>
-                              </div>
-                            </div>
-                            <div>
-                              <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Starting from week</div>
-                              <select value={newOvFrom} onChange={e=>setNewOvFrom(e.target.value)} style={{...inputStyle,width:"100%",cursor:"pointer"}}>
-                                {forecastWeeks.map(w=><option key={w.key} value={w.key}>{w.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</option>)}
-                              </select>
-                            </div>
-                            <button disabled={!newOvAmt||!newOvFrom} onClick={()=>{
-                              setForecastOverrides(p=>[...p,{id:Date.now(),cat:newOvCat,newAmt:parseFloat(newOvAmt),fromWeekKey:newOvFrom}]);
-                              setAddingOverride(false);setNewOvAmt("");
-                            }} style={{padding:"8px",background:newOvAmt&&newOvFrom?"linear-gradient(135deg,#6366f1,#4f46e5)":T.border,color:newOvAmt&&newOvFrom?"#fff":T.dimText,border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:newOvAmt&&newOvFrom?"pointer":"default"}}>
-                              Save change →
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* ── Savings goal ── */}
-                      <div>
-                        <div style={{fontSize:13,fontWeight:800,color:T.text,marginBottom:10}}>Savings goal</div>
-                        <div style={{display:"flex",gap:8,marginBottom:8}}>
-                          <div style={{flex:1}}>
-                            <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>Save an extra</div>
-                            <div style={{position:"relative"}}>
-                              <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#6b7280",fontSize:12}}>£</span>
-                              <input type="number" value={goalAmount} onChange={e=>setGoalAmount(e.target.value)} placeholder="5,000" style={{...inputStyle,width:"100%",paddingLeft:18}}/>
-                            </div>
-                          </div>
-                          <div style={{flex:1}}>
-                            <div style={{fontSize:10,color:"#6b7280",marginBottom:3}}>By (optional)</div>
-                            <input type="month" value={goalTargetDate} onChange={e=>setGoalTargetDate(e.target.value)} style={{...inputStyle,width:"100%",colorScheme:"dark"}}/>
-                          </div>
-                        </div>
-
-                        {goalAmt>0&&(()=>{
-                          const canSave=avgWeeklyNet>0;
-                          return(
-                            <div style={{padding:"12px",background:"rgba(99,102,241,0.05)",border:`1px solid ${onTrack===false?"rgba(239,68,68,0.3)":onTrack===true?"rgba(16,185,129,0.3)":T.dimBorder}`,borderRadius:8}}>
-                              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#6b7280",marginBottom:6}}>
-                                <span>Today: £{Math.round(curBal).toLocaleString()}</span>
-                                <span>Goal: £{Math.round(targetBal).toLocaleString()}</span>
-                              </div>
-                              <div style={{height:6,background:T.progressTrack,borderRadius:99,marginBottom:8,overflow:"hidden"}}>
-                                <div style={{height:"100%",width:`${pctSaved}%`,background:"linear-gradient(90deg,#6366f1,#8b5cf6)",borderRadius:99,transition:"width 0.5s"}}/>
-                              </div>
-                              {canSave?(
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                  <div>
-                                    <div style={{fontSize:12,fontWeight:700,color:onTrack===false?"#ef4444":onTrack===true?"#10b981":T.catText}}>
-                                      {onTrack===true?"✓ On track":"✗ " + (onTrack===false?"Needs adjustment":"Projected:")}
-                                    </div>
-                                    <div style={{fontSize:11,color:"#6b7280"}}>
-                                      {projDate?.toLocaleDateString("en-GB",{month:"long",year:"numeric"})} · £{Math.round(Math.abs(avgWeeklyNet))}/wk net
-                                    </div>
-                                  </div>
-                                  <div style={{fontSize:20,fontWeight:800,color:"#6366f1"}}>{Math.ceil(weeksToGoal/4.33)}mo</div>
-                                </div>
-                              ):(
-                                <div style={{fontSize:12,color:"#ef4444"}}>Your spending exceeds income — saving isn't possible at current rates.</div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                        <div style={{marginTop:8}}>
-                          <div style={{fontSize:10,fontWeight:700,color:"#6b7280",marginBottom:4}}>Your goals <span style={{color:"#ef4444"}}>*</span></div>
-                          <textarea value={goalsText} onChange={e=>setGoalsText(e.target.value)} placeholder="e.g. paying off a credit card, building an emergency fund, saving for a holiday..." rows={3}
-                            style={{...inputStyle,width:"100%",resize:"vertical",lineHeight:1.5,border:`1px solid ${goalsText.trim()?"rgba(99,102,241,0.4)":"rgba(239,68,68,0.3)"}`}}/>
-                          {!goalsText.trim()&&<div style={{fontSize:10,color:"#ef4444",marginTop:3}}>Required — tell us your goals to get personalised advice</div>}
-                        </div>
-                      </div>
-
-                      {/* ── Claude advice ── */}
-                      {(()=>{
-                        return(
-                          <div>
-                            <button onClick={fetchGoalsAdvice2} disabled={goalsLoading||!goalsText.trim()}
-                              style={{width:"100%",padding:"10px 0",background:goalsText.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:goalsText.trim()?"#fff":"#374151",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:(goalsLoading||!goalsText.trim())?"not-allowed":"pointer",marginBottom:goalsAdvice||goalsLoading?12:0,boxShadow:goalsText.trim()?"0 2px 10px rgba(99,102,241,0.3)":"none",opacity:goalsLoading?0.7:1,transition:"all 0.2s"}}>
-                              {goalsLoading?"Thinking...":"Get personalised advice →"}
-                            </button>
-                            {goalsLoading&&(
-                              <div style={{display:"flex",gap:5,alignItems:"center",padding:"10px 0"}}>
-                                <span style={{fontSize:11,color:"#6366f1"}}>Analysing your data</span>
-                                {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
-                              </div>
-                            )}
-                            {goalsAdvice&&!goalsLoading&&(
-                              <div style={{padding:"14px 16px",background:"rgba(99,102,241,0.07)",border:`1px solid ${T.dimBorder}`,borderLeft:"3px solid #6366f1",borderRadius:8,fontSize:12,color:T.catText,lineHeight:1.75,animation:"fadeUp 0.3s ease both"}}>
-                                {goalsAdvice}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                })()}
-
-              </div>
-            </div>
-          </>
-        );
-      })()}
 
       {/* Tour reopen button */}
       {(()=>{

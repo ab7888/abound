@@ -54,7 +54,7 @@ async function redirectToCheckout() {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Salary", "Transfers", "Other Payments"];
+const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Income", "Transfers", "Other Payments"];
 const APP_VERSION = "1.0.0";
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
@@ -93,6 +93,7 @@ const GLOBAL_CSS = `
   @keyframes logoBgFade { from{opacity:0} to{opacity:1} }
   @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
   @keyframes skeletonPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+  @keyframes insightsPulse { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
@@ -203,7 +204,7 @@ const MERCHANT_MAP = {
     "nuffield","benenden","axa health","private gp","physio","physiotherapy","pharmacy","pharmacist",
     "skin","dermatologist","gp","counselling","psychologist","hearing"
   ],
-  Salary: [
+  Income: [
     "salary","payroll","wages"
   ]
 };
@@ -674,9 +675,8 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
   const allCats = multipleAccounts
     ? [...userCategories.filter(c=>c!==INTERCOMPANY_CATEGORY), INTERCOMPANY_CATEGORY]
     : userCategories;
-  const spendCats = allCats.filter(c=>c!=="Salary");
+  const spendCats = allCats.filter(c=>c!=="Income");
 
-  const SALARY_SIGNALS = /salary|payroll|wages|pay day|payday|bacs credit|employer|wage slip/i;
   // Pattern: "FIRSTNAME LASTNAME, PAYMENT" or "NAME , MONTHLY , VIA MOBILE - LVP" — person-to-person bank transfer
   const TRANSFER_RE = /^([A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+){1,3})\s*,\s*(?:payment|monthly)/i;
   const VIA_MOBILE_RE = /^[A-Za-z][A-Za-z'-]*(?:\s+[A-Za-z'-]+)+\s*,.*via\s+mobile/i;
@@ -695,10 +695,7 @@ async function smartCategorise(transactions, userCategories, multipleAccounts, o
     if (isPersonTransfer(t.narrative)) return {...t, category:"Transfers"};
     if (t.isIncome && t.account!=="Main Account") return {...t, category:"Card Repayment"};
     if (t.isIncome && t.account==="Main Account") {
-      if (SALARY_SIGNALS.test(t.narrative)) return {...t, category:"Salary"};
-      // Large incoming credit on Main Account → most likely salary/wages with non-standard narrative
-      if (t.amount >= 500) return {...t, category:"Salary"};
-      return {...t, category:null}; // small credit — let Claude decide (refund, cashback, etc.)
+      return {...t, category:"Income"};
     }
     return {...t, category:null};
   });
@@ -720,9 +717,9 @@ Rules (be strict — follow these exactly):
 - Online Shopping: Amazon purchases (NOT Amazon Prime), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, IKEA, B&Q, Wayfair, Dunelm, PayPal purchases (when clearly retail), any online retail
 - Healthcare: Boots, Superdrug, Specsavers, Vision Express, any pharmacy, optician, dentist, NHS charges, private GP, physio, counselling
 - Card Repayment: outgoing payments TO a credit card — narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", or any "PAYMENT TO [CARD NAME]"
-- Salary: incoming credits from an employer — payroll, BACS from employer, wages. Also use Salary for any large incoming payment (£500+) where the source is not clearly a shop refund or person transfer.
+- Income: any incoming credit on the Main Account — wages, BACS, freelance payments, client transfers, and any other credit that isn't clearly a shop refund. When in doubt about an incoming credit, use Income.
 - Other Payments: ATM withdrawals, unclear bank transfers, cash, anything not matching above
-- IMPORTANT: Transactions marked [INCOMING CREDIT] are money coming IN (refunds, cashback, credits). Do NOT assign them Memberships, Food, Travel, Rent, or other spend categories. Use Salary (if employer/wages), Transfers (if from a person), or Other Payments.
+- IMPORTANT: Transactions marked [INCOMING CREDIT] are money coming IN (refunds, cashback, credits). Do NOT assign them Memberships, Food, Travel, Rent, or other spend categories. Use Income (if employer/wages/freelance), Transfers (if from a person), or Other Payments.
 
 Every transaction MUST get a category — no nulls. If genuinely unsure → Other Payments.
 Respond ONLY with a valid JSON array of strings, one per transaction, same order as input.
@@ -819,7 +816,7 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
     if (t.category!==null) return t;
     const cat = results.get(t.narrative+t.date+t.amount)||"Other Payments";
     // Income should never be classified as a spend category
-    if(t.isIncome && !["Salary","Transfers","Other Payments"].includes(cat)){
+    if(t.isIncome && !["Income","Transfers","Other Payments"].includes(cat)){
       return {...t, category:"Other Payments"};
     }
     if(cat==="Other Payments"){
@@ -840,7 +837,7 @@ function CatIcon({cat, size=18, color="#6366f1"}) {
     case "Travel": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M2 14l4-9 4 4 3-5 5 10"/><circle {...p} cx="15" cy="5" r="1" fill={color}/></svg>;
     case "Rent": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z"/><path {...p} d="M8 18v-6h4v6"/></svg>;
     case "Memberships": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><circle {...p} cx="6" cy="13" r="1" fill={color}/><path {...p} d="M10 13h4"/></svg>;
-    case "Salary": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M10 2v16M6 5.5C6 4.1 7.8 3 10 3s4 1.1 4 2.5S12.2 8 10 8s-4 1.1-4 2.5S7.8 13 10 13s4-1.1 4-2.5"/></svg>;
+    case "Income": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M10 2v16M6 5.5C6 4.1 7.8 3 10 3s4 1.1 4 2.5S12.2 8 10 8s-4 1.1-4 2.5S7.8 13 10 13s4-1.1 4-2.5"/></svg>;
     case "Card Repayment": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><path {...p} d="M14 13.5l2-1.5-2-1.5"/><path {...p} d="M16 12H9"/></svg>;
     case "Other Payments": return <svg viewBox="0 0 20 20" style={s}><circle {...p} cx="10" cy="10" r="8"/><path {...p} d="M10 6v4l3 2"/></svg>;
     default: return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="3" y="3" width="14" height="14" rx="2"/><path {...p} d="M7 10h6M10 7v6"/></svg>;
@@ -1071,7 +1068,7 @@ function computeAccuracy(saved, transactions) {
   // Net spend per category per week (replicate weeklyByAccountCat sign convention)
   const weeklyByCat = {};
   transactions.forEach(t => {
-    if (t.category === "Salary" || t.category === "Card Repayment") return;
+    if (t.category === "Income" || t.category === "Card Repayment") return;
     const key = getWeekMonday(t.date).toISOString().slice(0, 10);
     if (!weeklyByCat[key]) weeklyByCat[key] = {};
     weeklyByCat[key][t.category] = (weeklyByCat[key][t.category] || 0) + (-t.amount);
@@ -2143,7 +2140,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
   const sorted=items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
   const skipped=items.filter(i=>i.category==="Skip");
   const visible=unsorted.slice(0,VISIBLE);
-  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Other Payments"&&c!=="Card Repayment");
+  const spendCats=categories.filter(c=>c!=="Other Payments"&&c!=="Card Repayment");
   const catRepaymentInCats=categories.includes("Card Repayment");
   const allBuckets=[...spendCats,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
   const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
@@ -2661,7 +2658,7 @@ function RotateScreen() {
 // ─── Insights Screen ──────────────────────────────────────────────────────────
 function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   const isMobile = useIsMobile();
-  const spendCats = useMemo(()=>categories.filter(c=>c!=="Salary"&&c!=="Card Repayment"),[categories]);
+  const spendCats = useMemo(()=>categories.filter(c=>c!=="Income"&&c!=="Card Repayment"),[categories]);
 
   const { weekCount, avgWeeklySpend, netCashFlow, trajectory, topCat, catTotals, salaryTotal, currSym } = useMemo(()=>{
     const sym=getCurrencySymbol();
@@ -2674,7 +2671,7 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const rAvg=rSpend.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);
     const pAvg=pSpend.reduce((a,b)=>a+b,0)/Math.max(prevWks.length,1);
     const traj=pAvg>0?(rAvg>pAvg*1.05?"up":rAvg<pAvg*0.95?"down":"flat"):"flat";
-    const salTot=transactions.filter(t=>t.category==="Salary").reduce((s,t)=>s+Math.abs(t.amount),0);
+    const salTot=transactions.filter(t=>t.category==="Income").reduce((s,t)=>s+Math.abs(t.amount),0);
     const spTot=transactions.filter(t=>spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0);
     const cTotals={};
     spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
@@ -2690,8 +2687,8 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   const [refreshing,setRefreshing]=useState(false);
   const [chatOpen,setChatOpen]=useState(false);
   const [chatCtx,setChatCtx]=useState("");
-  const [chatApiHistory,setChatApiHistory]=useState([]);
-  const [chatDisplay,setChatDisplay]=useState([]);
+  const [chatApiHistory,setChatApiHistory]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_chat_api_history")||"[]");}catch{return[];}});
+  const [chatDisplay,setChatDisplay]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_chat_display")||"[]");}catch{return[];}});
   const [chatInput,setChatInput]=useState("");
   const [chatLoading,setChatLoading]=useState(false);
   const [showPremiumGate,setShowPremiumGate]=useState(false);
@@ -2704,26 +2701,33 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
+  useEffect(()=>{try{localStorage.setItem("abound_chat_api_history",JSON.stringify(chatApiHistory));}catch{}},[chatApiHistory]);
+  useEffect(()=>{try{localStorage.setItem("abound_chat_display",JSON.stringify(chatDisplay));}catch{}},[chatDisplay]);
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[chatDisplay,chatLoading]);
 
   function buildPrompt(){
     const weeksNote=weekCount<4?`(only ${weekCount} week${weekCount!==1?"s":""} of data — estimates only) `:"";
-    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>`  - ${c}: ${currSym}${v}`).join("\n");
+    const MONTHLY_CATS=["Rent","Memberships"];
+    const monthCount=Math.max(weekCount/4.33,1);
+    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>{
+      if(MONTHLY_CATS.includes(c)) return `  - ${c}: ${currSym}${Math.round(v/monthCount)}/month`;
+      return `  - ${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`;
+    }).join("\n");
     return `You are a concise personal finance advisor. Based on the data below, generate 4-6 actionable insight cards ${weeksNote}for a cash flow app.
 
 Financial data:
 - Weeks of data: ${weekCount}
-- Avg weekly spend: ${currSym}${avgWeeklySpend}
-- Total salary/income: ${currSym}${salaryTotal}
+- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk
+- Total income: ${currSym}${salaryTotal} over ${weekCount} weeks
 - Net cash flow: ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}
 - Spend trend: ${trajectory==="up"?"increasing":trajectory==="down"?"decreasing":"stable"}
-- Spend by category (total):
+- Spend by category (weekly avg, except Rent/Memberships which are monthly):
 ${catLines||"  - (no category data)"}
 
 Return ONLY a valid JSON array (no other text). Each item:
-{"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk"${weekCount<4?',"estimated":true':""}}
+{"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk or ${currSym}500/month"${weekCount<4?',"estimated":true':""}}
 
-Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=saving suggestions, recurring_charge=subscription patterns. Use the actual numbers. Be specific.`;
+Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=saving suggestions, recurring_charge=subscription patterns. Use the actual numbers and correct units (weekly for variable spend, monthly for Rent/Memberships). Be specific.`;
   }
 
   async function fetchInsights(isRefresh=false){
@@ -2985,7 +2989,7 @@ function OrientationGate({children}) {
   if(isMobile && !isLandscape) return <RotateScreen/>;
   return children;
 }
-function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback}) {
+function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback, onAddAccount}) {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
@@ -3012,8 +3016,9 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
           {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
         </button>}
-        {!isMobile&&<button onClick={goToInsights} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="insights"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="insights"?700:500,color:activeTab==="insights"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+        {!isMobile&&<button onClick={goToInsights} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="insights"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="insights"?700:500,color:activeTab==="insights"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>Insights
+          {activeTab!=="insights"&&<span style={{position:"absolute",top:10,right:6,width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:"insightsPulse 2s ease-in-out infinite"}}/>}
         </button>}
         {/* Plan badge */}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -3033,21 +3038,25 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
             {isMobile?"Review":"Leave a review"}
           </button>
+          {!isMobile&&onAddAccount&&<button onClick={onAddAccount} style={{fontSize:12,color:"#6b7280",border:"1px solid #1f1d35",borderRadius:6,background:"none",cursor:"pointer",padding:"4px 10px"}}>+ Add account</button>}
           {!isMobile&&<button onClick={onStartOver} style={{fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
         </div>
         {showInlineUpgrade&&<UpgradeModal runsUsed={runsUsed} onUpgrade={redirectToCheckout} onDismiss={()=>setShowInlineUpgrade(false)}/>}
       </div>
-      {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(
+      {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(()=>{
+        const otherCount=transactions.filter(t=>t.category==="Other Payments").length;
+        return(
         <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.18),rgba(139,92,246,0.14))",borderBottom:"1px solid rgba(99,102,241,0.25)",padding:"10px 24px",display:"flex",alignItems:"center",gap:16,flexShrink:0}}>
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" flexShrink="0"><circle cx="9" cy="9" r="5" stroke="#a5b4fc" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round"/></svg>
           <div style={{flex:1}}>
-            <div style={{fontWeight:700,color:"#e0e7ff",fontSize:13}}>Double-check your categories</div>
-            <div style={{color:"#818cf8",fontSize:12}}>A quick review makes your forecast dramatically more accurate.</div>
+            <div style={{fontWeight:700,color:"#e0e7ff",fontSize:13}}>{otherCount>0?`${otherCount} transaction${otherCount!==1?"s":""} need${otherCount===1?"s":""} a category`:"Double-check your categories"}</div>
+            <div style={{color:"#818cf8",fontSize:12}}>{otherCount>0?"These are in 'Other Payments' — sorting them improves your forecast.":"A quick review makes your forecast dramatically more accurate."}</div>
           </div>
           <button onClick={goToReview} style={{padding:"7px 16px",background:"rgba(99,102,241,0.25)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
           <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
-      )}
+        );
+      })()}
       <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate></div>
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
       {activeTab==="insights"&&<InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
@@ -3307,7 +3316,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
 
   const ROW_TOOLTIPS = {
     "Opening Balance":"Your account balance at the start of each week, walked forward and backward from your actual balance data.",
-    "Salary":"Money in — wages, BACS credits, and transfers into your main account.",
+    "Income":"Money in — wages, BACS credits, and transfers into your main account.",
     "Food":"Groceries, restaurants, cafes, takeaways, and food delivery.",
     "Travel":"TfL, trains, flights, Uber, Bolt, parking — anything transport.",
     "Rent":"Rent, mortgage, and utilities like energy, broadband and water.",
@@ -3440,7 +3449,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     if (!fwks.length || !Object.keys(fd).length) return;
     const existing = loadLastForecast();
     if (existing?.savedAt?.slice(0,10) === new Date().toISOString().slice(0,10)) return;
-    const spendCats = cats.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const spendCats = cats.filter(c=>c!=="Income"&&c!=="Card Repayment");
     const forecastByCategory = {};
     spendCats.forEach(cat=>{
       const vals = fwks.map((_,i)=>accts.reduce((s,acc)=>s+(fd[acc]?.[cat]?.[i]||0),0));
@@ -3460,7 +3469,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
   const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
   const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:6},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
-  const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Salary"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
+  const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Income"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
   const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
 
 function getLastWorkingDay(year, month) {
@@ -3470,7 +3479,7 @@ function getLastWorkingDay(year, month) {
   }
   
   const detectedOutliers = useMemo(()=>{
-    const ROLLING_DETECT=["Food","Travel","Other Payments",...categories.filter(c=>!DEFAULT_CATEGORIES.includes(c)&&c!=="Salary"&&c!=="Card Repayment")];
+    const ROLLING_DETECT=["Food","Travel","Other Payments",...categories.filter(c=>!DEFAULT_CATEGORIES.includes(c)&&c!=="Income"&&c!=="Card Repayment")];
     const result=[];
     ROLLING_DETECT.forEach(cat=>{
       const weekVals=actualWeeks.map(w=>({
@@ -3494,7 +3503,7 @@ function getLastWorkingDay(year, month) {
     const out={};
     function getMonthlyDay(acc,cat){const days=[];transactions.forEach(t=>{if(t.account===acc&&t.category===cat)days.push(t.date.getDate());});if(!days.length)return null;const freq={};days.forEach(d=>freq[d]=(freq[d]||0)+1);return parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);}
     function weekContainsDay(weekMon,weekSun,dayOfMonth){const d=new Date(weekMon);while(d<=weekSun){if(d.getDate()===dayOfMonth)return true;d.setDate(d.getDate()+1);}return false;}
-    const MONTHLY_CATS=["Salary"];
+    const MONTHLY_CATS=["Income"];
     const EXACT_CATS=["Rent","Memberships"];
     const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
     const OCCURRENCE_CATS=["Transfers"]; // rolling mean over non-zero weeks only
@@ -3523,11 +3532,11 @@ function getLastWorkingDay(year, month) {
           });
           out[acc][cat]=result;
         } else if(MONTHLY_CATS.includes(cat)){
-          // Salary: replicate the most-recent calendar month's exact payments (amount + day) in future months
+          // Income: replicate the most-recent calendar month's exact payments (amount + day) in future months
           const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat&&t.amount>0&&!/balance/i.test(t.narrative));
           if(!catTxns.length){out[acc][cat]=Array(forecastWeeks.length).fill(0);}
           else{
-            // Find the most recent calendar month that had salary
+            // Find the most recent calendar month that had income
             const latestDate=catTxns.reduce((a,t)=>t.date>a?t.date:a, new Date(0));
             const latestMonth=latestDate.getMonth(), latestYear=latestDate.getFullYear();
             // All salary transactions in that same calendar month = our template
@@ -3575,15 +3584,46 @@ function getLastWorkingDay(year, month) {
             return (n>0&&slot>prevSlot)?forecastVal:0;
           });
         } else {
-          const last6=actualVals.slice(-6);
-          const forecastVal=last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1);
-          out[acc][cat]=Array(forecastWeeks.length).fill(forecastVal);
+          // User-added or unlisted category: auto-detect monthly vs variable
+          const catTxns=transactions.filter(t=>t.account===acc&&t.category===cat&&t.amount>0);
+          let detectedDom=null;
+          if(catTxns.length>=2){
+            const doms=catTxns.map(t=>t.date.getDate());
+            const freq={};doms.forEach(d=>{freq[d]=(freq[d]||0)+1;});
+            const topDom=parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]);
+            const clustered=doms.filter(d=>Math.abs(d-topDom)<=3).length;
+            if(clustered/doms.length>=0.7&&catTxns.length>=2) detectedDom=topDom;
+          }
+          if(detectedDom!==null){
+            // Monthly pattern: project on detected day-of-month like EXACT_CATS
+            const byNarrative={};
+            catTxns.forEach(t=>{if(!byNarrative[t.narrative]||t.date>byNarrative[t.narrative].date)byNarrative[t.narrative]=t;});
+            const result=Array(forecastWeeks.length).fill(0);
+            Object.values(byNarrative).forEach(t=>{
+              const dom=t.date.getDate();
+              forecastWeeks.forEach((w,i)=>{
+                const d=new Date(w.date);
+                while(d<=w.sunday){if(d.getDate()===dom){result[i]+=t.amount;break;}d.setDate(d.getDate()+1);}
+              });
+            });
+            out[acc][cat]=result;
+          } else {
+            // Variable: rolling 6-week average (same as ROLLING_CATS)
+            const buf=actualVals.slice(-6).map(Number);
+            const result=[];
+            for(let i=0;i<forecastWeeks.length;i++){
+              const a=buf.reduce((x,y)=>x+y,0)/Math.max(buf.length,1);
+              result.push(Math.round(a));
+              buf.shift();buf.push(a);
+            }
+            out[acc][cat]=result;
+          }
         }
       });
     });
     // Second pass: Card Repayment — amount = sum of CC spend over the 4 weeks up to repayment date
     const ccAccs=accounts.filter(a=>a!=="Main Account");
-    const ccSpendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const ccSpendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment");
     accounts.forEach(acc=>{
       const catTxns=transactions.filter(t=>t.account===acc&&t.category==="Card Repayment");
       if(!catTxns.length){out[acc]["Card Repayment"]=Array(forecastWeeks.length).fill(0);return;}
@@ -3619,7 +3659,7 @@ function getLastWorkingDay(year, month) {
       out[acc]["Card Repayment"]=result;
     });
     // Third pass: user forecast overrides (salary changes, rent increases, etc.)
-    const MONTHLY_OV_CATS=["Salary","Rent","Memberships"];
+    const MONTHLY_OV_CATS=["Income","Rent","Memberships"];
     forecastOverrides.forEach(ov=>{
       const fromIdx=forecastWeeks.findIndex(w=>w.key>=ov.fromWeekKey);
       if(fromIdx<0) return;
@@ -3638,17 +3678,17 @@ function getLastWorkingDay(year, month) {
   const incomeFcstTotalByWeek=useMemo(()=>incomeByFcstWeek.map(pills=>pills.filter(p=>!p.isGhost).reduce((s,p)=>s+(p.ev.receivedAmount??p.ev.amount),0)),[incomeByFcstWeek]);
   const overdueBanners=useMemo(()=>{const t=new Date();t.setHours(0,0,0,0);return incomeEvents.filter(ev=>ev.status==='expected'&&ev.expectedDate&&ev.expectedDate<t&&(!ev.dismissedUntil||Date.now()>ev.dismissedUntil));},[incomeEvents]);
 
-  const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
 
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
-    const mainSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"), INTERCOMPANY_CATEGORY])];
-    const ccSpendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
+    const mainSpendCats=[...new Set([...categories.filter(c=>c!=="Income"), INTERCOMPANY_CATEGORY])];
+    const ccSpendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment");
     const ccAccounts=accounts.filter(a=>a!==mainAcc);
     const mainActuals=actualWeeks.map(w=>mainSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
-    const mainIncome=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Salary"]||0));
+    const mainIncome=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Income"]||0));
     const mainNet=actualWeeks.map((_,i)=>mainIncome[i]-mainActuals[i]);
     const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
     const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
@@ -3668,7 +3708,7 @@ function getLastWorkingDay(year, month) {
     const actualClosing=closingBals.map((b,i)=>b!==null?b-ccActuals[i]:null);
     const lastActualBal=closingBals.filter(b=>b!==null).slice(-1)[0]??null;
     const mainFActuals=forecastWeeks.map((_,i)=>mainSpendCats.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
-    const mainFIncome=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
+    const mainFIncome=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Income"]?.[i]||0);
     const mainFNet=forecastWeeks.map((w,i)=>{
       const eventSpend=events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0);
       return mainFIncome[i]-mainFActuals[i]-eventSpend;
@@ -3703,7 +3743,7 @@ function getLastWorkingDay(year, month) {
     }
 
     // 2. Biggest spend category with weekly breakdown
-    const top=Object.entries(totals).filter(([c])=>c!=="Salary"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
+    const top=Object.entries(totals).filter(([c])=>c!=="Income"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
     if(top){
       const weeklyAvg=Math.round(totals[top[0]]/Math.max(actualWeeks.length,1));
       tips.push({icon:"chart",color:PURPLE,title:`Top spend: ${top[0]}`,body:`£${weeklyAvg.toLocaleString()}/wk avg · £${Math.round(top[1]).toLocaleString()} total.`,detail:`${top[0]} is your biggest spending category at £${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks — £${weeklyAvg.toLocaleString()} per week on average. Your forecast adds another £${Math.round((forecastData[accounts[0]]?.[top[0]]||[]).reduce((a,b)=>a+b,0)).toLocaleString()} over the next 6 weeks.`,trend:null});
@@ -3711,7 +3751,7 @@ function getLastWorkingDay(year, month) {
 
     // 3. Spending spikes
     categories.forEach(cat=>{
-      if(cat==="Salary"||cat==="Card Repayment")return;
+      if(cat==="Income"||cat==="Card Repayment")return;
       const vals=weeklyTotals[cat]||[];
       const avg=rollingAvg(vals),last=vals[vals.length-1];
       if(avg>0&&last>avg*1.6)tips.push({icon:"warn",color:"#f59e0b",title:`${cat} up ${Math.round((last/avg-1)*100)}% last week`,body:`£${Math.round(last).toLocaleString()} vs £${Math.round(avg).toLocaleString()} avg.`,detail:`Your ${cat} spending last week was £${Math.round(last).toLocaleString()}, which is ${Math.round((last/avg-1)*100)}% above your usual weekly average of £${Math.round(avg).toLocaleString()}. This could be a one-off or a new recurring cost — worth checking.`,trend:"warn"});
@@ -3748,8 +3788,35 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     );
   }
 
+  function getForecastTip(cat, account) {
+    const sym=getCurrencySymbol();
+    const EXACT_CATS_L=["Rent","Memberships"];
+    const MONTHLY_CATS_L=["Income"];
+    const ROLLING_CATS_L=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
+    const OCCURRENCE_CATS_L=["Transfers"];
+    const vals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0));
+    const last6=vals.slice(-6);
+    const nonZero=last6.filter(v=>v>0);
+    const avg=Math.round(last6.reduce((a,b)=>a+b,0)/Math.max(last6.length,1));
+    const valStr=last6.map(v=>`${sym}${Math.round(v)}`).join(' · ');
+    if(EXACT_CATS_L.includes(cat)){
+      const doms=transactions.filter(t=>t.account===account&&t.category===cat).map(t=>t.date.getDate());
+      const freq={};doms.forEach(d=>{freq[d]=(freq[d]||0)+1;});
+      const dom=doms.length?parseInt(Object.entries(freq).sort((a,b)=>b[1]-a[1])[0][0]):null;
+      return `Fixed monthly — projected on the ${dom??'same'}th each month from last occurrence.`;
+    } else if(MONTHLY_CATS_L.includes(cat)){
+      return `Monthly pattern — repeats last month's payment schedule.`;
+    } else if(ROLLING_CATS_L.includes(cat)){
+      return `6-wk rolling avg: ${valStr} → ${sym}${avg}/wk`;
+    } else if(OCCURRENCE_CATS_L.includes(cat)){
+      return `Avg of ${nonZero.length} non-zero weeks → ${sym}${nonZero.length?Math.round(nonZero.reduce((a,b)=>a+b,0)/nonZero.length):0} projected.`;
+    } else {
+      return `Rolling avg: ${valStr} → ${sym}${avg}/wk`;
+    }
+  }
+
   function CatRow({cat,account}){
-    const isIncome=cat==="Salary"||(cat==="Card Repayment"&&account!=="Main Account");
+    const isIncome=cat==="Income"||(cat==="Card Repayment"&&account!=="Main Account");
     const isRepayment=false;
     const key=`${account}::${cat}`;
     const hidden=hiddenCats.has(key);
@@ -3781,12 +3848,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {forecasts.map((v,i)=>{
-          const over=budget&&v>0&&v>budget;
+          const over=budget!=null&&v>0&&v>budget;
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account===account;
           return(
             <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:"pointer"}}
-              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
+              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});e.stopPropagation();}}}
+              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:getForecastTip(cat,account),x:r.left,y:r.bottom+6});}}
+              onMouseLeave={()=>setTooltip(null)}>
               {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
             </td>
           );
@@ -3796,15 +3865,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {isIncome ? null : editingBudget===key
             ?<div style={{padding:"2px 0"}}>
                 <div style={{fontSize:9,color:"#6b7280",marginBottom:2}}>Weekly budget (£)</div>
-                <input autoFocus type="number" defaultValue={budget||""} placeholder="e.g. 50"
-                  onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
+                <input autoFocus type="number" defaultValue={budget!=null?budget:""} placeholder="e.g. 50"
+                  onBlur={e=>{const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}}
+                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
                   style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"4px 6px",outline:"none",background:T.budgetInputBg,color:T.budgetInputColor,boxSizing:"border-box"}}/>
                 <div style={{fontSize:9,color:"#4b5563",marginTop:2}}>Enter to save · Esc to cancel</div>
               </div>
-            : budget ? (()=>{
+            : budget!=null ? (()=>{
                 const avgAct=totalAct/Math.max(actualWeeks.length,1);
-                const pct=(avgAct/budget)*100;
+                const pct=budget>0?(avgAct/budget)*100:avgAct>0?Infinity:0;
                 const over=avgAct>budget;
                 const diff=Math.abs(avgAct-budget);
                 const fcstOver=forecasts.filter(v=>v>0&&v>budget).length;
@@ -3904,7 +3973,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     );
   }
   function IncomeEventsRow({account}){
-    const actuals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.["Salary"]||0));
+    const actuals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.["Income"]||0));
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=incomeFcstTotalByWeek.reduce((a,b)=>a+b,0);
     const empty=incomeEvents.length===0;
@@ -3923,7 +3992,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     </>);
   }
   function IncomeEventsGroupedRow(){
-    const salActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Salary"]||0),0)));
+    const salActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0)));
     const totalAct=salActuals.reduce((a,b)=>a+b,0);
     const totalFcst=incomeFcstTotalByWeek.reduce((a,b)=>a+b,0);
     const empty=incomeEvents.length===0;
@@ -3944,9 +4013,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
   function AccountSection({account}){
     const isMainAcc=account==="Main Account";
-    const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):categories.filter(c=>c==="Card Repayment");
+    const incomeCats=isMainAcc?categories.filter(c=>c==="Income"):categories.filter(c=>c==="Card Repayment");
     // For CC accounts Card Repayment is income, exclude from spend
-    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Salary"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Income"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
     // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
     const spendCatsLocal=allSpendCats.filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);
@@ -3955,7 +4024,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     });
     const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
-    const incomeCatList=isMainAcc?["Salary"]:["Card Repayment"];
+    const incomeCatList=isMainAcc?["Income"]:["Card Repayment"];
     const accIncome=actualWeeks.map(w=>incomeCatList.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accIncomeForecasts=forecastWeeks.map((_,i)=>isMainAcc?incomeFcstTotalByWeek[i]||0:incomeCatList.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
@@ -4051,7 +4120,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
 
   function GroupedCatRow({cat}){
-    const isIncome=cat==="Salary";
+    const isIncome=cat==="Income";
     const key=`g::${cat}`;
     const hidden=hiddenCats.has(key);
     const actuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)));
@@ -4081,7 +4150,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {forecasts.map((v,i)=>{
-          const over=budget&&v>0&&v>budget;
+          const over=budget!=null&&v>0&&v>budget;
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account==="ALL";
           return(
@@ -4097,8 +4166,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             ?<div style={{padding:"2px 0"}}>
                 <div style={{fontSize:9,color:"#6b7280",marginBottom:2}}>Weekly budget (£)</div>
                 <input autoFocus type="number" defaultValue={budget||""} placeholder="e.g. 50"
-                  onBlur={e=>{const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;setBudgets(b=>({...b,[key]:v>0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
+                  onBlur={e=>{const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}}
+                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
                   style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"4px 6px",outline:"none",background:T.budgetInputBg,color:T.budgetInputColor,boxSizing:"border-box"}}/>
               </div>
             :budget?(()=>{
@@ -4142,14 +4211,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
 
   function GroupedSection(){
-    const spendCats=categories.filter(c=>c!=="Salary").filter(cat=>{
+    const spendCats=categories.filter(c=>c!=="Income").filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;
     });
     const accActuals=actualWeeks.map(w=>spendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
-    const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Salary"]||0),0)));
+    const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0)));
     const salaryForecasts=incomeFcstTotalByWeek;
     const weeklyNetActual=actualWeeks.map((_,i)=>salaryActuals[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>salaryForecasts[i]-accForecasts[i]);
@@ -4379,18 +4448,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             {currentStep?.cursorTarget&&(
               <AnimatedCursor targetSelector={currentStep.cursorTarget}/>
             )}
-            {/* Tour card — fixed to iPhone 13 Pro proportions (390×844) then scaled */}
-            {(()=>{const ts=isMobile?Math.min(window.innerWidth/390,window.innerHeight/844):1;return(
-            <div style={{position:"fixed",bottom:isMobile?13:32,right:isMobile?6:28,left:"auto",width:isMobile?180:440,maxWidth:isMobile?180:"none",background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"10px 8px":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)",transform:isMobile?`scale(${ts})`:"none",transformOrigin:"bottom right"}}>
+            {/* Tour card */}
+            {(()=>{const cardW=isMobile?Math.min(240,window.innerWidth*0.62):440;const cardR=isMobile?Math.max(4,Math.min(12,window.innerWidth*0.015)):28;const cardB=isMobile?Math.max(8,Math.min(20,window.innerHeight*0.02)):32;return(
+            <div style={{position:"fixed",bottom:cardB,right:cardR,left:"auto",width:cardW,maxWidth:`${Math.min(92,Math.round(cardW/window.innerWidth*100)+2)}vw`,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"10px 10px":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?4:14}}>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:isMobile?6:10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
-                  <div style={{fontSize:isMobile?13:20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
+                  <div style={{fontSize:isMobile?"clamp(7px,1.8vw,10px)":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
+                  <div style={{fontSize:isMobile?"clamp(12px,3.5vw,16px)":20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
                 <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:isMobile?10:14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?"clamp(10px,2.8vw,13px)":14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -4619,13 +4688,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:T.actualHdrText,textAlign:"right",background:T.actualHdrBg,borderRight:`1px solid ${T.actualHdrBorder}`,whiteSpace:"nowrap"}}>{fmt(w.date)}</th>)}
+                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:T.actualHdrText,textAlign:"right",background:T.actualHdrBg,borderRight:`1px solid ${T.actualHdrBorder}`,whiteSpace:"nowrap"}}><span style={{fontSize:8,fontWeight:400,opacity:0.6}}>w/c </span>{fmt(w.date)}</th>)}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>WK AVG</th>
                 {forecastWeeks.map((w,i)=>{
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===forecastWeeks.length-1;
                   return<th key={w.key} data-tour="forecast" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastArea,borderRight:isLast?"none":`1px solid ${T.border2}`,whiteSpace:"nowrap"}}>
-                    {fmt(w.date)}
+                    <span style={{fontSize:8,fontWeight:400,opacity:0.55}}>w/c </span>{fmt(w.date)}
                   </th>;
                 })}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>FCST</th>
@@ -4641,7 +4710,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   return<th key={w.key} data-tour="forecast" style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.7})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>;
                 })}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
-                <th data-tour="budget" style={{padding:"3px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadD}}>BUDGET</th>
+                <th data-tour="budget" style={{padding:"3px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadD,cursor:"help"}}
+                  title="Set a weekly spending limit per category. Forecast weeks that exceed your budget turn red."
+                >BUDGET <span style={{fontSize:8,opacity:0.6}}>ⓘ</span></th>
                 <th style={{background:T.theadD}}/>
               </tr>
             </thead>
@@ -4727,13 +4798,20 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const lastActual = combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
           const forecastEnd = combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
           const topSpendCat = categories
-            .filter(c=>c!=="Salary"&&c!=="Card Repayment")
+            .filter(c=>c!=="Income"&&c!=="Card Repayment")
             .map(c=>({c, total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)}))
             .sort((a,b)=>b.total-a.total)[0];
           const weeklyTopSpend = topSpendCat ? Math.round(topSpendCat.total / Math.max(actualWeeks.length,1)) : 0;
           if(forecastEnd===null||forecastEnd===undefined||lastActual===null||lastActual===undefined) return null;
           const diff = forecastEnd - lastActual;
           const isUp = diff >= 0;
+          const portfolioValue = stocks.reduce((s,st)=>{
+            const sd=stockData[st.ticker];
+            const cv=st.currentValue||0;
+            if(!sd?.currentPrice||!cv) return s+cv;
+            return s+cv;
+          },0);
+          const netWorth = lastActual + portfolioValue;
           return(
             <div style={{margin:"14px 0 0",background:isUp?"rgba(16,185,129,0.05)":"rgba(239,68,68,0.05)",border:`1px solid ${isUp?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)"}`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -4748,6 +4826,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   : `Your balance is forecast to drop by £${Math.round(Math.abs(diff)).toLocaleString()} over 6 weeks.${topSpendCat?` Reducing ${topSpendCat.c} (£${weeklyTopSpend.toLocaleString()}/wk) would have the biggest impact.`:""}`
                 }
               </span>
+              {portfolioValue>0&&(
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",flexShrink:0,paddingLeft:16,borderLeft:"1px solid rgba(99,102,241,0.2)"}}>
+                  <span style={{fontSize:9,fontWeight:700,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase"}}>Net Worth</span>
+                  <span style={{fontSize:14,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(netWorth).toLocaleString()}</span>
+                  <span style={{fontSize:9,color:"#4b5563"}}>cash + £{Math.round(portfolioValue).toLocaleString()} portfolio</span>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -5121,6 +5206,7 @@ function AppInner() {
   const [sortedTransactions, setSortedTransactions] = useState([]);
   const [finalCategories, setFinalCategories] = useState([]);
   const [prevForecast, setPrevForecast] = useState(null);
+  const [mergeMode, setMergeMode] = useState(false);
 
   function handleResume() {
     const s = loadSession();
@@ -5130,10 +5216,27 @@ function AppInner() {
     setScreen("main");
   }
 
+  function handleAddAccount() {
+    setMergeMode(true);
+    setScreen("upload");
+  }
+
   function handleSortDone(txns, cats) {
-    setSortedTransactions(txns);
-    setFinalCategories(cats);
-    saveSession(txns, cats);
+    const isMerge = mergeMode;
+    let merged = txns;
+    let mergedCats = cats;
+    if (isMerge) {
+      // Merge: dedup by date+narrative+amount key; existing transactions win for category
+      const existingKeys = new Set(sortedTransactions.map(t=>`${t.date?.toISOString?.()??t.date}|${t.narrative}|${t.amount}`));
+      const newOnly = txns.filter(t=>!existingKeys.has(`${t.date?.toISOString?.()??t.date}|${t.narrative}|${t.amount}`));
+      merged = [...sortedTransactions, ...newOnly];
+      mergedCats = [...new Set([...finalCategories, ...cats])];
+      setMergeMode(false);
+    }
+    setSortedTransactions(merged);
+    setFinalCategories(mergedCats);
+    saveSession(merged, mergedCats);
+    if (isMerge) { setScreen("main"); return; }
     // Check if the saved forecast from a previous session overlaps with new actual data
     const saved = loadLastForecast();
     if (saved?.weekStartDates?.length) {
@@ -5173,7 +5276,7 @@ function AppInner() {
       {screen==="forecast-accuracy"&&prevForecast&&(
         <ForecastAccuracyScreen savedForecast={prevForecast} transactions={sortedTransactions} categories={finalCategories} onContinue={()=>setScreen("main")}/>
       )}
-      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")}/>}
+      {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")} onAddAccount={handleAddAccount}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
       <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:(screen==="main"&&typeof window!=="undefined"&&window.innerWidth<768)?"none":"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>

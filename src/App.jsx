@@ -3156,6 +3156,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [showHomeScreenGuide, setShowHomeScreenGuide] = useState(false);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
+  const [investigationOpen, setInvestigationOpen] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
   const [showStockSuggestion, setShowStockSuggestion] = useState(false);
   const [tooltip, setTooltip] = useState(null);

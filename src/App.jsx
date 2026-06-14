@@ -3146,6 +3146,44 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
   );
 }
 
+// ─── Income Events helpers ────────────────────────────────────────────────────
+function getIncomeOccurrencesInWeek(ev, weekStart, weekEnd) {
+  if (!ev.expectedDate) return [];
+  const base = ev.expectedDate;
+  const inRange = d => d >= weekStart && d <= weekEnd && d >= base;
+  if (ev.recurrence === 'none') {
+    return (ev.expectedDate >= weekStart && ev.expectedDate <= weekEnd) ? [ev.expectedDate] : [];
+  } else if (ev.recurrence === 'weekly') {
+    const d = new Date(weekStart);
+    while (d <= weekEnd) { if (d.getDay()===base.getDay()&&inRange(d)) return [new Date(d)]; d.setDate(d.getDate()+1); }
+  } else if (ev.recurrence === 'biweekly') {
+    const d = new Date(base);
+    while (d < weekStart) d.setDate(d.getDate()+14);
+    return (d >= weekStart && d <= weekEnd) ? [new Date(d)] : [];
+  } else if (ev.recurrence === 'monthly') {
+    const dom = base.getDate(), d = new Date(weekStart);
+    while (d <= weekEnd) { if (d.getDate()===dom&&inRange(d)) return [new Date(d)]; d.setDate(d.getDate()+1); }
+  }
+  return [];
+}
+function projectIncomeEvents(events, weeks) {
+  return weeks.map(w => {
+    const pills = [];
+    events.forEach(ev => {
+      if (ev.status === 'received' && ev.receivedDate) {
+        const recvInWk = ev.receivedDate >= w.date && ev.receivedDate <= w.sunday;
+        const expInWk  = ev.expectedDate && ev.expectedDate >= w.date && ev.expectedDate <= w.sunday;
+        if (recvInWk) pills.push({ ev, date: ev.receivedDate, isReceived: true });
+        else if (expInWk) pills.push({ ev, date: ev.expectedDate, isGhost: true });
+      } else {
+        const occs = getIncomeOccurrencesInWeek(ev, w.date, w.sunday);
+        if (occs.length) pills.push({ ev, date: occs[0] });
+      }
+    });
+    return pills;
+  });
+}
+
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
 function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback}) {
   const isMobile = useIsMobile();
@@ -3168,6 +3206,14 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   }
   const [events, setEvents] = useState([]);
   const [editingEvent, setEditingEvent] = useState(null);
+  const [incomeEvents, setIncomeEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_income_events")||"[]").map(e=>({...e,expectedDate:e.expectedDate?new Date(e.expectedDate):null,receivedDate:e.receivedDate?new Date(e.receivedDate):null}));}catch{return[];}});
+  const [incomeFormState, setIncomeFormState] = useState(null);
+  const [reconcileState, setReconcileState] = useState({});
+  useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
+  function openAddIncomeForm(x,y){const d=new Date();d.setDate(d.getDate()+30);setIncomeFormState({editId:null,x,y,data:{label:'',amount:'',expectedDate:d.toISOString().slice(0,10),recurrence:'none'}});}
+  function openEditIncomeForm(ev,x,y){setIncomeFormState({editId:ev.id,x,y,data:{label:ev.label,amount:String(ev.amount),expectedDate:ev.expectedDate?ev.expectedDate.toISOString().slice(0,10):'',recurrence:ev.recurrence||'none'}});}
+  function saveIncomeForm(){if(!incomeFormState)return;const{editId,data}=incomeFormState;const amount=parseFloat(data.amount);if(!data.label||isNaN(amount)||amount<=0||!data.expectedDate)return;const ev={id:editId||String(Date.now()),label:data.label,amount,expectedDate:new Date(data.expectedDate),recurrence:data.recurrence,status:'expected'};if(editId){setIncomeEvents(evs=>evs.map(e=>e.id===editId?{...e,...ev}:e));}else{setIncomeEvents(evs=>[...evs,ev]);}setIncomeFormState(null);}
+  function deleteIncomeEvent(){if(!incomeFormState?.editId)return;setIncomeEvents(evs=>evs.filter(e=>e.id!==incomeFormState.editId));setIncomeFormState(null);}
   const [ctxMenu, setCtxMenu] = useState(null);
   function txnKey(t){return t.narrative+'|'+t.date.getTime()+'|'+t.amount;}
   function openCtxMenu(e, account, cat, weekKey){
@@ -3588,6 +3634,10 @@ function getLastWorkingDay(year, month) {
     return out;
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,transactions,excludedWeeks,forecastOverrides,nonRecurring]);
 
+  const incomeByFcstWeek=useMemo(()=>projectIncomeEvents(incomeEvents,forecastWeeks),[incomeEvents,forecastWeeks]);
+  const incomeFcstTotalByWeek=useMemo(()=>incomeByFcstWeek.map(pills=>pills.filter(p=>!p.isGhost).reduce((s,p)=>s+(p.ev.receivedAmount??p.ev.amount),0)),[incomeByFcstWeek]);
+  const overdueBanners=useMemo(()=>{const t=new Date();t.setHours(0,0,0,0);return incomeEvents.filter(ev=>ev.status==='expected'&&ev.expectedDate&&ev.expectedDate<t&&(!ev.dismissedUntil||Date.now()>ev.dismissedUntil));},[incomeEvents]);
+
   const spendCats=categories.filter(c=>c!=="Salary"&&c!=="Card Repayment");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
@@ -3618,7 +3668,7 @@ function getLastWorkingDay(year, month) {
     const actualClosing=closingBals.map((b,i)=>b!==null?b-ccActuals[i]:null);
     const lastActualBal=closingBals.filter(b=>b!==null).slice(-1)[0]??null;
     const mainFActuals=forecastWeeks.map((_,i)=>mainSpendCats.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
-    const mainFIncome=forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
+    const mainFIncome=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Salary"]?.[i]||0);
     const mainFNet=forecastWeeks.map((w,i)=>{
       const eventSpend=events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0);
       return mainFIncome[i]-mainFActuals[i]-eventSpend;
@@ -3628,7 +3678,7 @@ function getLastWorkingDay(year, month) {
     if(lastActualBal!==null){forecastBals[0]=lastActualBal;for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
     const forecastClosing=forecastBals.map((ob,i)=>ob!==null?ob+mainFNet[i]-ccFActuals[i]:null);
     return{actual:actualClosing,forecast:forecastClosing};
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek]);
 
   const insights=useMemo(()=>{
     const tips=[],totals={},weeklyTotals={};
@@ -3800,6 +3850,98 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     );
   }
 
+  const inpStyle={padding:"4px 7px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:5,color:T.text,fontSize:11,outline:"none"};
+  function IncomePill({pill}){
+    return(
+      <div
+        onClick={e=>{if(!pill.isGhost){const r=e.currentTarget.getBoundingClientRect();openEditIncomeForm(pill.ev,Math.min(r.left,window.innerWidth-280),r.bottom+4);}}}
+        style={{display:"inline-flex",alignItems:"center",gap:2,background:pill.isGhost?"transparent":pill.isReceived||pill.ev.status==="received"?"#22c55e":"#6366f1",opacity:pill.isGhost?0.25:pill.isReceived||pill.ev.status==="received"?1.0:0.8,border:pill.isGhost?"1px dashed #6366f1":"none",color:"#fff",fontSize:10,fontWeight:600,padding:"2px 5px",borderRadius:4,cursor:pill.isGhost?"default":"pointer",whiteSpace:"nowrap",maxWidth:130,overflow:"hidden",textOverflow:"ellipsis"}}>
+        <span style={{overflow:"hidden",textOverflow:"ellipsis"}}>{pill.ev.label}</span>
+        <span style={{opacity:0.8,flexShrink:0}}>{fmtMoney(pill.ev.receivedAmount??pill.ev.amount)}</span>
+      </div>
+    );
+  }
+  function IncomeFcstCells({pills,colIdx}){
+    return(
+      <td style={{...tdAmt(null,true,false,colIdx),padding:"3px 6px",verticalAlign:"top",minWidth:70}}>
+        <div style={{display:"flex",flexDirection:"column",gap:2}}>
+          {pills.map((pill,j)=><IncomePill key={j} pill={pill}/>)}
+        </div>
+      </td>
+    );
+  }
+  function IncomeAddRow(){
+    return(
+      <tr className="abound-row" style={{borderBottom:`1px solid ${T.catRowBorder}`,background:"rgba(99,102,241,0.02)"}}>
+        <td data-sticky-label style={{padding:"3px 4px 3px 6px",background:"rgba(99,102,241,0.02)"}}/>
+        <td data-sticky-label2 style={{padding:"3px 10px",background:"rgba(99,102,241,0.02)"}}>
+          <span onClick={e=>{const r=e.currentTarget.getBoundingClientRect();openAddIncomeForm(r.left,r.bottom+4);}} style={{fontSize:10,color:"#6366f1",cursor:"pointer",fontWeight:600,opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>+ Add income</span>
+        </td>
+        {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.catRowBorder}`}}/>)}
+        <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
+        {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.04)",borderRight:i===forecastWeeks.length-1?"none":`1px dashed ${T.border2}`}}/>)}
+        <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/><td/>
+      </tr>
+    );
+  }
+  function IncomeForecastArea({totalFcst}){
+    const empty=incomeEvents.length===0;
+    if(empty) return(
+      <>
+        <td colSpan={forecastWeeks.length} style={{background:"rgba(99,102,241,0.04)",padding:"5px 12px",cursor:"pointer",borderRight:`2px solid ${T.border2}`}}
+          onClick={e=>{const r=e.currentTarget.getBoundingClientRect();openAddIncomeForm(Math.min(r.left,window.innerWidth-280),r.bottom+4);}}>
+          <span style={{fontSize:11,color:"#818cf8"}}>When do you next expect to be paid?{" "}</span>
+          <span style={{fontSize:11,color:"#6366f1",fontWeight:700}}>Add first income →</span>
+        </td>
+        <td style={tdTot(true)}>—</td>
+      </>
+    );
+    return(
+      <>
+        {incomeByFcstWeek.map((pills,i)=><IncomeFcstCells key={i} pills={pills} colIdx={i}/>)}
+        <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
+      </>
+    );
+  }
+  function IncomeEventsRow({account}){
+    const actuals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.["Salary"]||0));
+    const totalAct=actuals.reduce((a,b)=>a+b,0);
+    const totalFcst=incomeFcstTotalByWeek.reduce((a,b)=>a+b,0);
+    const empty=incomeEvents.length===0;
+    return(<>
+      <tr className="abound-row" style={{background:"rgba(16,185,129,0.04)",borderBottom:`1px solid ${T.catRowBorder}`}}>
+        <td data-sticky-label style={{padding:"5px 4px 5px 6px",fontSize:10,color:T.acctLabelColor,whiteSpace:"nowrap",background:"rgba(16,185,129,0.04)"}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
+        <td data-sticky-label2 style={{padding:"5px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:"#34d399",background:"rgba(16,185,129,0.04)"}}>
+          <span style={{fontSize:9,marginRight:4}}>▲</span>Income
+        </td>
+        {actuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
+        <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
+        <IncomeForecastArea totalFcst={totalFcst}/>
+        <td/><td/>
+      </tr>
+      {!empty&&<IncomeAddRow/>}
+    </>);
+  }
+  function IncomeEventsGroupedRow(){
+    const salActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Salary"]||0),0)));
+    const totalAct=salActuals.reduce((a,b)=>a+b,0);
+    const totalFcst=incomeFcstTotalByWeek.reduce((a,b)=>a+b,0);
+    const empty=incomeEvents.length===0;
+    return(<>
+      <tr className="abound-row" style={{background:"rgba(16,185,129,0.04)",borderBottom:`1px solid ${T.catRowBorder}`}}>
+        <td data-sticky-label style={{padding:0,background:"rgba(16,185,129,0.04)"}}/>
+        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:"#34d399",background:"rgba(16,185,129,0.04)"}}>
+          <span style={{fontSize:9,marginRight:4}}>▲</span>Income
+        </td>
+        {salActuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
+        <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
+        <IncomeForecastArea totalFcst={totalFcst}/>
+        <td/><td/>
+      </tr>
+      {!empty&&<IncomeAddRow/>}
+    </>);
+  }
+
   function AccountSection({account}){
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Salary"):categories.filter(c=>c==="Card Repayment");
@@ -3815,7 +3957,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const incomeCatList=isMainAcc?["Salary"]:["Card Repayment"];
     const accIncome=actualWeeks.map(w=>incomeCatList.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
-    const accIncomeForecasts=forecastWeeks.map((_,i)=>incomeCatList.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+    const accIncomeForecasts=forecastWeeks.map((_,i)=>isMainAcc?incomeFcstTotalByWeek[i]||0:incomeCatList.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const weeklyNetActual=actualWeeks.map((_,i)=>accIncome[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>accIncomeForecasts[i]-accForecasts[i]);
    const knownBalances=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
@@ -3866,7 +4008,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",background:T.forecastCell,borderRight:`1px dashed ${T.dimBorder}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`}}/><td/><td/>
         </tr>}
-        {!collapsedAccounts.has(account)&&incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
+        {!collapsedAccounts.has(account)&&(isMainAcc?<IncomeEventsRow key="income-events" account={account}/>:incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>))}
         {!collapsedAccounts.has(account)&&spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {!collapsedAccounts.has(account)&&isMainAcc&&<CatRow key="Card Repayment" cat="Card Repayment" account={account}/>}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
@@ -4008,13 +4150,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const accActuals=actualWeeks.map(w=>spendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
     const accForecasts=forecastWeeks.map((_,i)=>spendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
     const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Salary"]||0),0)));
-    const salaryForecasts=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>s+(forecastData[acc]?.["Salary"]?.[i]||0),0));
+    const salaryForecasts=incomeFcstTotalByWeek;
     const weeklyNetActual=actualWeeks.map((_,i)=>salaryActuals[i]-accActuals[i]);
     const weeklyNetForecast=forecastWeeks.map((_,i)=>salaryForecasts[i]-accForecasts[i]);
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
     return(
       <>
-        <GroupedCatRow cat="Salary"/>
+        <IncomeEventsGroupedRow/>
         {spendCats.map(cat=><GroupedCatRow key={cat} cat={cat}/>)}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
           <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
@@ -4065,6 +4207,43 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 65% 20%,rgba(99,102,241,0.13) 0%,transparent 55%)",pointerEvents:"none",zIndex:0}}/>
         <div style={{position:"absolute",inset:0,backgroundImage:"linear-gradient(rgba(99,102,241,0.07) 1px,transparent 1px),linear-gradient(90deg,rgba(99,102,241,0.07) 1px,transparent 1px)",backgroundSize:"48px 48px",pointerEvents:"none",zIndex:0}}/>
       </>}
+
+      {/* Income event form overlay */}
+      {incomeFormState&&(
+        <>
+          <div style={{position:"fixed",inset:0,zIndex:9994}} onClick={()=>setIncomeFormState(null)}/>
+          <div style={{position:"fixed",top:incomeFormState.y,left:incomeFormState.x,zIndex:9995,background:T.tooltipBg,border:"1px solid #6366f1",borderRadius:10,padding:"12px 14px",minWidth:260,boxShadow:"0 6px 28px rgba(0,0,0,0.35)",animation:"tooltipIn 0.12s ease both"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:8,letterSpacing:"0.06em"}}>{incomeFormState.editId?"EDIT INCOME":"ADD INCOME"}</div>
+            <input autoFocus placeholder="Label (e.g. Nike project, Salary)" value={incomeFormState.data.label}
+              onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,label:e.target.value}}))}
+              onKeyDown={e=>{if(e.key==="Escape")setIncomeFormState(null);}}
+              style={{...inpStyle,width:"100%",marginBottom:6,boxSizing:"border-box"}}/>
+            <div style={{display:"flex",gap:5,marginBottom:6}}>
+              <input type="number" placeholder="£ amount" min="0" value={incomeFormState.data.amount}
+                onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,amount:e.target.value}}))}
+                onKeyDown={e=>{if(e.key==="Enter")saveIncomeForm();if(e.key==="Escape")setIncomeFormState(null);}}
+                style={{...inpStyle,flex:1}}/>
+            </div>
+            <div style={{fontSize:9,color:T.dimText,marginBottom:3}}>Expected payment date</div>
+            <input type="date" value={incomeFormState.data.expectedDate}
+              onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,expectedDate:e.target.value}}))}
+              style={{...inpStyle,width:"100%",marginBottom:6,boxSizing:"border-box"}}/>
+            <select value={incomeFormState.data.recurrence}
+              onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,recurrence:e.target.value}}))}
+              style={{...inpStyle,width:"100%",marginBottom:8,boxSizing:"border-box"}}>
+              <option value="none">One-time</option>
+              <option value="weekly">Weekly</option>
+              <option value="biweekly">Bi-weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+            <div style={{display:"flex",gap:5}}>
+              <button onClick={saveIncomeForm} style={{flex:1,padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
+              {incomeFormState.editId&&<button onClick={deleteIncomeEvent} style={{padding:"5px 10px",background:"rgba(239,68,68,0.15)",color:"#ef4444",border:"1px solid rgba(239,68,68,0.3)",borderRadius:6,fontSize:11,cursor:"pointer"}}>Delete</button>}
+              <button onClick={()=>setIncomeFormState(null)} style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Plan-a-purchase overlay — rendered here (not inside CatRow) so typing doesn't unmount it */}
       {editingEvent&&(
@@ -4394,6 +4573,41 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
               <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
             </button>
+          </div>
+        )}
+       {overdueBanners.length>0&&(
+          <div style={{marginBottom:12}}>
+            {overdueBanners.map(ev=>{
+              const rs=reconcileState[ev.id];
+              return(
+                <div key={ev.id} style={{background:"rgba(245,158,11,0.08)",border:"1px solid rgba(245,158,11,0.25)",borderLeft:"4px solid #f59e0b",borderRadius:8,padding:"8px 12px",marginBottom:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <span style={{fontSize:12,fontWeight:600,color:"#fbbf24"}}>Did <strong>{ev.label}</strong> arrive?</span>
+                    <span style={{fontSize:11,color:"#9ca3af",marginLeft:8}}>Expected {ev.expectedDate?.toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</span>
+                  </div>
+                  {rs?.mode==='receiving'?(
+                    <div style={{display:"flex",gap:5,alignItems:"center",flexWrap:"wrap"}}>
+                      <input type="number" placeholder="Amount" value={rs.amount||''} onChange={e=>setReconcileState(s=>({...s,[ev.id]:{...s[ev.id],amount:e.target.value}}))} style={{...inpStyle,width:90}}/>
+                      <input type="date" value={rs.date||''} onChange={e=>setReconcileState(s=>({...s,[ev.id]:{...s[ev.id],date:e.target.value}}))} style={inpStyle}/>
+                      <button onClick={()=>{const amt=parseFloat(rs.amount);setIncomeEvents(evs=>evs.map(e=>e.id===ev.id?{...e,status:'received',receivedAmount:!isNaN(amt)?amt:e.amount,receivedDate:rs.date?new Date(rs.date):new Date()}:e));setReconcileState(s=>({...s,[ev.id]:null}));}} style={{padding:"4px 10px",background:"#22c55e",color:"#fff",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Confirm</button>
+                      <button onClick={()=>setReconcileState(s=>({...s,[ev.id]:null}))} style={{padding:"4px 8px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:5,fontSize:11,cursor:"pointer"}}>✕</button>
+                    </div>
+                  ):rs?.mode==='delaying'?(
+                    <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                      <input type="date" value={rs.date||''} onChange={e=>setReconcileState(s=>({...s,[ev.id]:{...s[ev.id],date:e.target.value}}))} style={inpStyle}/>
+                      <button onClick={()=>{if(!rs.date)return;setIncomeEvents(evs=>evs.map(e=>e.id===ev.id?{...e,expectedDate:new Date(rs.date)}:e));setReconcileState(s=>({...s,[ev.id]:null}));}} style={{padding:"4px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>Update date</button>
+                      <button onClick={()=>setReconcileState(s=>({...s,[ev.id]:null}))} style={{padding:"4px 8px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:5,fontSize:11,cursor:"pointer"}}>✕</button>
+                    </div>
+                  ):(
+                    <div style={{display:"flex",gap:5}}>
+                      <button onClick={()=>setReconcileState(s=>({...s,[ev.id]:{mode:'receiving',amount:String(ev.amount),date:new Date().toISOString().slice(0,10)}}))} style={{padding:"4px 10px",background:"#22c55e",color:"#fff",border:"none",borderRadius:5,fontSize:11,fontWeight:700,cursor:"pointer"}}>✓ Mark received</button>
+                      <button onClick={()=>setReconcileState(s=>({...s,[ev.id]:{mode:'delaying',date:new Date(Date.now()+7*86400000).toISOString().slice(0,10)}}))} style={{padding:"4px 9px",background:"none",color:"#fbbf24",border:"1px solid rgba(245,158,11,0.4)",borderRadius:5,fontSize:11,cursor:"pointer"}}>↻ Delay</button>
+                      <button onClick={()=>setIncomeEvents(evs=>evs.map(e=>e.id===ev.id?{...e,dismissedUntil:Date.now()+48*3600*1000}:e))} style={{padding:"4px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:5,fontSize:11,cursor:"pointer"}}>✕ Dismiss</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
        <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc(100vh / 0.6)`}:{})}}>

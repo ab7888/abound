@@ -6,7 +6,12 @@
       "Bash(git push *)",
       "WebSearch",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:www.metrobankonline.co.uk)"
+      "WebFetch(domain:www.metrobankonline.co.uk)",
+      "PowerShell(git -C \"c:\\\\Users\\\\Lenovo\\\\Desktop\\\\Abound\" add api/create-checkout-session.js vercel.json)",
+      "PowerShell(git -C \"c:\\\\Users\\\\Lenovo\\\\Desktop\\\\Abound\" status)",
+      "PowerShell(git -C \"c:\\\\Users\\\\Lenovo\\\\Desktop\\\\Abound\" push)",
+      "PowerShell(git -C \"c:\\\\Users\\\\Lenovo\\\\Desktop\\\\Abound\" commit -m \"feat: replace Salary row with Income Events system`n`nprojectIncomeEvents\\(\\) bins events into forecast week columns with recurrence.`nPills: indigo=expected, green=received, ghost=late arrival.`nReconciliation banner for overdue events. Add/edit overlay form.`nNet Movement + Cash Balance driven by income events forecast.`n`nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\")",
+      "Bash(npx tsc *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Lenovo\\Desktop\\Abound\\api",

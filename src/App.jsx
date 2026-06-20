@@ -1010,9 +1010,12 @@ const SESSION_KEY = "abound_session_v1";
 
 function saveSession(transactions, categories) {
   try {
+    const dates = transactions.map(t => t.date instanceof Date ? t.date : new Date(t.date)).filter(d => !isNaN(d.getTime()));
+    const lastTxnDate = dates.length ? new Date(Math.max(...dates.map(d => d.getTime()))).toISOString() : null;
     const payload = {
       savedAt: new Date().toISOString(),
       txnCount: transactions.length,
+      lastTxnDate,
       categories,
       transactions: transactions.map(t => ({
         ...t,
@@ -1583,6 +1586,13 @@ function UploadScreen({onDone}) {
   const [multipleAccounts, setMultipleAccounts] = useState(false);
   const [missingBalanceAccounts, setMissingBalanceAccounts] = useState([]); // [{label, value}]
   const [balanceInputs, setBalanceInputs] = useState({});
+  const [prevSession, setPrevSession] = useState(null);
+  const [continueChosen, setContinueChosen] = useState(false);
+  const [continueDismissed, setContinueDismissed] = useState(false);
+  useEffect(()=>{
+    const s = loadSession();
+    if(s && s.transactions && s.transactions.length > 0) setPrevSession(s);
+  },[]);
   const hasMainFile = !!accounts[0].file;
   function addCard(){setAccounts(a=>[...a,{id:Date.now(),file:null,name:""}]);}
   function removeAccount(id){setAccounts(a=>a.filter(x=>x.id!==id));}
@@ -1615,7 +1625,7 @@ function UploadScreen({onDone}) {
       setBalanceInputs(inputs);
       setStep("balance");
     } else {
-      onDone(allRows, accounts.filter(a=>a.file).length>1);
+      onDone(allRows, accounts.filter(a=>a.file).length>1, continueChosen);
     }
   }
 
@@ -1632,7 +1642,7 @@ function UploadScreen({onDone}) {
       if(t===mostRecent||t.date.getTime()===mostRecent.date.getTime()) return {...t, balance:val};
       return t;
     });
-    onDone(injected, multipleAccounts);
+    onDone(injected, multipleAccounts, continueChosen);
   }`
   `
   if(step==="balance"){
@@ -1752,6 +1762,33 @@ function UploadScreen({onDone}) {
             </div>
             <button onClick={()=>{localStorage.setItem("homeScreenTipDismissed","1");setShowHomeScreenTip(false);}}
               style={{background:"none",border:"none",color:"#4b5563",fontSize:16,cursor:"pointer",padding:0,lineHeight:1,flexShrink:0}}>×</button>
+          </div>
+        )}
+        {/* Welcome-back / continue prompt */}
+        {prevSession && !continueDismissed && (()=>{
+          const lastDate = prevSession.lastTxnDate ? new Date(prevSession.lastTxnDate).toLocaleDateString("en-GB",{day:"numeric",month:"long",year:"numeric"}) : null;
+          return(
+            <div style={{background:"linear-gradient(135deg,rgba(99,102,241,0.12),rgba(79,70,229,0.08))",border:"1px solid rgba(99,102,241,0.3)",borderRadius:14,padding:"16px 18px",marginBottom:24,animation:"fadeUp 0.4s ease both"}}>
+              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:4}}>Welcome back</div>
+              <div style={{fontSize:12,color:"#818cf8",marginBottom:14,lineHeight:1.5}}>Want to pick up where you left off? Upload your latest statement and we'll carry forward your categories.</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button onClick={()=>{setContinueChosen(true);setContinueDismissed(true);}}
+                  style={{flex:1,minWidth:140,padding:"9px 14px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:9,fontSize:12,fontWeight:700,cursor:"pointer",letterSpacing:"-0.01em",boxShadow:"0 4px 14px rgba(99,102,241,0.35)"}}>
+                  Continue from {lastDate||"last session"} →
+                </button>
+                <button onClick={()=>setContinueDismissed(true)}
+                  style={{padding:"9px 14px",background:"transparent",color:"#52525b",border:"1px solid #2d2a6e",borderRadius:9,fontSize:12,fontWeight:500,cursor:"pointer"}}>
+                  Start fresh
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+        {/* Continue mode active indicator */}
+        {continueChosen && (
+          <div style={{background:"rgba(16,185,129,0.08)",border:"1px solid rgba(16,185,129,0.2)",borderRadius:9,padding:"8px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:6,height:6,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 6px #10b981",flexShrink:0}}/>
+            <span style={{fontSize:11,color:"#6ee7b7",fontWeight:600}}>Continue mode — only new transactions since last session will be processed</span>
           </div>
         )}
         {/* Step indicator */}
@@ -2111,7 +2148,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
 }
 
 // ─── Sort Screen ──────────────────────────────────────────────────────────────
-function SortScreen({transactions, categories: initialCategories, onDone}) {
+function SortScreen({transactions, categories: initialCategories, onDone, continueSince}) {
   const allItems = useMemo(()=>
     transactions.filter(t=>t.category==="Other Payments")
       .reduce((acc,t)=>{const ex=acc.find(x=>x.narrative===t.narrative);if(ex){ex.total+=t.amount;ex.count+=1;}else acc.push({narrative:t.narrative,total:t.amount,count:1,category:"Other Payments"});return acc;},[])
@@ -2168,6 +2205,7 @@ function SortScreen({transactions, categories: initialCategories, onDone}) {
         <div style={{padding:"16px 16px 12px",borderBottom:"1px solid #1f1d35",flexShrink:0}}>
           <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5,marginBottom:2}}>TO SORT</div>
           <div style={{fontSize:22,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
+          {continueSince&&<div style={{fontSize:10,color:"#6366f1",marginTop:4,fontWeight:600}}>New since {new Date(continueSince).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>}
         </div>
         <div style={{flex:1,padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:6,overflowY:"auto"}}>
           {unsorted.length===0&&(
@@ -2286,11 +2324,14 @@ const MobileSort=()=>{
     return(
       <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",overscrollBehavior:"none"}}>
         {/* Progress bar */}
-        <div style={{padding:"12px 16px 8px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-          <div style={{flex:1,height:3,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
+        <div style={{padding:"12px 16px 8px",display:"flex",flexDirection:"column",gap:4,flexShrink:0}}>
+          {continueSince&&<div style={{fontSize:10,color:"#6366f1",fontWeight:600,marginBottom:2}}>New since {new Date(continueSince).toLocaleDateString("en-GB",{day:"numeric",month:"short"})} — {allItems.length} item{allItems.length!==1?"s":""} to sort</div>}
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{flex:1,height:3,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
+            </div>
+            <span style={{fontSize:11,color:pct===100?"#10b981":"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{sorted.length+skipped.length}/{allItems.length}</span>
           </div>
-          <span style={{fontSize:11,color:pct===100?"#10b981":"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{sorted.length+skipped.length}/{allItems.length}</span>
         </div>
 
         {/* Card stack */}
@@ -3198,7 +3239,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
-  const [budgets, setBudgets] = useState({});
+  const [budgets, setBudgets] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_budgets")||"{}");}catch{return {};}});
   const [editingBudget, setEditingBudget] = useState(null);
   const [showHomeScreenGuide, setShowHomeScreenGuide] = useState(false);
  const [tourStep, setTourStep] = useState(null);
@@ -3219,6 +3260,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [incomeFormState, setIncomeFormState] = useState(null);
   const [reconcileState, setReconcileState] = useState({});
   useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
+  useEffect(()=>{try{localStorage.setItem("abound_budgets",JSON.stringify(budgets));}catch{}},[budgets]);
   function openAddIncomeForm(x,y){const d=new Date();d.setDate(d.getDate()+30);setIncomeFormState({editId:null,x,y,data:{label:'',amount:'',expectedDate:d.toISOString().slice(0,10),recurrence:'none'}});}
   function openEditIncomeForm(ev,x,y){setIncomeFormState({editId:ev.id,x,y,data:{label:ev.label,amount:String(ev.amount),expectedDate:ev.expectedDate?ev.expectedDate.toISOString().slice(0,10):'',recurrence:ev.recurrence||'none'}});}
   function saveIncomeForm(){if(!incomeFormState)return;const{editId,data}=incomeFormState;const amount=parseFloat(data.amount);if(!data.label||isNaN(amount)||amount<=0||!data.expectedDate)return;const ev={id:editId||String(Date.now()),label:data.label,amount,expectedDate:new Date(data.expectedDate),recurrence:data.recurrence,status:'expected'};if(editId){setIncomeEvents(evs=>evs.map(e=>e.id===editId?{...e,...ev}:e));}else{setIncomeEvents(evs=>[...evs,ev]);}setIncomeFormState(null);}
@@ -3236,6 +3278,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   }
   const [excludedWeeks, setExcludedWeeks] = useState({}); // {[cat]: Set<weekKey>}
   const [showPremiumGate, setShowPremiumGate] = useState(false);
+  const isPro = isPremium();
   const [showStockSetup, setShowStockSetup] = useState(false);
   const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
   const [stockData, setStockData] = useState({});
@@ -3468,7 +3511,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
   const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
-  const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:6},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
+  const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:12},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
   const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Income"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
   const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
 
@@ -3773,8 +3816,14 @@ function getLastWorkingDay(year, month) {
     return tips.slice(0,5);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
-const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#9ca3af",opacity:isForecast&&forecastIdx!=null?1-forecastIdx*0.07:1,background:isOverBudget?"rgba(239,68,68,0.08)":isForecast?"rgba(99,102,241,0.04)":"transparent",borderRight:isForecast?"1px dashed #2d2a6e":"1px solid #1a1830",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#9ca3af",opacity:isForecast&&forecastIdx!=null?1-Math.min(forecastIdx,5)*0.07:1,background:isOverBudget?"rgba(239,68,68,0.08)":isForecast?"rgba(99,102,241,0.04)":"transparent",borderRight:isForecast?"1px dashed #2d2a6e":"1px solid #1a1830",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
   const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#818cf8":"#c7d2fe",background:isForecast?"rgba(99,102,241,0.12)":"rgba(255,255,255,0.04)",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+  const blurStyle=(i)=>{
+    if(i<6||isPro) return {};
+    const base={filter:"blur(4px)",opacity:0.5,userSelect:"none",pointerEvents:"none"};
+    if(i===6) return{...base,WebkitMaskImage:"linear-gradient(to right,transparent 0%,black 55%)",maskImage:"linear-gradient(to right,transparent 0%,black 55%)"};
+    return base;
+  };
 
   function LabelCell({label,account}){
     const tip=ROW_TOOLTIPS[label];
@@ -3852,9 +3901,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account===account;
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:"pointer"}}
-              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});e.stopPropagation();}}}
-              onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:getForecastTip(cat,account),x:r.left,y:r.bottom+6});}}
+            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
+              onClick={e=>{if(i>=6&&!isPro)return;if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});e.stopPropagation();}}}
+              onMouseEnter={e=>{if(i>=6&&!isPro)return;const r=e.currentTarget.getBoundingClientRect();setTooltip({text:getForecastTip(cat,account),x:r.left,y:r.bottom+6});}}
               onMouseLeave={()=>setTooltip(null)}>
               {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
             </td>
@@ -3932,7 +3981,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
   function IncomeFcstCells({pills,colIdx}){
     return(
-      <td style={{...tdAmt(null,true,false,colIdx),padding:"3px 6px",verticalAlign:"top",minWidth:70}}>
+      <td style={{...tdAmt(null,true,false,colIdx),padding:"3px 6px",verticalAlign:"top",minWidth:70,...blurStyle(colIdx)}}>
         <div style={{display:"flex",flexDirection:"column",gap:2}}>
           {pills.map((pill,j)=><IncomePill key={j} pill={pill}/>)}
         </div>
@@ -4062,7 +4111,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </td>
           {actualWeeks.map((_,i)=><td key={i} style={{background:"transparent",borderRight:`1px solid ${T.dimBorder}`}}/>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
-          {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.1)",borderRight:`1px solid ${T.border2}`}}/>)}
+          {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.1)",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}/>)}
           <td style={{background:"rgba(99,102,241,0.1)",borderLeft:`2px solid ${T.border2}`}}/><td colSpan={2}/>
         </tr>
         {!collapsedAccounts.has(account)&&<tr className="abound-row" style={{background:T.summaryRow,borderBottom:`1px solid ${T.dimBorderMid}`}}>
@@ -4074,7 +4123,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </td>
           {openingBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
-          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",background:T.forecastCell,borderRight:`1px dashed ${T.dimBorder}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
+          {forecastBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",background:T.forecastCell,borderRight:`1px dashed ${T.dimBorder}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`}}/><td/><td/>
         </tr>}
         {!collapsedAccounts.has(account)&&(isMainAcc?<IncomeEventsRow key="income-events" account={account}/>:incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>))}
@@ -4090,7 +4139,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               const wkEvents=events.filter(ev=>ev.weekKey===w.key);
               const total=wkEvents.reduce((s,ev)=>s+ev.amount,0);
               return(
-                <td key={i} style={{...tdAmt(total>0?"#d97706":"#d1d5db",true),position:"relative"}}>
+                <td key={i} style={{...tdAmt(total>0?"#d97706":"#d1d5db",true),...blurStyle(i),position:"relative"}}>
                   {total>0?(
                     <span title={wkEvents.map(e=>`${e.label}: £${e.amount}`).join("\n")} style={{cursor:"help"}}>
                       {fmtMoney(total)}
@@ -4111,7 +4160,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
@@ -4154,8 +4203,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account==="ALL";
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true,false,i,over),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:"pointer"}}
-              onClick={e=>{if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account:"ALL",label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
+            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true,false,i,over),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
+              onClick={e=>{if(i>=6&&!isPro)return;if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account:"ALL",label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
               {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
             </td>
           );
@@ -4237,7 +4286,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               const wkEvents=events.filter(ev=>ev.weekKey===w.key);
               const total=wkEvents.reduce((s,ev)=>s+ev.amount,0);
               return(
-                <td key={i} style={{...tdAmt(total>0?"#d97706":"#d1d5db",true),position:"relative"}}>
+                <td key={i} style={{...tdAmt(total>0?"#d97706":"#d1d5db",true),...blurStyle(i),position:"relative"}}>
                   {total>0?(
                     <span title={wkEvents.map(e=>`${e.label}: £${e.amount}`).join("\n")} style={{cursor:"help"}}>
                       {fmtMoney(total)}
@@ -4258,7 +4307,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          {weeklyNetForecast.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
@@ -4680,7 +4729,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </div>
         )}
        <div data-tour-table style={{background:T.tableBg,borderRadius:10,border:`1px solid ${T.border}`,overflow:"auto",WebkitOverflowScrolling:"touch",boxShadow:"0 4px 32px rgba(0,0,0,0.2)",flexShrink:0,...(isMobile?{maxHeight:`calc(100vh / 0.6)`}:{})}}>
-          <table style={{width:isMobile?"max-content":"100%",minWidth:isMobile?"900px":undefined,borderCollapse:"collapse"}}>
+          <table style={{width:"max-content",minWidth:"1100px",borderCollapse:"collapse"}}>
             <thead style={{position:"sticky",top:0,zIndex:5}}>
               <tr style={{background:T.theadB}}>
                 <th data-sticky-hdr style={{padding:isMobile?"10px 6px":"10px 12px",textAlign:"left",position:"sticky",left:0,top:0,zIndex:6,background:T.theadA,whiteSpace:"nowrap",overflow:"hidden",maxWidth:isMobile?108:130}}>
@@ -4715,6 +4764,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 >BUDGET <span style={{fontSize:8,opacity:0.6}}>ⓘ</span></th>
                 <th style={{background:T.theadD}}/>
               </tr>
+              {!isPro&&(
+                <tr style={{background:"rgba(99,102,241,0.06)",borderBottom:"1px solid rgba(99,102,241,0.18)"}}>
+                  <th colSpan={2+actualWeeks.length+1+6} style={{padding:0,background:"transparent"}}/>
+                  <th colSpan={6} style={{padding:"5px 10px",background:"linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))",borderLeft:"1px solid rgba(99,102,241,0.25)",borderRight:"1px solid rgba(99,102,241,0.25)"}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,whiteSpace:"nowrap"}}>
+                      <span style={{fontSize:10,fontWeight:700,color:"#a5b4fc",letterSpacing:"0.02em"}}>See 12 weeks ahead</span>
+                      <button onClick={()=>setShowPremiumGate(true)} style={{padding:"3px 10px",fontSize:10,fontWeight:700,background:"linear-gradient(135deg,#6366f1,#7c3aed)",color:"#fff",border:"none",borderRadius:5,cursor:"pointer",letterSpacing:"0.04em",boxShadow:"0 2px 8px rgba(99,102,241,0.4)"}}>✦ Unlock Premium</button>
+                    </div>
+                  </th>
+                  <th colSpan={3} style={{padding:0,background:"transparent"}}/>
+                </tr>
+              )}
             </thead>
             <tbody>
               {splitByCard ? accounts.map(acc=><AccountSection key={acc} account={acc}/>) : <GroupedSection/>}
@@ -4732,7 +4793,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 ))}
                 <td style={{padding:"9px 10px",background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {combinedClosingBalances.forecast.map((v,i)=>(
-                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.1)":"rgba(99,102,241,0.12)",borderRight:`1px solid ${T.border2}`,fontVariantNumeric:"tabular-nums"}}>
+                  <td key={i} style={{padding:"9px 10px",textAlign:"right",fontSize:13,fontWeight:800,color:v===null?"#4b5563":v>=0?"#10b981":"#ef4444",background:v!==null&&v>=0?"rgba(16,185,129,0.1)":"rgba(99,102,241,0.12)",borderRight:`1px solid ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>
                     {v===null?"—":fmtMoney(v)}
                   </td>
                 ))}
@@ -4748,7 +4809,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     <td colSpan={2} style={{padding:"6px 12px",fontSize:10,fontWeight:700,color:"#10b981",letterSpacing:"0.1em",textTransform:"uppercase"}}>STOCK PORTFOLIO</td>
                     {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.border}`,background:"rgba(16,185,129,0.04)"}}/>)}
                     <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
-                    {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.06)",borderRight:`1px solid ${T.border2}`}}/>)}
+                    {forecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.06)",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}/>)}
                     <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}} colSpan={2}/>
                   </tr>
                   {visibleStocks.map(stock=>{
@@ -4779,7 +4840,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                         ))}
                         <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                         {forecastVals.map((v,i)=>(
-                          <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:600,color:"rgba(16,185,129,0.7)",background:"rgba(16,185,129,0.06)",fontVariantNumeric:"tabular-nums",borderRight:`1px solid ${T.border2}`}}>
+                          <td key={i} style={{padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:600,color:"rgba(16,185,129,0.7)",background:"rgba(16,185,129,0.06)",fontVariantNumeric:"tabular-nums",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}>
                             {fmtMoney(v)}
                           </td>
                         ))}
@@ -5167,6 +5228,18 @@ function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
   );
 }
 
+function ContinueToast({toast, onDismiss}) {
+  useEffect(()=>{const t=setTimeout(onDismiss,3000);return()=>clearTimeout(t);},[]);
+  return(
+    <div style={{position:"fixed",bottom:72,left:"50%",transform:"translateX(-50%)",zIndex:9999,background:"rgba(16,185,129,0.92)",backdropFilter:"blur(8px)",borderRadius:10,padding:"11px 20px",display:"flex",alignItems:"center",gap:10,boxShadow:"0 4px 20px rgba(0,0,0,0.4)",whiteSpace:"nowrap",animation:"fadeUp 0.35s ease both"}}>
+      <div style={{width:7,height:7,borderRadius:"50%",background:"#fff",opacity:0.8,flexShrink:0}}/>
+      <span style={{fontSize:13,fontWeight:700,color:"#fff"}}>{toast.newCount} new transaction{toast.newCount!==1?"s":""} added</span>
+      <span style={{fontSize:12,color:"rgba(255,255,255,0.7)"}}>·</span>
+      <span style={{fontSize:12,color:"rgba(255,255,255,0.8)"}}>{toast.carriedCount} carried forward</span>
+    </div>
+  );
+}
+
 function AppInner() {
   const [screen, setScreen] = useState("hero");
   const [premium, setPremiumState] = useState(isPremium);
@@ -5207,6 +5280,10 @@ function AppInner() {
   const [finalCategories, setFinalCategories] = useState([]);
   const [prevForecast, setPrevForecast] = useState(null);
   const [mergeMode, setMergeMode] = useState(false);
+  const [continueMode, setContinueMode] = useState(false);
+  const [continuePrevSession, setContinuePrevSession] = useState(null); // full previous session for merge
+  const [continueToast, setContinueToast] = useState(null); // {newCount, carriedCount}
+  const [noNewInfo, setNoNewInfo] = useState(null); // {lastDate} when diff finds 0 new txns
 
   function handleResume() {
     const s = loadSession();
@@ -5223,6 +5300,7 @@ function AppInner() {
 
   function handleSortDone(txns, cats) {
     const isMerge = mergeMode;
+    const isContinue = continueMode;
     let merged = txns;
     let mergedCats = cats;
     if (isMerge) {
@@ -5232,11 +5310,19 @@ function AppInner() {
       merged = [...sortedTransactions, ...newOnly];
       mergedCats = [...new Set([...finalCategories, ...cats])];
       setMergeMode(false);
+    } else if (isContinue && continuePrevSession) {
+      // Continue session: merge new categorised txns with full previous session history
+      merged = [...continuePrevSession.transactions, ...txns];
+      mergedCats = [...new Set([...continuePrevSession.categories, ...cats])];
+      setContinueToast({newCount: txns.length, carriedCount: continuePrevSession.transactions.length});
+      setContinueMode(false);
+      setContinuePrevSession(null);
     }
     setSortedTransactions(merged);
     setFinalCategories(mergedCats);
     saveSession(merged, mergedCats);
     if (isMerge) { setScreen("main"); return; }
+    if (isContinue) { setScreen("main"); return; }
     // Check if the saved forecast from a previous session overlaps with new actual data
     const saved = loadLastForecast();
     if (saved?.weekStartDates?.length) {
@@ -5260,8 +5346,53 @@ function AppInner() {
     <div style={{fontFamily:"'Inter',system-ui,sans-serif",background:"#08070f",minHeight:"100vh",minWidth:"100vw",position:"relative"}}>
       <style>{GLOBAL_CSS}</style>
       {screen==="hero"&&<HeroScreen onEnter={()=>setScreen("upload")} onResume={handleResume}/>}
-      {screen==="upload"&&<UploadScreen onDone={(txns,multi)=>{
-        setRawTransactions(txns);
+      {screen==="upload"&&(noNewInfo?(
+        <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px"}}>
+          <style>{GLOBAL_CSS}</style>
+          <div style={{maxWidth:400,width:"100%",textAlign:"center",animation:"fadeUp 0.5s ease both"}}>
+            <div style={{width:56,height:56,borderRadius:14,background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 20px"}}>
+              <svg width="26" height="26" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4" stroke="#818cf8" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><circle cx="12" cy="12" r="9" stroke="#818cf8" strokeWidth="1.5"/></svg>
+            </div>
+            <div style={{fontSize:18,fontWeight:800,color:"#fff",marginBottom:8,letterSpacing:"-0.02em"}}>No new transactions found</div>
+            <div style={{fontSize:13,color:"#52525b",marginBottom:28,lineHeight:1.6}}>
+              Everything in this file was already in your last session{noNewInfo.lastDate?` (up to ${new Date(noNewInfo.lastDate).toLocaleDateString("en-GB",{day:"numeric",month:"long"})})`:""}.
+              Try uploading a more recent statement, or start fresh.
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap"}}>
+              <button onClick={()=>setNoNewInfo(null)}
+                style={{padding:"10px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Upload different file
+              </button>
+              <button onClick={()=>{setNoNewInfo(null);setContinueMode(false);setContinuePrevSession(null);}}
+                style={{padding:"10px 20px",background:"transparent",color:"#52525b",border:"1px solid #2d2a6e",borderRadius:10,fontSize:13,fontWeight:500,cursor:"pointer"}}>
+                Start fresh
+              </button>
+            </div>
+          </div>
+        </div>
+      ):<UploadScreen onDone={(txns,multi,isContinue)=>{
+        if(isContinue){
+          const sess = loadSession();
+          if(sess && sess.transactions.length > 0){
+            const mkKey = t => `${t.date instanceof Date ? t.date.toISOString() : t.date}|${t.narrative}|${t.amount}`;
+            const existingKeys = new Set(sess.transactions.map(mkKey));
+            const genuinelyNew = txns.filter(t => !existingKeys.has(mkKey(t)));
+            if(genuinelyNew.length === 0){
+              setNoNewInfo({lastDate: sess.lastTxnDate});
+              return;
+            }
+            setRawTransactions(genuinelyNew);
+            setContinuePrevSession(sess);
+            setContinueMode(true);
+          } else {
+            setRawTransactions(txns);
+            setContinueMode(false);
+          }
+        } else {
+          setRawTransactions(txns);
+          setContinueMode(false);
+          setContinuePrevSession(null);
+        }
         setMultipleAccounts(multi);
         if(!premium && getAiRunsUsed()>=FREE_AI_RUNS){
           setShowUpgradeModal(true);
@@ -5269,14 +5400,15 @@ function AppInner() {
           incrementAiRuns();
           setScreen("categorise");
         }
-      }}/>}
+      }}/>)}
       {screen==="categorise"&&<CategoriseScreen transactions={rawTransactions} multipleAccounts={multipleAccounts} onDone={(txns,cats)=>{setCategorisedTransactions(txns);setFinalCategories(cats);setScreen("sort");}}/>}
       {showUpgradeModal&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>{setShowUpgradeModal(false);incrementAiRuns();setScreen("categorise");}}/>}
-      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone}/>}
+      {screen==="sort"&&<SortScreen transactions={categorisedTransactions} categories={finalCategories} onDone={handleSortDone} continueSince={continueMode&&continuePrevSession?.lastTxnDate?continuePrevSession.lastTxnDate:undefined}/>}
       {screen==="forecast-accuracy"&&prevForecast&&(
         <ForecastAccuracyScreen savedForecast={prevForecast} transactions={sortedTransactions} categories={finalCategories} onContinue={()=>setScreen("main")}/>
       )}
       {screen==="main"&&<MainScreen transactions={sortedTransactions} categories={finalCategories} onStartOver={handleStartOver} onFeedback={()=>setScreen("feedback")} onAddAccount={handleAddAccount}/>}
+      {screen==="main"&&continueToast&&<ContinueToast toast={continueToast} onDismiss={()=>setContinueToast(null)}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
       <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:(screen==="main"&&typeof window!=="undefined"&&window.innerWidth<768)?"none":"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>

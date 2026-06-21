@@ -54,7 +54,7 @@ async function redirectToCheckout() {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Income", "Transfers", "Other Payments"];
+const DEFAULT_CATEGORIES = ["Food", "Travel", "Rent", "Memberships", "Online Shopping", "Healthcare", "Income", "Transfers", "Investments", "Other Payments"];
 const APP_VERSION = "1.0.0";
 const INTERCOMPANY_CATEGORY = "Card Repayment";
 const PURPLE = "#6366f1";
@@ -206,6 +206,14 @@ const MERCHANT_MAP = {
   ],
   Income: [
     "salary","payroll","wages"
+  ],
+  Investments: [
+    "lightyear","trading 212","trading212","freetrade","vanguard",
+    "hargreaves lansdown","hargreaves","hl limited","hl ltd","hl invest",
+    "investec","degiro","etoro","nutmeg","moneybox","aj bell","ajbell",
+    "interactive investor","ii limited","interactive brokers","fidelity",
+    "charles stanley","cavendish online","bestinvest","stocktrade",
+    "trading 212 ltd","freetrade ltd","vanguard ltd","nutmeg ltd"
   ]
 };
 
@@ -714,6 +722,7 @@ Rules (be strict — follow these exactly):
 - Rent: rent, mortgage, letting agents, estate agents, property management companies, council tax, utilities (gas, electricity, water)
 - Memberships: ONLY use this for clearly recurring subscriptions — phone/mobile contracts (O2, Vodafone, EE, Three, giffgaff, iD Mobile, Smarty, Tesco Mobile, Lebara, Sky Mobile); broadband/TV (BT, Virgin Media, Sky, TalkTalk, Plusnet); streaming services (Netflix, Spotify, Disney+, Amazon Prime, Apple TV, YouTube Premium); gym memberships; explicitly subscription-based SaaS (iCloud, Adobe, Microsoft 365, Google One); insurance (car, home, life, pet — Aviva, AXA, Direct Line, Admiral, Churchill, Hastings, Saga, RAC, AA, Legal & General, Royal London, Zurich, Allianz, Sun Life, BUPA Dental, Vitality); DVLA vehicle tax, road tax. Do NOT use Memberships for one-off purchases, general online purchases, healthcare, or anything ambiguous — prefer Other Payments in doubt
 - Transfers: person-to-person bank transfers. Patterns: (1) "FIRSTNAME LASTNAME, PAYMENT" or "FIRSTNAME LASTNAME , MONTHLY"; (2) any narrative starting with a person's name followed by ", ... , VIA MOBILE" or containing "VIA MOBILE - LVP". Both sending and receiving money to/from friends or family. NOT business payments.
+- Investments: deposits to investment platforms — Lightyear, Trading 212, Freetrade, Vanguard, Hargreaves Lansdown, HL Ltd, Investec, DeGiro, eToro, Nutmeg, Moneybox, AJ Bell, Interactive Investor, Fidelity, Charles Stanley, or any narrative containing "ISA", "SIPP", "FUND", "STOCKS AND SHARES" when it is an outgoing payment to a financial platform
 - Online Shopping: Amazon purchases (NOT Amazon Prime), eBay, ASOS, Etsy, Next, Very, Shein, Boohoo, Argos, Currys, John Lewis, JD Sports, Sports Direct, Zara, H&M, Primark, IKEA, B&Q, Wayfair, Dunelm, PayPal purchases (when clearly retail), any online retail
 - Healthcare: Boots, Superdrug, Specsavers, Vision Express, any pharmacy, optician, dentist, NHS charges, private GP, physio, counselling
 - Card Repayment: outgoing payments TO a credit card — narratives containing "BARCLAYCARD", "AMEX", "AMERICAN EXPRESS", "HSBC CARD", "LLOYDS CARD", "NATWEST CARD", "CAPITAL ONE", "VANQUIS", "VIRGIN MONEY CARD", or any "PAYMENT TO [CARD NAME]"
@@ -839,6 +848,7 @@ function CatIcon({cat, size=18, color="#6366f1"}) {
     case "Memberships": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><circle {...p} cx="6" cy="13" r="1" fill={color}/><path {...p} d="M10 13h4"/></svg>;
     case "Income": return <svg viewBox="0 0 20 20" style={s}><path {...p} d="M10 2v16M6 5.5C6 4.1 7.8 3 10 3s4 1.1 4 2.5S12.2 8 10 8s-4 1.1-4 2.5S7.8 13 10 13s4-1.1 4-2.5"/></svg>;
     case "Card Repayment": return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="2" y="5" width="16" height="11" rx="2"/><path {...p} d="M2 9h16"/><path {...p} d="M14 13.5l2-1.5-2-1.5"/><path {...p} d="M16 12H9"/></svg>;
+    case "Investments": return <svg viewBox="0 0 20 20" style={s}><polyline {...p} points="2,15 7,9 11,12 16,5"/><polyline {...p} points="13,5 16,5 16,8"/></svg>;
     case "Other Payments": return <svg viewBox="0 0 20 20" style={s}><circle {...p} cx="10" cy="10" r="8"/><path {...p} d="M10 6v4l3 2"/></svg>;
     default: return <svg viewBox="0 0 20 20" style={s}><rect {...p} x="3" y="3" width="14" height="14" rx="2"/><path {...p} d="M7 10h6M10 7v6"/></svg>;
   }
@@ -2177,10 +2187,13 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
   const sorted=items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
   const skipped=items.filter(i=>i.category==="Skip");
   const visible=unsorted.slice(0,VISIBLE);
-  const spendCats=categories.filter(c=>c!=="Other Payments"&&c!=="Card Repayment");
+  const spendCats=categories.filter(c=>c!=="Other Payments"&&c!=="Card Repayment"&&c!=="Investments");
   const catRepaymentInCats=categories.includes("Card Repayment");
-  const allBuckets=[...spendCats,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
-  const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Card Repayment":"#ec4899"};
+  const investInCats=categories.includes("Investments");
+  const allBuckets=[...spendCats,investInCats?"Investments":null,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
+  const CAT_COLORS={"Food":"#10b981","Travel":"#3b82f6","Rent":"#f59e0b","Memberships":"#8b5cf6","Investments":"#10b981","Card Repayment":"#ec4899"};
+  const INVESTMENT_SIGNALS=/lightyear|trading[\s-]?212|freetrade|vanguard|hargreaves|degiro|etoro|nutmeg|moneybox|aj[\s-]?bell|investec|interactive[\s-]?investor|fidelity|stocks[\s\S]*shares|isa\b|sipp\b|\bfund\b|invest/i;
+  const [investHintDismissed,setInvestHintDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_investment_hints_dismissed")||"[]");}catch{return[];}});
   function catColor(cat,i){return CAT_COLORS[cat]||CATEGORY_COLORS[i%CATEGORY_COLORS.length]||"#6366f1";}
   function assignItem(narrative,cat){if(cat!=="Skip")setBucketCounts(p=>({...p,[cat]:(p[cat]||0)+1}));setItems(p=>p.map(x=>x.narrative===narrative?{...x,category:cat}:x));setSwipeOffset(0);setSwipeTarget(null);setUndoHistory(h=>[...h,{narrative,cat}]);}
   function dropIntoCat(cat){const n=dragRef.current;if(!n)return;assignItem(n,cat);dragRef.current=null;setHoveredCat(null);}
@@ -2235,6 +2248,13 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
             );
           })}
           {unsorted.length>VISIBLE&&<div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:"#374151"}}>+{unsorted.length-VISIBLE} more to sort</div>}
+          {(()=>{const topItem=visible[0];const showHint=topItem&&INVESTMENT_SIGNALS.test(topItem.narrative)&&!investHintDismissed.includes(topItem.narrative)&&topItem.category!=="Investments";if(!showHint)return null;return(
+            <div style={{margin:"8px 0 4px",background:"#0f0c2e",border:"1px solid rgba(16,185,129,0.4)",borderRadius:12,padding:"14px 16px",flexShrink:0}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#34d399",marginBottom:6}}>Looks like an investment deposit?</div>
+              <div style={{fontSize:11,color:"#6ee7b7",lineHeight:1.5,marginBottom:10}}>Drop it into Investments to track it separately from your spending.</div>
+              <button onClick={()=>{const next=[...investHintDismissed,topItem.narrative];setInvestHintDismissed(next);localStorage.setItem("abound_investment_hints_dismissed",JSON.stringify(next));}} style={{fontSize:11,color:"#10b981",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontWeight:700}}>Got it ✓</button>
+            </div>
+          );})()}
         </div>
         {(sorted.length>0||skipped.length>0)&&(
           <div style={{borderTop:"1px solid #1f1d35",padding:"10px 12px",maxHeight:200,overflowY:"auto",flexShrink:0}}>
@@ -2284,6 +2304,16 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
               </div>
             );
           })}
+          {investInCats&&(()=>{const ivHovered=hoveredCat==="Investments";const ivColor="#10b981";const ivCount=(txnCountByCat["Investments"]||0)+(bucketCounts["Investments"]||0);return(
+            <div key="Investments" onDragEnter={e=>{e.preventDefault();setHoveredCat("Investments");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Investments");}}
+              style={{border:`2px ${ivHovered?"solid":"dashed"} ${ivHovered?ivColor:`${ivColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:ivHovered?`${ivColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:ivHovered?`0 0 24px ${ivColor}33`:"none"}}>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon("Investments",ivHovered?"#fff":ivColor,24)}</div>
+              <div style={{fontSize:13,fontWeight:700,color:ivHovered?"#fff":ivColor,textAlign:"center",lineHeight:1.3}}>Investments</div>
+              <div style={{fontSize:10,fontWeight:600,color:ivCount>0?ivColor:"#2d2a6e",background:ivCount>0?`${ivColor}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${ivCount>0?`${ivColor}44`:"#1f1d35"}`}}>
+                {ivCount>0?`${ivCount} txn${ivCount>1?"s":""}`:ivHovered?"drop here":"empty"}
+              </div>
+            </div>
+          );})()}
           {catRepaymentInCats&&(()=>{const crHovered=hoveredCat==="Card Repayment";const crColor="#ec4899";const crCount=(txnCountByCat["Card Repayment"]||0)+(bucketCounts["Card Repayment"]||0);return(
             <div key="Card Repayment" onDragEnter={e=>{e.preventDefault();setHoveredCat("Card Repayment");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Card Repayment");}}
               style={{border:`2px ${crHovered?"solid":"dashed"} ${crHovered?crColor:`${crColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:crHovered?`${crColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:crHovered?`0 0 24px ${crColor}33`:"none"}}>
@@ -2699,9 +2729,9 @@ function RotateScreen() {
 // ─── Insights Screen ──────────────────────────────────────────────────────────
 function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   const isMobile = useIsMobile();
-  const spendCats = useMemo(()=>categories.filter(c=>c!=="Income"&&c!=="Card Repayment"),[categories]);
+  const spendCats = useMemo(()=>categories.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments"),[categories]);
 
-  const { weekCount, avgWeeklySpend, netCashFlow, trajectory, topCat, catTotals, salaryTotal, currSym } = useMemo(()=>{
+  const { weekCount, avgWeeklySpend, netCashFlow, trajectory, topCat, catTotals, salaryTotal, currSym, investmentTotal } = useMemo(()=>{
     const sym=getCurrencySymbol();
     const allWks=[...new Set(transactions.map(t=>getWeekMonday(t.date).toISOString().slice(0,10)))].sort();
     const recentWks=allWks.slice(-8);
@@ -2714,10 +2744,11 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const traj=pAvg>0?(rAvg>pAvg*1.05?"up":rAvg<pAvg*0.95?"down":"flat"):"flat";
     const salTot=transactions.filter(t=>t.category==="Income").reduce((s,t)=>s+Math.abs(t.amount),0);
     const spTot=transactions.filter(t=>spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0);
+    const invTot=Math.round(transactions.filter(t=>t.category==="Investments").reduce((s,t)=>s+Math.abs(t.amount),0));
     const cTotals={};
     spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
     const topC=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-    return {weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),trajectory:traj,topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),currSym:sym};
+    return {weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),trajectory:traj,topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),currSym:sym,investmentTotal:invTot};
   },[transactions,spendCats]);
 
   const [cards,setCards]=useState(null);
@@ -2754,21 +2785,22 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
       if(MONTHLY_CATS.includes(c)) return `  - ${c}: ${currSym}${Math.round(v/monthCount)}/month`;
       return `  - ${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`;
     }).join("\n");
+    const investNote=investmentTotal>0?`\n- Investment deposits: ${currSym}${investmentTotal} over ${weekCount} weeks (tracked separately — not included in spend or net cash flow)`:"";
     return `You are a concise personal finance advisor. Based on the data below, generate 4-6 actionable insight cards ${weeksNote}for a cash flow app.
 
 Financial data:
 - Weeks of data: ${weekCount}
-- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk
+- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk (excludes investments and transfers)
 - Total income: ${currSym}${salaryTotal} over ${weekCount} weeks
 - Net cash flow: ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}
 - Spend trend: ${trajectory==="up"?"increasing":trajectory==="down"?"decreasing":"stable"}
 - Spend by category (weekly avg, except Rent/Memberships which are monthly):
-${catLines||"  - (no category data)"}
+${catLines||"  - (no category data)"}${investNote}
 
 Return ONLY a valid JSON array (no other text). Each item:
 {"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk or ${currSym}500/month"${weekCount<4?',"estimated":true':""}}
 
-Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=saving suggestions, recurring_charge=subscription patterns. Use the actual numbers and correct units (weekly for variable spend, monthly for Rent/Memberships). Be specific.`;
+Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=save suggestions, recurring_charge=subscription patterns. If investment deposits are present, mention them separately (not as spending). Use actual numbers and correct units. Be specific.`;
   }
 
   async function fetchInsights(isRefresh=false){
@@ -3366,6 +3398,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     "Memberships":"Subscriptions — streaming, gym, phone contracts, insurance, road tax, and any recurring services.",
     "Transfers":"Money sent or received to/from friends and family — excluded from your spend totals as it's not really spending.",
     "Other Payments":"Transactions that didn't fit a specific category.",
+    "Investments":"Money moved to investment platforms — tracked separately from spending so it doesn't distort your Net Movement.",
     "Card Repayment":"Money moved to pay your credit card — not counted as spend in Net Movement.",
     "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
     "Cash Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
@@ -3492,7 +3525,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     if (!fwks.length || !Object.keys(fd).length) return;
     const existing = loadLastForecast();
     if (existing?.savedAt?.slice(0,10) === new Date().toISOString().slice(0,10)) return;
-    const spendCats = cats.filter(c=>c!=="Income"&&c!=="Card Repayment");
+    const spendCats = cats.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments");
     const forecastByCategory = {};
     spendCats.forEach(cat=>{
       const vals = fwks.map((_,i)=>accts.reduce((s,acc)=>s+(fd[acc]?.[cat]?.[i]||0),0));
@@ -3550,6 +3583,7 @@ function getLastWorkingDay(year, month) {
     const EXACT_CATS=["Rent","Memberships"];
     const ROLLING_CATS=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
     const OCCURRENCE_CATS=["Transfers"]; // rolling mean over non-zero weeks only
+    const NO_FORECAST_CATS=["Investments"]; // show actuals only, no forward projection
     const forecastCats=[...new Set([...categories, INTERCOMPANY_CATEGORY])];
     // Precompute non-recurring amounts by week/account/cat so rolling averages exclude one-offs
     const nrMap={};
@@ -3558,6 +3592,7 @@ function getLastWorkingDay(year, month) {
     accounts.forEach(acc=>{
       out[acc]={};
       forecastCats.filter(cat=>cat!=="Card Repayment").forEach(cat=>{
+        if(NO_FORECAST_CATS.includes(cat)){out[acc][cat]=Array(forecastWeeks.length).fill(0);return;}
         const excl=excludedWeeks[cat]||new Set();
         const actualVals=actualWeeks.map(w=>{if(excl.has(w.key))return 0;const total=Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0);const nrAmt=nrMap[w.key]?.[acc]?.[cat]||0;return Math.max(0,total-nrAmt);});
         const avg=rollingAvg(actualVals);
@@ -3721,7 +3756,7 @@ function getLastWorkingDay(year, month) {
   const incomeFcstTotalByWeek=useMemo(()=>incomeByFcstWeek.map(pills=>pills.filter(p=>!p.isGhost).reduce((s,p)=>s+(p.ev.receivedAmount??p.ev.amount),0)),[incomeByFcstWeek]);
   const overdueBanners=useMemo(()=>{const t=new Date();t.setHours(0,0,0,0);return incomeEvents.filter(ev=>ev.status==='expected'&&ev.expectedDate&&ev.expectedDate<t&&(!ev.dismissedUntil||Date.now()>ev.dismissedUntil));},[incomeEvents]);
 
-  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment");
+  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
 
@@ -3843,6 +3878,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const MONTHLY_CATS_L=["Income"];
     const ROLLING_CATS_L=["Food","Travel","Other Payments","Online Shopping","Healthcare"];
     const OCCURRENCE_CATS_L=["Transfers"];
+    if(cat==="Investments") return `Investment deposits are shown as actuals only — not projected forward.`;
     const vals=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0));
     const last6=vals.slice(-6);
     const nonZero=last6.filter(v=>v>0);
@@ -3866,6 +3902,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
   function CatRow({cat,account}){
     const isIncome=cat==="Income"||(cat==="Card Repayment"&&account!=="Main Account");
+    const isInvestments=cat==="Investments";
     const isRepayment=false;
     const key=`${account}::${cat}`;
     const hidden=hiddenCats.has(key);
@@ -3874,8 +3911,8 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
     const budget=budgets[key];
-    const rowColor=isIncome?"rgba(16,185,129,0.04)":isRepayment?"rgba(124,58,237,0.05)":"transparent";
-    const textColor=isIncome?"#34d399":isRepayment?"#a78bfa":T.catText;
+    const rowColor=isIncome?"rgba(16,185,129,0.04)":isInvestments?"rgba(16,185,129,0.04)":isRepayment?"rgba(124,58,237,0.05)":"transparent";
+    const textColor=isIncome?"#34d399":isInvestments?"#34d399":isRepayment?"#a78bfa":T.catText;
     return(
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
         <td data-sticky-label style={{padding:"5px 4px 5px 6px",fontSize:10,color:T.acctLabelColor,whiteSpace:"nowrap",minWidth:isMobile?26:undefined}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
@@ -3883,13 +3920,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
+          {isInvestments&&<span style={{fontSize:9,marginRight:4}}>📈</span>}
           {isRepayment&&<span style={{fontSize:9,marginRight:4}}>↔</span>}
           {cat}
           <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isInvestments?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
             onClick={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}
             onContextMenu={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}>
             {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
@@ -4064,7 +4102,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Income"):categories.filter(c=>c==="Card Repayment");
     // For CC accounts Card Repayment is income, exclude from spend
-    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Income"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Income"&&c!=="Investments"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
     // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
     const spendCatsLocal=allSpendCats.filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);
@@ -4170,6 +4208,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
   function GroupedCatRow({cat}){
     const isIncome=cat==="Income";
+    const isInvestments=cat==="Investments";
     const key=`g::${cat}`;
     const hidden=hiddenCats.has(key);
     const actuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)));
@@ -4177,21 +4216,22 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
     const budget=budgets[key];
-    const rowColor=isIncome?"rgba(16,185,129,0.04)":"transparent";
-    const textColor=isIncome?"#34d399":T.catText;
+    const rowColor=isIncome?"rgba(16,185,129,0.04)":isInvestments?"rgba(16,185,129,0.04)":"transparent";
+    const textColor=isIncome?"#34d399":isInvestments?"#34d399":T.catText;
     return(
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
-        <td data-sticky-label style={{padding:0,minWidth:isMobile?26:undefined,background:isIncome?"rgba(16,185,129,0.04)":"transparent"}}/>
-        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:isIncome?"rgba(16,185,129,0.04)":"#0a0919"}}
+        <td data-sticky-label style={{padding:0,minWidth:isMobile?26:undefined,background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":"transparent"}}/>
+        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":"#0a0919"}}
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
+          {isInvestments&&<span style={{fontSize:9,marginRight:4}}>📈</span>}
           {cat}
           <span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isInvestments?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
             onClick={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}
             onContextMenu={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}>
             {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}

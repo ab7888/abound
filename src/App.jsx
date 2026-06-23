@@ -3229,34 +3229,40 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
 }
 
 // ─── Income Events helpers ────────────────────────────────────────────────────
+function normDay(d){if(!d)return null;const n=new Date(d);n.setHours(0,0,0,0);return n;}
 function getIncomeOccurrencesInWeek(ev, weekStart, weekEnd) {
   if (!ev.expectedDate) return [];
-  const base = ev.expectedDate;
-  const inRange = d => d >= weekStart && d <= weekEnd && d >= base;
+  const base = normDay(ev.expectedDate);
+  const originalDOM = base.getDate();
   if (ev.recurrence === 'none') {
-    return (ev.expectedDate >= weekStart && ev.expectedDate <= weekEnd) ? [ev.expectedDate] : [];
-  } else if (ev.recurrence === 'weekly') {
-    const d = new Date(weekStart);
-    while (d <= weekEnd) { if (d.getDay()===base.getDay()&&inRange(d)) return [new Date(d)]; d.setDate(d.getDate()+1); }
-  } else if (ev.recurrence === 'biweekly') {
-    const d = new Date(base);
-    while (d < weekStart) d.setDate(d.getDate()+14);
-    return (d >= weekStart && d <= weekEnd) ? [new Date(d)] : [];
-  } else if (ev.recurrence === 'monthly') {
-    const dom = base.getDate(), d = new Date(weekStart);
-    while (d <= weekEnd) { if (d.getDate()===dom&&inRange(d)) return [new Date(d)]; d.setDate(d.getDate()+1); }
+    return (base >= weekStart && base <= weekEnd) ? [new Date(base)] : [];
   }
-  return [];
+  function nextOcc(d) {
+    const r = new Date(d);
+    if (ev.recurrence === 'weekly') { r.setDate(r.getDate()+7); }
+    else if (ev.recurrence === 'biweekly') { r.setDate(r.getDate()+14); }
+    else { // monthly — preserve original DOM, snap to month-end if needed
+      r.setDate(1);
+      r.setMonth(r.getMonth()+1);
+      r.setDate(Math.min(originalDOM, new Date(r.getFullYear(),r.getMonth()+1,0).getDate()));
+    }
+    return r;
+  }
+  // Walk forward from base (the first occurrence) until we reach the week
+  let occ = new Date(base);
+  while (occ < weekStart) occ = nextOcc(occ);
+  return (occ <= weekEnd) ? [new Date(occ)] : [];
 }
 function projectIncomeEvents(events, weeks) {
   return weeks.map(w => {
     const pills = [];
     events.forEach(ev => {
       if (ev.status === 'received' && ev.receivedDate) {
-        const recvInWk = ev.receivedDate >= w.date && ev.receivedDate <= w.sunday;
-        const expInWk  = ev.expectedDate && ev.expectedDate >= w.date && ev.expectedDate <= w.sunday;
-        if (recvInWk) pills.push({ ev, date: ev.receivedDate, isReceived: true });
-        else if (expInWk) pills.push({ ev, date: ev.expectedDate, isGhost: true });
+        const recvDate=normDay(ev.receivedDate), expDate=normDay(ev.expectedDate);
+        const recvInWk = recvDate && recvDate >= w.date && recvDate <= w.sunday;
+        const expInWk  = expDate  && expDate  >= w.date && expDate  <= w.sunday;
+        if (recvInWk) pills.push({ ev, date: recvDate, isReceived: true });
+        else if (expInWk) pills.push({ ev, date: expDate, isGhost: true });
       } else {
         const occs = getIncomeOccurrencesInWeek(ev, w.date, w.sunday);
         if (occs.length) pills.push({ ev, date: occs[0] });
@@ -3294,9 +3300,49 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
   useEffect(()=>{try{localStorage.setItem("abound_budgets",JSON.stringify(budgets));}catch{}},[budgets]);
   function openAddIncomeForm(x,y){const d=new Date();d.setDate(d.getDate()+30);setIncomeFormState({editId:null,x,y,data:{label:'',amount:'',expectedDate:d.toISOString().slice(0,10),recurrence:'none'}});}
-  function openEditIncomeForm(ev,x,y){setIncomeFormState({editId:ev.id,x,y,data:{label:ev.label,amount:String(ev.amount),expectedDate:ev.expectedDate?ev.expectedDate.toISOString().slice(0,10):'',recurrence:ev.recurrence||'none'}});}
-  function saveIncomeForm(){if(!incomeFormState)return;const{editId,data}=incomeFormState;const amount=parseFloat(data.amount);if(!data.label||isNaN(amount)||amount<=0||!data.expectedDate)return;const ev={id:editId||String(Date.now()),label:data.label,amount,expectedDate:new Date(data.expectedDate),recurrence:data.recurrence,status:'expected'};if(editId){setIncomeEvents(evs=>evs.map(e=>e.id===editId?{...e,...ev}:e));}else{setIncomeEvents(evs=>[...evs,ev]);}setIncomeFormState(null);}
+  const fmtDateInput=d=>d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:'';
+  function openEditIncomeForm(ev,x,y){setIncomeFormState({editId:ev.id,x,y,data:{label:ev.label,amount:String(ev.amount),expectedDate:fmtDateInput(normDay(ev.expectedDate)),recurrence:ev.recurrence||'none'}});}
+  function saveIncomeForm(){if(!incomeFormState)return;const{editId,data}=incomeFormState;const amount=parseFloat(data.amount);if(!data.label||isNaN(amount)||amount<=0||!data.expectedDate)return;const ev={id:editId||String(Date.now()),label:data.label,amount,expectedDate:new Date(data.expectedDate+'T00:00:00'),recurrence:data.recurrence,status:'expected'};if(editId){setIncomeEvents(evs=>evs.map(e=>e.id===editId?{...e,...ev}:e));}else{setIncomeEvents(evs=>[...evs,ev]);}setIncomeFormState(null);}
   function deleteIncomeEvent(){if(!incomeFormState?.editId)return;setIncomeEvents(evs=>evs.filter(e=>e.id!==incomeFormState.editId));setIncomeFormState(null);}
+  const [salarySuggestionDismissed,setSalarySuggestionDismissed]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_salary_suggestion_dismissed")||"[]");}catch{return[];}});
+  const salarySuggestion=useMemo(()=>{
+    if(!incomeFormState||incomeFormState.editId) return null;
+    const now=new Date();now.setHours(0,0,0,0);
+    const sixWeeksAgo=new Date(now);sixWeeksAgo.setDate(now.getDate()-42);
+    const candidates=transactions.filter(t=>{
+      if(!t.isIncome||t.amount<500) return false;
+      if(t.category==="Transfers"||t.category==="Investments") return false;
+      if(t.date<sixWeeksAgo||t.date>now) return false;
+      return !incomeEvents.some(ev=>Math.abs(ev.amount-t.amount)<=10);
+    });
+    if(!candidates.length) return null;
+    const best=candidates.reduce((a,b)=>b.amount>a.amount?b:a);
+    const key=`${best.narrative}|${best.amount}`;
+    return salarySuggestionDismissed.includes(key)?null:best;
+  },[incomeFormState,transactions,incomeEvents,salarySuggestionDismissed]);
+  function applySuggestion(txn){
+    const dom=txn.date.getDate();
+    const today=new Date();today.setHours(0,0,0,0);
+    let next=new Date(today.getFullYear(),today.getMonth(),dom);
+    if(next<today){
+      const m=today.getMonth()+1,y=today.getFullYear()+(m>11?1:0),mo=m>11?0:m;
+      const daysInMo=new Date(y,mo+1,0).getDate();
+      next=new Date(y,mo,Math.min(dom,daysInMo));
+    }
+    const ds=fmtDateInput(next);
+    setIncomeFormState(s=>({...s,data:{...s.data,label:'Salary',amount:String(Math.round(txn.amount)),expectedDate:ds,recurrence:'monthly'}}));
+  }
+  function closeIncomeForm(dismissSuggestion=false){
+    if(dismissSuggestion&&salarySuggestion){
+      const key=`${salarySuggestion.narrative}|${salarySuggestion.amount}`;
+      if(!salarySuggestionDismissed.includes(key)){
+        const next=[...salarySuggestionDismissed,key];
+        setSalarySuggestionDismissed(next);
+        try{localStorage.setItem("abound_salary_suggestion_dismissed",JSON.stringify(next));}catch{}
+      }
+    }
+    setIncomeFormState(null);
+  }
   const [ctxMenu, setCtxMenu] = useState(null);
   function txnKey(t){return t.narrative+'|'+t.date.getTime()+'|'+t.amount;}
   function openCtxMenu(e, account, cat, weekKey){
@@ -4376,17 +4422,23 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {/* Income event form overlay */}
       {incomeFormState&&(
         <>
-          <div style={{position:"fixed",inset:0,zIndex:9994}} onClick={()=>setIncomeFormState(null)}/>
-          <div style={{position:"fixed",top:incomeFormState.y,left:incomeFormState.x,zIndex:9995,background:T.tooltipBg,border:"1px solid #6366f1",borderRadius:10,padding:"12px 14px",minWidth:260,boxShadow:"0 6px 28px rgba(0,0,0,0.35)",animation:"tooltipIn 0.12s ease both"}} onClick={e=>e.stopPropagation()}>
+          <div style={{position:"fixed",inset:0,zIndex:9994}} onClick={()=>closeIncomeForm()}/>
+          <div style={{position:"fixed",top:incomeFormState.y,left:incomeFormState.x,zIndex:9995,background:T.tooltipBg,border:"1px solid #6366f1",borderRadius:10,padding:"12px 14px",minWidth:270,boxShadow:"0 6px 28px rgba(0,0,0,0.35)",animation:"tooltipIn 0.12s ease both"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:8,letterSpacing:"0.06em"}}>{incomeFormState.editId?"EDIT INCOME":"ADD INCOME"}</div>
+            {!incomeFormState.editId&&salarySuggestion&&(
+              <div style={{marginBottom:10,padding:"10px 12px",background:"#1a1744",border:"1px solid rgba(99,102,241,0.5)",borderRadius:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:"#a5b4fc",marginBottom:5}}>⚡ Last big payment: £{Math.round(salarySuggestion.amount).toLocaleString()} on {fmt(salarySuggestion.date)}</div>
+                <div onClick={()=>applySuggestion(salarySuggestion)} style={{fontSize:11,color:"#818cf8",cursor:"pointer",fontWeight:600}}>Use this as my monthly salary →</div>
+              </div>
+            )}
             <input autoFocus placeholder="Label (e.g. Nike project, Salary)" value={incomeFormState.data.label}
               onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,label:e.target.value}}))}
-              onKeyDown={e=>{if(e.key==="Escape")setIncomeFormState(null);}}
+              onKeyDown={e=>{if(e.key==="Escape")closeIncomeForm(true);}}
               style={{...inpStyle,width:"100%",marginBottom:6,boxSizing:"border-box"}}/>
             <div style={{display:"flex",gap:5,marginBottom:6}}>
               <input type="number" placeholder="£ amount" min="0" value={incomeFormState.data.amount}
                 onChange={e=>setIncomeFormState(s=>({...s,data:{...s.data,amount:e.target.value}}))}
-                onKeyDown={e=>{if(e.key==="Enter")saveIncomeForm();if(e.key==="Escape")setIncomeFormState(null);}}
+                onKeyDown={e=>{if(e.key==="Enter")saveIncomeForm();if(e.key==="Escape")closeIncomeForm(true);}}
                 style={{...inpStyle,flex:1}}/>
             </div>
             <div style={{fontSize:9,color:T.dimText,marginBottom:3}}>Expected payment date</div>
@@ -4404,7 +4456,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <div style={{display:"flex",gap:5}}>
               <button onClick={saveIncomeForm} style={{flex:1,padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
               {incomeFormState.editId&&<button onClick={deleteIncomeEvent} style={{padding:"5px 10px",background:"rgba(239,68,68,0.15)",color:"#ef4444",border:"1px solid rgba(239,68,68,0.3)",borderRadius:6,fontSize:11,cursor:"pointer"}}>Delete</button>}
-              <button onClick={()=>setIncomeFormState(null)} style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
+              <button onClick={()=>closeIncomeForm(true)} style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
             </div>
           </div>
         </>

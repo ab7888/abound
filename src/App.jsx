@@ -126,6 +126,7 @@ const GLOBAL_CSS = `
   @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
   @keyframes skeletonPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
   @keyframes insightsPulse { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
+  @keyframes incomeArrowPulse { 0%,100%{transform:translateY(0);opacity:0.55} 50%{transform:translateY(-4px);opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
@@ -2823,7 +2824,7 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
 
 Financial data:
 - Weeks of data: ${weekCount}
-- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk (excludes investments and transfers)
+- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk (excludes investments, transfers and card repayments — card repayments are debt settlement not new spend)
 - Total income: ${currSym}${salaryTotal} over ${weekCount} weeks
 - Net cash flow: ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}
 - Spend trend: ${trajectory==="up"?"increasing":trajectory==="down"?"decreasing":"stable"}
@@ -2833,7 +2834,7 @@ ${catLines||"  - (no category data)"}${investNote}
 Return ONLY a valid JSON array (no other text). Each item:
 {"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk or ${currSym}500/month"${weekCount<4?',"estimated":true':""}}
 
-Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=save suggestions, recurring_charge=subscription patterns. If investment deposits are present, mention them separately (not as spending). Use actual numbers and correct units. Be specific.`;
+Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=save suggestions, recurring_charge=subscription patterns. If investment deposits are present, mention them separately (not as spending). Card Repayment is debt settlement — do not flag it as a spending anomaly. Use actual numbers and correct units. Be specific.`;
   }
 
   async function fetchInsights(isRefresh=false){
@@ -3329,7 +3330,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [tourVisible, setTourVisible] = useState(false);
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
-  const [showStockSuggestion, setShowStockSuggestion] = useState(false);
+  const [showStocksTooltip, setShowStocksTooltip] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
   function showTooltip(text, x, y) {
@@ -3388,6 +3389,58 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     }
     setIncomeFormState(null);
   }
+  const wizardSuggestion=useMemo(()=>{
+    if(incomeEvents.length>0) return null;
+    const now=new Date();now.setHours(0,0,0,0);
+    const sixWeeksAgo=new Date(now);sixWeeksAgo.setDate(now.getDate()-42);
+    const candidates=transactions.filter(t=>{
+      if(!t.isIncome||t.amount<500) return false;
+      if(t.category==="Transfers"||t.category==="Investments") return false;
+      if(t.date<sixWeeksAgo||t.date>now) return false;
+      return true;
+    });
+    if(!candidates.length) return null;
+    return candidates.reduce((a,b)=>b.amount>a.amount?b:a);
+  },[transactions,incomeEvents]);
+  function _wizardNextDate(txnDate){
+    const dom=txnDate.getDate();
+    const today=new Date();today.setHours(0,0,0,0);
+    let next=new Date(today.getFullYear(),today.getMonth(),dom);
+    if(next<today){const m=today.getMonth()+1,y=today.getFullYear()+(m>11?1:0),mo=m>11?0:m;const daysInMo=new Date(y,mo+1,0).getDate();next=new Date(y,mo,Math.min(dom,daysInMo));}
+    return next;
+  }
+  function triggerIncomeWizard(){
+    if(incomeEvents.length>0) return;
+    if(localStorage.getItem("abound_income_wizard_skipped")) return;
+    const d=new Date();d.setDate(d.getDate()+30);
+    setWizardForm({label:'',amount:'',expectedDate:fmtDateInput(d),recurrence:'monthly'});
+    setIncomeWizardStep(wizardSuggestion?"suggest":"manual");
+    setShowIncomeWizard(true);
+  }
+  function applyWizardSuggestion(txn){
+    const ev={id:String(Date.now()),label:'Salary',amount:Math.round(txn.amount),expectedDate:_wizardNextDate(txn.date),recurrence:'monthly',status:'expected'};
+    setIncomeEvents(evs=>[...evs,ev]);
+    setShowIncomeWizard(false);
+  }
+  function switchWizardToManual(){
+    if(wizardSuggestion){
+      const next=_wizardNextDate(wizardSuggestion.date);
+      setWizardForm({label:'Salary',amount:String(Math.round(wizardSuggestion.amount)),expectedDate:fmtDateInput(next),recurrence:'monthly'});
+    }
+    setIncomeWizardStep("manual");
+  }
+  function saveWizardForm(){
+    const amount=parseFloat(wizardForm.amount);
+    if(!wizardForm.label||isNaN(amount)||amount<=0||!wizardForm.expectedDate) return;
+    const ev={id:String(Date.now()),label:wizardForm.label,amount,expectedDate:new Date(wizardForm.expectedDate+'T00:00:00'),recurrence:wizardForm.recurrence,status:'expected'};
+    setIncomeEvents(evs=>[...evs,ev]);
+    setShowIncomeWizard(false);
+  }
+  function skipIncomeWizard(){
+    try{localStorage.setItem("abound_income_wizard_skipped","1");}catch{}
+    setIncomeWizardSkipped(true);
+    setShowIncomeWizard(false);
+  }
   const [ctxMenu, setCtxMenu] = useState(null);
   function txnKey(t){return t.narrative+'|'+t.date.getTime()+'|'+t.amount;}
   function openCtxMenu(e, account, cat, weekKey){
@@ -3404,11 +3457,17 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const isPro = isPremium();
   const [previewCollapsed,setPreviewCollapsed]=useState(()=>{try{return localStorage.getItem("abound_preview_collapsed")==="true";}catch{return false;}});
   const togglePreview=()=>setPreviewCollapsed(c=>{const next=!c;try{localStorage.setItem("abound_preview_collapsed",String(next));}catch{}return next;});
+  const [forecastExpanded,setForecastExpanded]=useState(()=>{try{return localStorage.getItem("abound_forecast_expanded")==="1";}catch{return false;}});
+  const toggleForecastExpanded=()=>setForecastExpanded(e=>{const next=!e;try{localStorage.setItem("abound_forecast_expanded",next?"1":"0");}catch{}return next;});
   const [showStockSetup, setShowStockSetup] = useState(false);
   const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
   const [stockData, setStockData] = useState({});
   function openStocks(){if(!isPremium()){setShowPremiumGate(true);return;}setShowStockSetup(true);}
   function saveStocks(s){setStocks(s);try{localStorage.setItem("abound_stocks_v1",JSON.stringify(s));}catch{}}
+  const [showIncomeWizard,setShowIncomeWizard]=useState(false);
+  const [incomeWizardStep,setIncomeWizardStep]=useState("suggest");
+  const [wizardForm,setWizardForm]=useState({label:'',amount:'',expectedDate:'',recurrence:'monthly'});
+  const [incomeWizardSkipped,setIncomeWizardSkipped]=useState(()=>!!localStorage.getItem("abound_income_wizard_skipped"));
   useEffect(()=>{
     if(!stocks.length) return;
     stocks.forEach(async(s)=>{
@@ -3434,6 +3493,19 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     const t=setTimeout(()=>{setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");},4000);
     return()=>clearTimeout(t);
   },[showThemeTip]);
+  useEffect(()=>{
+    if(stocks.length>0||localStorage.getItem("abound_stocks_tooltip_shown")) return;
+    const t=setTimeout(()=>{localStorage.setItem("abound_stocks_tooltip_shown","1");setShowStocksTooltip(true);},2000);
+    return()=>clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  useEffect(()=>{
+    if(!showStocksTooltip) return;
+    const t=setTimeout(()=>setShowStocksTooltip(false),4000);
+    const dismiss=()=>setShowStocksTooltip(false);
+    document.addEventListener("click",dismiss,{once:true});
+    return()=>{clearTimeout(t);document.removeEventListener("click",dismiss);};
+  },[showStocksTooltip]);
   const T = isDark ? {
     bg:"#08070f",card:"#0d0c1e",border:"#1f1d35",border2:"#2d2a6e",
     tableBg:"#0a0919",theadA:"#1e1b4b",theadB:"#0f0c2e",theadC:"#080712",theadD:"#060611",
@@ -3494,7 +3566,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     "Other Payments":"Transactions that didn't fit a specific category.",
     "Investments":"Money moved to investment platforms — tracked separately from spending so it doesn't distort your Net Movement.",
     "Card Repayment":"Money moved to pay your credit card — not counted as spend in Net Movement.",
-    "Net Movement":"Income minus spend. Green = you kept money. Red = net cost week.",
+    "Net Movement":"Income minus spend. Excludes transfers, investments and card repayments — these are not new spending.",
     "Cash Balance":"Your predicted end-of-week cash position across all accounts. Green = positive, red = dipping negative.",
   };
 
@@ -3528,15 +3600,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     localStorage.setItem("cashFlowTourSeen_v2","1");
     setTourVisible(false);setTourStep(null);
     onTourFinish();
-    if(isMobile){
-      if(!localStorage.getItem("abound_stock_prompt_seen")){
-        localStorage.setItem("abound_stock_prompt_seen","1");
-        setTimeout(()=>setShowStockSuggestion(true),2000);
-      }
-    } else if(!localStorage.getItem("abound_stock_prompt_seen")){
-      localStorage.setItem("abound_stock_prompt_seen","1");
-      setTimeout(()=>setShowStockSetup(true),800);
-    }
+    setTimeout(triggerIncomeWizard,400);
   }
   function advanceTour(){
     const nextStep = tourStep===0 ? 1 : tourStep+1;
@@ -3565,11 +3629,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   }
   function closeTour(){
     localStorage.setItem("cashFlowTourSeen_v2","1");setTourVisible(false);setTourStep(null);
-    if(!localStorage.getItem("abound_stock_prompt_seen")){
-      localStorage.setItem("abound_stock_prompt_seen","1");
-      if(isMobile) setTimeout(()=>setShowStockSuggestion(true),2000);
-      else setTimeout(()=>setShowStockSetup(true),800);
-    }
+    setTimeout(triggerIncomeWizard,400);
   }
   function reopenTour(){setInvestigationOpen(false);setTourStep(0);setTourVisible(true);}
 
@@ -3641,7 +3701,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
   const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:12},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
   const PREVIEW_COLS=3;
-  const visibleForecastWeeks=forecastWeeks.slice(0,isPro?forecastWeeks.length:(previewCollapsed||isMobile)?6:Math.min(6+PREVIEW_COLS,forecastWeeks.length));
+  const visibleForecastWeeks=forecastWeeks.slice(0,isPro?(forecastExpanded?forecastWeeks.length:6):(previewCollapsed||isMobile)?6:Math.min(6+PREVIEW_COLS,forecastWeeks.length));
   const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Income"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
   const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
 
@@ -4126,11 +4186,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     );
   }
   function IncomeAddRow(){
+    const showArrow=incomeWizardSkipped&&incomeEvents.length===0;
     return(
       <tr className="abound-row" style={{borderBottom:`1px solid ${T.catRowBorder}`,background:"rgba(99,102,241,0.02)"}}>
         <td data-sticky-label style={{padding:"3px 4px 3px 6px",background:"rgba(99,102,241,0.02)"}}/>
         <td data-sticky-label2 style={{padding:"3px 10px",background:"rgba(99,102,241,0.02)"}}>
-          <span onClick={e=>{const r=e.currentTarget.getBoundingClientRect();openAddIncomeForm(r.left,r.bottom+4);}} style={{fontSize:10,color:"#6366f1",cursor:"pointer",fontWeight:600,opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>+ Add income</span>
+          <div style={{position:"relative",display:"inline-block"}}>
+            {showArrow&&<span title="Add your income so your forecast is accurate" style={{position:"absolute",top:-16,left:"50%",transform:"translateX(-50%)",fontSize:13,color:"#818cf8",animation:"incomeArrowPulse 1.5s ease-in-out infinite",pointerEvents:"none",lineHeight:1,display:"block",textAlign:"center",width:"100%"}}>↑</span>}
+            <span onClick={e=>{const r=e.currentTarget.getBoundingClientRect();openAddIncomeForm(r.left,r.bottom+4);}} style={{fontSize:10,color:"#6366f1",cursor:"pointer",fontWeight:600,opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>+ Add income</span>
+          </div>
         </td>
         {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.catRowBorder}`}}/>)}
         <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
@@ -4208,8 +4272,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       const totalForecast=(forecastData[account]?.[cat]||[]).reduce((s,v)=>s+(v||0),0);
       return totalActual>=5||totalForecast>=5;
     });
-    const accActuals=actualWeeks.map(w=>spendCatsLocal.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
-    const accForecasts=forecastWeeks.map((_,i)=>spendCatsLocal.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+    const netSpendCats=spendCatsLocal.filter(c=>c!=="Card Repayment");
+    const accActuals=actualWeeks.map(w=>netSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
+    const accForecasts=forecastWeeks.map((_,i)=>netSpendCats.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const incomeCatList=isMainAcc?["Income"]:["Card Repayment"];
     const accIncome=actualWeeks.map(w=>incomeCatList.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accIncomeForecasts=forecastWeeks.map((_,i)=>isMainAcc?incomeFcstTotalByWeek[i]||0:incomeCatList.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
@@ -4405,8 +4470,9 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;
     });
-    const accActuals=actualWeeks.map(w=>spendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
-    const accForecasts=forecastWeeks.map((_,i)=>spendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
+    const netSpendCats=spendCats.filter(c=>c!=="Card Repayment");
+    const accActuals=actualWeeks.map(w=>netSpendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
+    const accForecasts=forecastWeeks.map((_,i)=>netSpendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
     const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0)));
     const salaryForecasts=incomeFcstTotalByWeek;
     const weeklyNetActual=actualWeeks.map((_,i)=>salaryActuals[i]-accActuals[i]);
@@ -4701,23 +4767,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         );
       })()}
 
-      {/* Financial Analysis slide-in suggestion — mobile only, 25s after tour */}
-      {isMobile&&showStockSuggestion&&(
-        <div style={{position:"fixed",right:0,top:"28%",zIndex:950,animation:"slideInRight 0.5s cubic-bezier(0.16,1,0.3,1) both",maxWidth:"68vw"}}>
-          <div style={{background:"linear-gradient(135deg,#0f1f1a,#111827)",border:"1px solid rgba(16,185,129,0.4)",borderLeft:"4px solid #10b981",borderRadius:"10px 0 0 10px",padding:"9px 11px",boxShadow:"-4px 4px 24px rgba(0,0,0,0.6)"}}>
-            <div style={{fontSize:11,fontWeight:800,color:"#e0e7ff",marginBottom:3,display:"flex",alignItems:"center",gap:6}}>
-              <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="#10b981" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Track your stocks
-            </div>
-            <div style={{fontSize:10,color:"#6ee7b7",lineHeight:1.4,marginBottom:8}}>See holdings alongside your cash flow.</div>
-            <div style={{display:"flex",gap:6}}>
-              <button onClick={()=>{setShowStockSuggestion(false);openStocks();}} style={{flex:1,padding:"5px 10px",background:"linear-gradient(135deg,#059669,#047857)",color:"#fff",border:"none",borderRadius:6,fontSize:10,fontWeight:700,cursor:"pointer"}}>Add stocks →</button>
-              <button onClick={()=>setShowStockSuggestion(false)} style={{padding:"5px 8px",background:"none",color:"#4b5563",border:"1px solid #374151",borderRadius:6,fontSize:10,cursor:"pointer"}}>✕</button>
-            </div>
-          </div>
-        </div>
-      )}
-
 
      {/* Main table area */}
       <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"8px 0 0":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
@@ -4894,7 +4943,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   </th>;
                 })}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>
-                  {!isPro&&!isMobile&&previewCollapsed?<span onClick={togglePreview} style={{cursor:"pointer",fontSize:9,color:"#818cf8",fontWeight:700,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,padding:"1px 6px",display:"inline-block",lineHeight:1.6}}>＋12 wks · Unlock →</span>:"FCST"}
+                  {isPro&&!isMobile
+                    ?<button onClick={toggleForecastExpanded} style={{padding:"2px 8px",fontSize:11,fontWeight:700,background:"none",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,color:"#e0e7ff",cursor:"pointer",lineHeight:1.7,letterSpacing:"0.01em",whiteSpace:"nowrap"}}>
+                        {forecastExpanded?"⤡ 6 weeks":"⤢ 12 weeks"}
+                      </button>
+                    :!isPro&&!isMobile&&previewCollapsed
+                      ?<span onClick={togglePreview} style={{cursor:"pointer",fontSize:9,color:"#818cf8",fontWeight:700,background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,padding:"1px 6px",display:"inline-block",lineHeight:1.6}}>＋12 wks · Unlock →</span>
+                      :"FCST"
+                  }
                 </th>
                 <th style={{background:T.theadA}} colSpan={2}/>
               </tr>
@@ -4952,6 +5008,27 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/>
                 <td style={{background:T.bg}} colSpan={2}/>
               </tr>
+              {/* Inline stocks prompt when no portfolio added */}
+              {stocks.length===0&&(
+                <tr className="abound-row" style={{borderBottom:`1px solid ${T.catRowBorder}`,background:"rgba(16,185,129,0.02)"}}>
+                  <td data-sticky-label style={{padding:"3px 4px 3px 6px",background:"rgba(16,185,129,0.02)"}}/>
+                  <td data-sticky-label2 style={{padding:"3px 10px",background:"rgba(16,185,129,0.02)"}}>
+                    <div style={{position:"relative",display:"inline-block"}}>
+                      {showStocksTooltip&&(
+                        <div style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:6,padding:"5px 10px",fontSize:10,color:"#c7d2fe",whiteSpace:"nowrap",pointerEvents:"none",animation:"slideInUp 0.25s ease both",zIndex:20}}>
+                          See your portfolio value alongside your forecast
+                          <div style={{position:"absolute",top:"100%",left:"50%",transform:"translateX(-50%)",borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #4338ca"}}/>
+                        </div>
+                      )}
+                      <span onClick={openStocks} style={{fontSize:10,color:"#10b981",cursor:"pointer",fontWeight:600,opacity:0.7}} onMouseEnter={e=>e.currentTarget.style.opacity="1"} onMouseLeave={e=>e.currentTarget.style.opacity="0.7"}>+ Add your portfolio</span>
+                    </div>
+                  </td>
+                  {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.catRowBorder}`}}/>)}
+                  <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
+                  {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.04)",borderRight:i===visibleForecastWeeks.length-1?"none":`1px dashed ${T.border2}`,...blurStyle(i)}}/>)}
+                  <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/><td/>
+                </tr>
+              )}
               {/* Stock portfolio rows */}
               {stocks.length>0&&stocks.some(s=>stockData[s.ticker])&&(()=>{
                 const visibleStocks=stocks.filter(s=>stockData[s.ticker]?.currentPrice);
@@ -5139,8 +5216,54 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {/* Premium gate modal */}
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
 
+      {/* Income wizard modal */}
+      {showIncomeWizard&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+          <div style={{background:"#0d0c1e",border:"1px solid #2d2a6e",borderRadius:16,padding:28,maxWidth:440,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Income Setup</div>
+              <div style={{fontSize:18,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>When do you next get paid?</div>
+              <div style={{fontSize:13,color:"#9ca3af"}}>Set up your income so we can forecast your cash flow accurately.</div>
+            </div>
+            {incomeWizardStep==="suggest"&&wizardSuggestion?(
+              <>
+                <div style={{background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
+                  <div style={{fontSize:12,color:"#a5b4fc",fontWeight:700,marginBottom:4}}>⚡ We spotted a payment of £{Math.round(wizardSuggestion.amount).toLocaleString()} on {fmt(wizardSuggestion.date)}</div>
+                  <div style={{fontSize:12,color:"#9ca3af"}}>Use this as your monthly income?</div>
+                </div>
+                <div style={{display:"flex",gap:10,marginBottom:16}}>
+                  <button onClick={()=>applyWizardSuggestion(wizardSuggestion)} style={{flex:1,padding:"10px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Yes, use £{Math.round(wizardSuggestion.amount).toLocaleString()}/month</button>
+                  <button onClick={switchWizardToManual} style={{padding:"10px 14px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#a5b4fc",fontSize:13,cursor:"pointer"}}>Enter manually</button>
+                </div>
+                <div style={{textAlign:"center"}}>
+                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline"}}>Skip — I'll add this later</button>
+                </div>
+              </>
+            ):(
+              <>
+                <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                  <input placeholder="Label (Salary, freelance, etc.)" value={wizardForm.label} onChange={e=>setWizardForm(f=>({...f,label:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+                  <input type="number" placeholder="Amount (£)" value={wizardForm.amount} onChange={e=>setWizardForm(f=>({...f,amount:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+                  <input type="date" value={wizardForm.expectedDate} onChange={e=>setWizardForm(f=>({...f,expectedDate:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+                  <select value={wizardForm.recurrence} onChange={e=>setWizardForm(f=>({...f,recurrence:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}>
+                    <option value="none">One-off</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly">Every 2 weeks</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+                <button onClick={saveWizardForm} style={{width:"100%",padding:"10px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12}}>Save income</button>
+                <div style={{textAlign:"center"}}>
+                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline"}}>Skip — I'll add this later</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Stock setup prompt */}
-      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);}} onDismiss={()=>setShowStockSetup(false)} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+      {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onDismiss={()=>{setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
 
       {/* Mobile floating sidebar */}
       {isMobile&&(

@@ -70,6 +70,38 @@ const GLOBAL_CSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html { -webkit-text-size-adjust: 100%; background: #08070f; height: 100%; overscroll-behavior: none; }
   body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; background: #08070f; margin: 0; padding: 0; min-height: 100%; overscroll-behavior: none; touch-action: pan-x pan-y; }
+  :root {
+    --app-bg:#08070f; --nav-bg:#09081a; --nav-border:#1f1d35;
+    --nav-tab-active:#a5b4fc; --nav-tab-inactive:#52525b;
+    --card:#0d0c1e; --text:#e0e7ff; --text2:#9ca3af; --text3:#4b5563;
+    --border:#1f1d35; --border2:#2d2a6e;
+    --input-bg:#0f0e1a; --input-color:#e0e7ff;
+    --snapshot-bg:#0c0b1d; --snap-border:#1f1d35;
+    --row-even:rgba(255,255,255,0.012); --row-odd:rgba(255,255,255,0.005);
+    --row-hover:rgba(99,102,241,0.06); --row-border:#13112a;
+    --txn-text:#c7d2fe; --acct-chip:rgba(255,255,255,0.04);
+    --tbl-hdr:linear-gradient(90deg,#1e1b4b,#1a1738); --tbl-hdr-border:#2d2a6e;
+    --sort-bg:#0d0c1e; --tour-bg:#1a1830; --tour-body:#a1a1aa;
+    --oneoff-border:rgba(255,255,255,0.15); --oneoff-border-on:rgba(255,255,255,0.5);
+    --oneoff-bg-on:rgba(255,255,255,0.12);
+    --oneoff-text:rgba(255,255,255,0.4); --oneoff-text-on:#ffffff;
+  }
+  [data-theme="light"] {
+    --app-bg:#f5f3ff; --nav-bg:#ffffff; --nav-border:#e2e8f0;
+    --nav-tab-active:#4338ca; --nav-tab-inactive:#52525b;
+    --card:#ffffff; --text:#1e1b4b; --text2:#4a4868; --text3:#6b7280;
+    --border:#e2e8f0; --border2:#c7d2fe;
+    --input-bg:#f0eefa; --input-color:#1e1b4b;
+    --snapshot-bg:#eeedf8; --snap-border:#e2e8f0;
+    --row-even:rgba(0,0,0,0.012); --row-odd:rgba(0,0,0,0.005);
+    --row-hover:rgba(99,102,241,0.04); --row-border:#eceaf5;
+    --txn-text:#374151; --acct-chip:rgba(0,0,0,0.05);
+    --tbl-hdr:linear-gradient(90deg,#ede9fe,#e0e7ff); --tbl-hdr-border:rgba(99,102,241,0.25);
+    --sort-bg:#f0eefa; --tour-bg:#ffffff; --tour-body:#52525b;
+    --oneoff-border:rgba(99,102,241,0.3); --oneoff-border-on:rgba(99,102,241,0.6);
+    --oneoff-bg-on:rgba(99,102,241,0.12);
+    --oneoff-text:rgba(99,102,241,0.45); --oneoff-text-on:#4338ca;
+  }
   .dark-screen { font-family: 'DM Sans', system-ui, sans-serif; }
   button, select, input { touch-action: manipulation; }
   @keyframes pulse { 0%,100%{transform:scale(1);opacity:0.3} 50%{transform:scale(1.4);opacity:1} }
@@ -2507,18 +2539,18 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
     setEditCount(c=>Math.max(0,c-1));
   }
   const catColors={};categories.forEach((c,i)=>{catColors[c]=CATEGORY_COLORS[i%CATEGORY_COLORS.length];});
-  const inputStyle={padding:"7px 12px",border:"1px solid #1f1d35",borderRadius:8,fontSize:13,background:"#0f0e1a",color:"#e0e7ff",outline:"none",cursor:"pointer"};
+  const inputStyle={padding:"7px 12px",border:"1px solid var(--border)",borderRadius:8,fontSize:13,background:"var(--input-bg)",color:"var(--input-color)",outline:"none",cursor:"pointer"};
   useEffect(()=>{
     function onKey(e){if((e.metaKey||e.ctrlKey)&&e.key==="z"){e.preventDefault();undoLastChange();}}
     window.addEventListener("keydown",onKey);
     return()=>window.removeEventListener("keydown",onKey);
   },[undoStack]);
   return(
-    <div style={{flex:1,overflow:"auto",background:"#08070f"}}>
+    <div style={{flex:1,overflow:"auto",background:"var(--app-bg)"}}>
       <style>{GLOBAL_CSS}</style>
       {oneOffTip&&(
-        <div style={{position:"fixed",left:oneOffTip.x,top:oneOffTip.y,zIndex:9999,maxWidth:250,background:"#1e1b38",border:"1px solid #4338ca",borderRadius:10,padding:"10px 13px",fontSize:11,color:"#c7d2fe",lineHeight:1.65,pointerEvents:"none",boxShadow:"0 6px 24px rgba(0,0,0,0.4)",animation:"tooltipIn 0.15s ease both"}}>
-          <div style={{fontWeight:700,color:"#e0e7ff",marginBottom:5}}>One-off transactions</div>
+        <div style={{position:"fixed",left:oneOffTip.x,top:oneOffTip.y,zIndex:9999,maxWidth:250,background:"var(--card)",border:"1px solid var(--border2)",borderRadius:10,padding:"10px 13px",fontSize:11,color:"var(--text)",lineHeight:1.65,pointerEvents:"none",boxShadow:"0 6px 24px rgba(0,0,0,0.4)",animation:"tooltipIn 0.15s ease both"}}>
+          <div style={{fontWeight:700,color:"var(--text)",marginBottom:5}}>One-off transactions</div>
           Mark a transaction as a one-off expense — like a holiday, car repair, or big purchase. It's excluded from your rolling forecast averages so it won't inflate your predicted weekly spend going forward.
         </div>
       )}
@@ -2537,7 +2569,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
         {/* Header */}
         <div style={{marginBottom:20,display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
           <div>
-            <h2 style={{fontSize:20,fontWeight:800,color:"#fff",marginBottom:4,letterSpacing:"-0.02em"}}>Review Transactions</h2>
+            <h2 style={{fontSize:20,fontWeight:800,color:"var(--text)",marginBottom:4,letterSpacing:"-0.02em"}}>Review Transactions</h2>
             <p style={{fontSize:13,color:"#52525b",margin:0}}>Fix any miscategorised transactions to sharpen your forecast.</p>
           </div>
           <button onClick={undoLastChange} disabled={!undoStack.length} title={isMobile?"Undo last change":"Undo last change (Ctrl+Z)"}
@@ -2562,7 +2594,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
             <option value="All">All categories</option>
             {categories.map(c=><option key={c} value={c}>{c}</option>)}
           </select>
-          <div style={{display:"flex",gap:2,background:"#0d0c1e",borderRadius:8,border:"1px solid #1f1d35",padding:2,flexShrink:0}}>
+          <div style={{display:"flex",gap:2,background:"var(--sort-bg)",borderRadius:8,border:"1px solid var(--border)",padding:2,flexShrink:0}}>
             {[["amount","£"],["date","Date"],["category","Cat"]].map(([m,label])=>(
               <button key={m} onClick={()=>setSortMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",fontSize:11,fontWeight:700,cursor:"pointer",background:sortMode===m?"#6366f1":"transparent",color:sortMode===m?"#fff":"#4b5563",transition:"all 0.15s"}}>
                 {label}
@@ -2581,16 +2613,16 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
           <div style={{background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.35)",borderRadius:12,padding:"13px 16px",marginBottom:14,display:"flex",alignItems:"flex-start",gap:12,animation:"slideInUp 0.3s ease both"}}>
             <div style={{fontSize:22,flexShrink:0}}>👆</div>
             <div style={{flex:1}}>
-              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:3}}>Tap the coloured pill to fix a category</div>
+              <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:3}}>Tap the coloured pill to fix a category</div>
               <div style={{fontSize:12,color:"#818cf8",lineHeight:1.5}}>The AI makes mistakes — spending 2 minutes here makes your forecast much more accurate.</div>
             </div>
             <button onClick={()=>{sessionStorage.setItem("reviewMobileTipSeen","1");setShowMobileTip(false);}} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0,lineHeight:1,padding:0}}>×</button>
           </div>
         )}
         {/* Table */}
-        <div style={{background:"#0a0919",borderRadius:12,border:"1px solid #1f1d35",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
+        <div style={{background:"var(--card)",borderRadius:12,border:"1px solid var(--border)",overflow:"hidden",boxShadow:"0 4px 24px rgba(0,0,0,0.3)"}}>
           {!isMobile&&(
-            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",background:"linear-gradient(90deg,#1e1b4b,#1a1738)",padding:"10px 16px",borderBottom:"1px solid #2d2a6e"}}>
+            <div style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",background:"var(--tbl-hdr)",padding:"10px 16px",borderBottom:"1px solid var(--tbl-hdr-border)"}}>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DATE</div>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em"}}>DESCRIPTION</div>
               <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textAlign:"right"}}>AMOUNT</div>
@@ -2607,38 +2639,38 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
             </div>
           )}
           {filtered.map((t,i)=>{
-            const rowBg=i%2===0?"rgba(255,255,255,0.012)":"rgba(255,255,255,0.005)";
-            const hoverBg="rgba(99,102,241,0.06)";
-            const amtColor=t.isIncome?"#10b981":"#e0e7ff";
+            const rowBg=i%2===0?"var(--row-even)":"var(--row-odd)";
+            const hoverBg="var(--row-hover)";
+            const amtColor=t.isIncome?"#10b981":"var(--text)";
             const pillBg=`${catColors[t.category]||"#6366f1"}22`;
             return isMobile ? (
-              <div key={i} style={{padding:"13px 16px",borderBottom:"1px solid #1a1830",background:rowBg}}>
+              <div key={i} style={{padding:"13px 16px",borderBottom:"1px solid var(--row-border)",background:rowBg}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                   <span style={{fontSize:11,color:"#4b5563"}}>{fmtDate(t.date)} · <span style={{color:"#374151"}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span></span>
                   <span style={{fontSize:13,fontWeight:700,color:amtColor,fontVariantNumeric:"tabular-nums"}}>
                     {t.isIncome?"+":""}{`£${t.amount.toLocaleString(undefined,{maximumFractionDigits:2})}`}
                   </span>
                 </div>
-                <div style={{fontSize:13,color:"#c7d2fe",marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narrative}</div>
+                <div style={{fontSize:13,color:"var(--txn-text)",marginBottom:10,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narrative}</div>
                 <div style={{display:"flex",gap:8,alignItems:"center"}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
                     style={{padding:"6px 12px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:12,fontWeight:700,cursor:"pointer",outline:"none",flex:1}}>
-                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
+                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"var(--input-bg)",color:"var(--input-color)"}}>{c}</option>)}
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     title="Mark as one-off — excludes from forecast"
-                    style={{padding:"6px 10px",borderRadius:20,border:`1.5px solid ${nonRecurring.has(t.narrative)?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.15)"}`,background:nonRecurring.has(t.narrative)?"rgba(255,255,255,0.12)":"transparent",color:nonRecurring.has(t.narrative)?"#ffffff":"rgba(255,255,255,0.4)",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
+                    style={{padding:"6px 10px",borderRadius:20,border:`1.5px solid ${nonRecurring.has(t.narrative)?"var(--oneoff-border-on)":"var(--oneoff-border)"}`,background:nonRecurring.has(t.narrative)?"var(--oneoff-bg-on)":"transparent",color:nonRecurring.has(t.narrative)?"var(--oneoff-text-on)":"var(--oneoff-text)",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0}}>
                     {nonRecurring.has(t.narrative)?"One-off ✓":"One-off"}
                   </button>
                 </div>
               </div>
             ) : (
-              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",padding:"9px 16px",borderBottom:"1px solid #13112a",background:rowBg,alignItems:"center",transition:"background 0.1s",cursor:"default"}}
+              <div key={i} style={{display:"grid",gridTemplateColumns:"110px 1fr 110px 220px",padding:"9px 16px",borderBottom:"1px solid var(--row-border)",background:rowBg,alignItems:"center",transition:"background 0.1s",cursor:"default"}}
                 onMouseEnter={e=>e.currentTarget.style.background=hoverBg}
                 onMouseLeave={e=>e.currentTarget.style.background=rowBg}>
                 <div style={{fontSize:11,color:"#4b5563",fontVariantNumeric:"tabular-nums"}}>{fmtDate(t.date)}</div>
-                <div style={{fontSize:12,color:"#c7d2fe",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
-                  <span style={{fontSize:10,color:"#374151",marginRight:6,display:"inline-block",background:"rgba(255,255,255,0.04)",borderRadius:4,padding:"1px 5px"}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
+                <div style={{fontSize:12,color:"var(--txn-text)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",paddingRight:12}}>
+                  <span style={{fontSize:10,color:"#374151",marginRight:6,display:"inline-block",background:"var(--acct-chip)",borderRadius:4,padding:"1px 5px"}}>{t.account==="Main Account"?"Main":t.account.replace("Credit Card","CC")}</span>
                   {t.narrative}
                 </div>
                 <div style={{fontSize:12,fontWeight:600,color:amtColor,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>
@@ -2647,17 +2679,17 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
                 <div style={{paddingLeft:16,display:"flex",gap:7,alignItems:"center"}}>
                   <select value={t.category||""} onChange={e=>changeCategory(t,e.target.value)}
                     style={{padding:"4px 10px",borderRadius:20,border:`1.5px solid ${catColors[t.category]||"#6366f1"}`,background:pillBg,color:catColors[t.category]||"#a5b4fc",fontSize:11,fontWeight:700,cursor:"pointer",outline:"none",flex:1,maxWidth:120}}>
-                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"#0f0e1a",color:"#e0e7ff"}}>{c}</option>)}
+                    {[...categories,...(categories.includes("Card Repayment")?[]:["Card Repayment"])].map(c=><option key={c} value={c} style={{background:"var(--input-bg)",color:"var(--input-color)"}}>{c}</option>)}
                   </select>
                   <button onClick={()=>onToggleNonRecurring&&onToggleNonRecurring(t.narrative)}
                     style={{padding:"4px 10px",borderRadius:20,
-                      border:`1.5px solid ${nonRecurring.has(t.narrative)?"rgba(255,255,255,0.5)":"rgba(255,255,255,0.15)"}`,
-                      background:nonRecurring.has(t.narrative)?"rgba(255,255,255,0.12)":"transparent",
-                      color:nonRecurring.has(t.narrative)?"#ffffff":"rgba(255,255,255,0.4)",
+                      border:`1.5px solid ${nonRecurring.has(t.narrative)?"var(--oneoff-border-on)":"var(--oneoff-border)"}`,
+                      background:nonRecurring.has(t.narrative)?"var(--oneoff-bg-on)":"transparent",
+                      color:nonRecurring.has(t.narrative)?"var(--oneoff-text-on)":"var(--oneoff-text)",
                       fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",flexShrink:0,
                       transition:"all 0.15s",letterSpacing:"0.01em"}}
-                    onMouseEnter={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(255,255,255,0.07)";e.currentTarget.style.borderColor="rgba(255,255,255,0.35)";e.currentTarget.style.color="rgba(255,255,255,0.7)";}}}
-                    onMouseLeave={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="rgba(255,255,255,0.15)";e.currentTarget.style.color="rgba(255,255,255,0.4)";}}}>
+                    onMouseEnter={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="rgba(99,102,241,0.07)";e.currentTarget.style.borderColor="var(--oneoff-border)";e.currentTarget.style.color="var(--oneoff-text)";}}}
+                    onMouseLeave={e=>{if(!nonRecurring.has(t.narrative)){e.currentTarget.style.background="transparent";e.currentTarget.style.borderColor="var(--oneoff-border)";e.currentTarget.style.color="var(--oneoff-text)";}}}>
                     {nonRecurring.has(t.narrative)?"✓ One-off":"One-off"}
                   </button>
                 </div>
@@ -2750,6 +2782,7 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const topC=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
     return {weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),trajectory:traj,topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),currSym:sym,investmentTotal:invTot};
   },[transactions,spendCats]);
+  const latestTxnDate=useMemo(()=>transactions.length?transactions.reduce((m,t)=>t.date>m?t.date:m,transactions[0].date):null,[transactions]);
 
   const [cards,setCards]=useState(null);
   const [loading,setLoading]=useState(false);
@@ -2876,18 +2909,18 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
 
   const chatPanel=(
     <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
-      <div style={{padding:"11px 14px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+      <div style={{padding:"11px 14px",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
         <div style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 6px rgba(99,102,241,0.7)"}}/>
-        <span style={{fontSize:12,fontWeight:700,color:"#e0e7ff",flex:1}}>Ask about this insight</span>
+        <span style={{fontSize:12,fontWeight:700,color:"var(--text)",flex:1}}>Ask about this insight</span>
         <button onClick={()=>setChatOpen(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",lineHeight:1,padding:0}}>×</button>
       </div>
       {chatCtx&&chatDisplay.length===0&&(
-        <div style={{padding:"9px 14px",fontSize:11,color:"#6b7280",borderBottom:"1px solid #1f1d35",lineHeight:1.5,flexShrink:0}}>{chatCtx}</div>
+        <div style={{padding:"9px 14px",fontSize:11,color:"#6b7280",borderBottom:"1px solid var(--snap-border)",lineHeight:1.5,flexShrink:0}}>{chatCtx}</div>
       )}
       <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
         {chatDisplay.map((msg,i)=>(
           <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-            <div style={{maxWidth:"86%",padding:"8px 11px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"10px 10px 10px 2px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",fontSize:12,color:"#e0e7ff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>
+            <div style={{maxWidth:"86%",padding:"8px 11px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"10px 10px 10px 2px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"var(--card)",fontSize:12,color:"#e0e7ff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>
               {msg.content}
             </div>
           </div>
@@ -2899,11 +2932,11 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
         )}
         <div ref={chatEndRef}/>
       </div>
-      <div style={{padding:"9px 12px",borderTop:"1px solid #1f1d35",display:"flex",gap:6,flexShrink:0}}>
+      <div style={{padding:"9px 12px",borderTop:"1px solid var(--snap-border)",display:"flex",gap:6,flexShrink:0}}>
         <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
           onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
           placeholder="Ask a question… (Enter to send)" rows={2}
-          style={{flex:1,background:"#12112a",border:"1px solid #2d2a6e",borderRadius:7,color:"#e0e7ff",fontSize:12,padding:"7px 10px",resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
+          style={{flex:1,background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,padding:"7px 10px",resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
         <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading}
           style={{padding:"0 12px",background:chatInput.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:chatInput.trim()?"#fff":"#374151",border:"none",borderRadius:7,fontSize:14,fontWeight:700,cursor:chatInput.trim()?"pointer":"not-allowed",flexShrink:0,alignSelf:"stretch"}}>
           ↑
@@ -2913,9 +2946,9 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
   );
 
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"#09081a",overflow:"hidden",position:"relative"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--app-bg)",overflow:"hidden",position:"relative"}}>
       {/* Zone 1: Snapshot Bar */}
-      <div style={{flexShrink:0,padding:isMobile?"10px 14px":"11px 24px",background:"#0c0b1d",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12}}>
+      <div style={{flexShrink:0,padding:isMobile?"10px 14px":"11px 24px",background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:12}}>
         <div style={{display:"flex",alignItems:"baseline",gap:6}}>
           <span style={{fontSize:isMobile?16:20,fontWeight:800,color:netCashFlow>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
             {netCashFlow>=0?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()}
@@ -2931,12 +2964,12 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
             {cards[0].title}
           </div>
         )}
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-          {lastFetch&&<span style={{fontSize:9,color:"#374151"}}>{staleLbl()}</span>}
+        <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
+          {latestTxnDate&&<span style={{fontSize:9,color:"var(--text3)"}}>Updated based on your latest statement · {fmt(latestTxnDate)}</span>}
           <button onClick={()=>fetchInsights(true)} disabled={loading||refreshing}
-            style={{padding:"3px 8px",background:"none",border:"1px solid #1f1d35",borderRadius:6,fontSize:9,color:loading||refreshing?"#1f1d35":"#4b5563",cursor:"pointer",display:"flex",alignItems:"center",gap:3}}>
-            <svg width="9" height="9" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1 1 2.1 4.6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M4 6v4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            Refresh
+            style={{padding:"4px 10px",background:"none",border:"1px solid rgba(99,102,241,0.3)",borderRadius:6,fontSize:10,color:loading||refreshing?"var(--text3)":"#818cf8",cursor:loading||refreshing?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
+            <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1 1 2.1 4.6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M4 6v4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            ↻ Refresh insights
           </button>
         </div>
       </div>
@@ -2954,11 +2987,11 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
           )}
           {/* Skeleton loader */}
           {loading&&!cards&&[0,1,2,3].map(i=>(
-            <div key={i} style={{borderRadius:10,border:"1px solid #1a1830",padding:"14px 16px",background:"#0c0b1d",animation:"skeletonPulse 1.6s ease-in-out infinite",animationDelay:`${i*150}ms`}}>
-              <div style={{height:9,width:"32%",background:"#1a1830",borderRadius:4,marginBottom:9}}/>
-              <div style={{height:12,width:"62%",background:"#161525",borderRadius:4,marginBottom:6}}/>
-              <div style={{height:8,width:"82%",background:"#161525",borderRadius:4,marginBottom:4}}/>
-              <div style={{height:8,width:"52%",background:"#161525",borderRadius:4}}/>
+            <div key={i} style={{borderRadius:10,border:"1px solid var(--snap-border)",padding:"14px 16px",background:"var(--snapshot-bg)",animation:"skeletonPulse 1.6s ease-in-out infinite",animationDelay:`${i*150}ms`}}>
+              <div style={{height:9,width:"32%",background:"var(--card)",borderRadius:4,marginBottom:9}}/>
+              <div style={{height:12,width:"62%",background:"var(--snapshot-bg)",borderRadius:4,marginBottom:6}}/>
+              <div style={{height:8,width:"82%",background:"var(--snapshot-bg)",borderRadius:4,marginBottom:4}}/>
+              <div style={{height:8,width:"52%",background:"var(--snapshot-bg)",borderRadius:4}}/>
             </div>
           ))}
           {/* Error state — no cache available */}
@@ -2982,7 +3015,7 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
             const cfg=CARD_CFG[card.type]||CARD_CFG.forecast_risk;
             const isLocked=!isPro&&idx>=1;
             return(
-              <div key={card.id||idx} style={{borderRadius:10,border:`1px solid ${cfg.border}`,borderLeft:`3px solid ${cfg.color}`,background:cfg.bg,padding:"14px 16px",position:"relative",filter:isLocked?"blur(3.5px)":"none",userSelect:isLocked?"none":"auto",pointerEvents:isLocked?"none":"auto",animation:"fadeUp 0.3s ease both",animationDelay:`${idx*60}ms`}}>
+              <div key={card.id||idx} style={{borderRadius:10,border:`1px solid ${cfg.border}`,borderLeft:"3px solid #6366f1",background:cfg.bg,padding:"14px 16px",position:"relative",filter:isLocked?"blur(3.5px)":"none",userSelect:isLocked?"none":"auto",pointerEvents:isLocked?"none":"auto",animation:"fadeUp 0.3s ease both",animationDelay:`${idx*60}ms`}}>
                 <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7}}>
                   <span style={{fontSize:9,fontWeight:800,color:cfg.color,textTransform:"uppercase",letterSpacing:"0.08em",padding:"2px 6px",background:`${cfg.color}15`,borderRadius:4}}>{cfg.label}</span>
                   {card.estimated&&<span style={{fontSize:9,color:"#4b5563",padding:"2px 6px",background:"rgba(75,85,99,0.12)",border:"1px solid rgba(75,85,99,0.18)",borderRadius:4}}>Estimated</span>}
@@ -3030,7 +3063,7 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
 
         {/* Zone 3: Desktop right panel */}
         {!isMobile&&chatOpen&&(
-          <div style={{width:320,background:"#0c0b1d",borderLeft:"1px solid #1f1d35",display:"flex",flexDirection:"column",flexShrink:0,animation:"slideInRight 0.3s cubic-bezier(0.16,1,0.3,1) both"}}>
+          <div style={{width:320,background:"var(--snapshot-bg)",borderLeft:"1px solid var(--snap-border)",display:"flex",flexDirection:"column",flexShrink:0,animation:"slideInRight 0.3s cubic-bezier(0.16,1,0.3,1) both"}}>
             {chatPanel}
           </div>
         )}
@@ -3040,7 +3073,7 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
       {isMobile&&(
         <>
           {chatOpen&&<div onClick={()=>setChatOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:799,animation:"fadeIn 0.2s ease both"}}/>}
-          <div style={{position:"fixed",bottom:chatOpen?0:"-62vh",left:0,right:0,height:"62vh",background:"#0c0b1d",borderTop:"1px solid #1f1d35",borderRadius:"16px 16px 0 0",zIndex:800,display:"flex",flexDirection:"column",transition:"bottom 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:chatOpen?"0 -8px 32px rgba(0,0,0,0.45)":"none",overflow:"hidden"}}>
+          <div style={{position:"fixed",bottom:chatOpen?0:"-62vh",left:0,right:0,height:"62vh",background:"var(--snapshot-bg)",borderTop:"1px solid var(--snap-border)",borderRadius:"16px 16px 0 0",zIndex:800,display:"flex",flexDirection:"column",transition:"bottom 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:chatOpen?"0 -8px 32px rgba(0,0,0,0.45)":"none",overflow:"hidden"}}>
             <div style={{display:"flex",justifyContent:"center",padding:"8px 0 2px",cursor:"pointer",flexShrink:0}} onClick={()=>setChatOpen(false)}>
               <div style={{width:32,height:4,borderRadius:2,background:"rgba(128,120,200,0.35)"}}/>
             </div>
@@ -3069,29 +3102,33 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [reviewEditCount, setReviewEditCount] = useState(0);
   const [nonRecurring, setNonRecurring] = useState(new Set());
   const [showInlineUpgrade, setShowInlineUpgrade] = useState(false);
+  const [insightsVisited, setInsightsVisited] = useState(false);
+  const [showWizardCard, setShowWizardCard] = useState(false);
   const isMobile = useIsMobile();
   const userIsPremium = isPremium();
   const runsUsed = getAiRunsUsed();
   const runsLeft = Math.max(0, FREE_AI_RUNS - runsUsed);
+  const otherCount = transactions.filter(t=>t.category==="Other Payments").length;
   function goToReview(){setActiveTab("review");setShowReviewPrompt(false);}
-  function goToInsights(){setActiveTab("insights");}
+  function goToInsights(){setInsightsVisited(true);setActiveTab("insights");}
+  function onTourFinish(){if(!localStorage.getItem("abound_wizard_dismissed"))setShowWizardCard(true);}
   function toggleNonRecurring(narrative){setNonRecurring(s=>{const n=new Set(s);n.has(narrative)?n.delete(narrative):n.add(narrative);return n;});}
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
 
-      <div style={{background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"0 24px",display:isMobile&&activeTab==="cashflow"?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
+      <div style={{background:"var(--nav-bg)",borderBottom:"1px solid var(--nav-border)",padding:"0 24px",display:isMobile&&activeTab==="cashflow"?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24,mixBlendMode:"screen"}}/>
-        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
+        <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"var(--nav-tab-active)":"var(--nav-tab-inactive)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
         </button>
-        {!isMobile&&<button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
+        {!isMobile&&<button onClick={goToReview} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="review"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="review"?700:500,color:activeTab==="review"?"var(--nav-tab-active)":"var(--nav-tab-inactive)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>Review Transactions
-          {showReviewPrompt&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>!</span>}
+          {otherCount>0&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,fontSize:10,fontWeight:700,padding:"1px 6px",lineHeight:1.4}}>{otherCount}</span>}
         </button>}
-        {!isMobile&&<button onClick={goToInsights} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="insights"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="insights"?700:500,color:activeTab==="insights"?"#a5b4fc":"#52525b",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
-          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg>Insights
-          {activeTab!=="insights"&&<span style={{position:"absolute",top:10,right:6,width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:"insightsPulse 2s ease-in-out infinite"}}/>}
+        {!isMobile&&<button onClick={goToInsights} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="insights"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="insights"?700:500,color:activeTab==="insights"?"var(--nav-tab-active)":"var(--nav-tab-inactive)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:6,position:"relative"}}>
+          <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"/></svg><span style={{color:"#818cf8",marginRight:1}}>✦</span>Insights
+          {!insightsVisited&&<span style={{position:"absolute",top:10,right:6,width:6,height:6,borderRadius:"50%",background:"#6366f1",animation:"insightsPulse 2s ease-in-out infinite"}}/>}
         </button>}
         {/* Plan badge */}
         <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -3111,11 +3148,19 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
           <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
             {isMobile?"Review":"Leave a review"}
           </button>
-          {!isMobile&&onAddAccount&&<button onClick={onAddAccount} style={{fontSize:12,color:"#6b7280",border:"1px solid #1f1d35",borderRadius:6,background:"none",cursor:"pointer",padding:"4px 10px"}}>+ Add account</button>}
+          {!isMobile&&onAddAccount&&<button onClick={onAddAccount} style={{fontSize:12,color:"#6b7280",border:"1px solid var(--nav-border)",borderRadius:6,background:"none",cursor:"pointer",padding:"4px 10px"}}>+ Add account</button>}
           {!isMobile&&<button onClick={onStartOver} style={{fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
         </div>
         {showInlineUpgrade&&<UpgradeModal runsUsed={runsUsed} onUpgrade={redirectToCheckout} onDismiss={()=>setShowInlineUpgrade(false)}/>}
       </div>
+      {showWizardCard&&(
+        <div style={{background:"var(--nav-bg)",borderBottom:"2px solid #6366f1",padding:"12px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap",animation:"slideInUp 0.3s ease both"}}>
+          <span style={{fontSize:12,fontWeight:700,color:"#a5b4fc",flexShrink:0}}>What would you like to do next?</span>
+          <button onClick={()=>{setShowWizardCard(false);goToReview();}} style={{padding:"6px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>Review Transactions →</button>
+          <button onClick={()=>{setShowWizardCard(false);goToInsights();}} style={{padding:"6px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>AI Insights →</button>
+          <button onClick={()=>{setShowWizardCard(false);try{localStorage.setItem("abound_wizard_dismissed","1");}catch{}}} style={{marginLeft:"auto",fontSize:11,color:"#4b5563",background:"none",border:"none",cursor:"pointer"}}>Skip</button>
+        </div>
+      )}
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(()=>{
         const otherCount=transactions.filter(t=>t.category==="Other Payments").length;
         return(
@@ -3130,7 +3175,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
         );
       })()}
-      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback}/></OrientationGate></div>
+      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback} onTourFinish={onTourFinish}/></OrientationGate></div>
       {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
       {activeTab==="insights"&&<InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
     </div>
@@ -3273,7 +3318,7 @@ function projectIncomeEvents(events, weeks) {
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback, onTourFinish=()=>{}}) {
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
@@ -3424,6 +3469,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   };
 
   useEffect(()=>{
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     const bg = isDark ? '#0d0c1e' : '#ffffff';
     const shadow = isDark ? '6px 0 10px rgba(0,0,0,0.5)' : '6px 0 8px rgba(0,0,0,0.06)';
     document.documentElement.style.setProperty('--sticky-bg', bg);
@@ -3481,6 +3527,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   function finishTour(){
     localStorage.setItem("cashFlowTourSeen_v2","1");
     setTourVisible(false);setTourStep(null);
+    onTourFinish();
     if(isMobile){
       if(!localStorage.getItem("abound_stock_prompt_seen")){
         localStorage.setItem("abound_stock_prompt_seen","1");
@@ -4243,14 +4290,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/><td/>
           </tr>
         )}
-        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
+        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
-          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
+          {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
@@ -4393,14 +4440,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/><td/>
           </tr>
         )}
-        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:"2px solid #2d2a6e"}}>
+        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
-          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:"1px solid #1a1830",fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
+          {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
-          {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:"1px dashed #2d2a6e",fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
+          {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
           <td/><td/>
         </tr>
@@ -4598,7 +4645,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             )}
             {/* Tour card */}
             {(()=>{const cardW=isMobile?Math.min(240,window.innerWidth*0.62):440;const cardR=isMobile?Math.max(4,Math.min(12,window.innerWidth*0.015)):28;const cardB=isMobile?Math.max(8,Math.min(20,window.innerHeight*0.02)):32;return(
-            <div style={{position:"fixed",bottom:cardB,right:cardR,left:"auto",width:cardW,maxWidth:`${Math.min(92,Math.round(cardW/window.innerWidth*100)+2)}vw`,background:"#1a1830",border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"10px 10px":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
+            <div style={{position:"fixed",bottom:cardB,right:cardR,left:"auto",width:cardW,maxWidth:`${Math.min(92,Math.round(cardW/window.innerWidth*100)+2)}vw`,background:T.card,border:"1px solid #4338ca",borderLeft:"4px solid #6366f1",borderRadius:12,padding:isMobile?"10px 10px":"26px 28px",zIndex:1002,pointerEvents:"all",animation:"spotlightIn 0.35s cubic-bezier(0.16,1,0.3,1) both",boxShadow:"0 8px 40px rgba(0,0,0,0.6)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:isMobile?4:14}}>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:isMobile?"clamp(7px,1.8vw,10px)":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
@@ -4607,7 +4654,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
-                <p key={i} style={{fontSize:isMobile?"clamp(10px,2.8vw,13px)":14,color:"#a1a1aa",lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
+                <p key={i} style={{fontSize:isMobile?"clamp(10px,2.8vw,13px)":14,color:T.dimText,lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
               ))}
               {currentStep.isReviewPrompt&&(
                 <div style={{margin:"14px 0 0",borderRadius:10,overflow:"hidden",border:`1px solid ${T.dimBorder}`,background:T.tableBg}}>
@@ -4644,7 +4691,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               {tourStep>0&&(
                 <div style={{display:"flex",gap:4,justifyContent:"center",marginTop:isMobile?"0.8vh":16}}>
                   {TOUR_STEPS.slice(1).map((_,i)=>(
-                    <div key={i} onClick={()=>setTourStep(i+1)} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":"#2d2a6e",transition:"background 0.2s",cursor:"pointer"}}/>
+                    <div key={i} onClick={()=>setTourStep(i+1)} style={{width:5,height:5,borderRadius:"50%",background:i===tourStep-1?"#6366f1":T.dimBorder,transition:"background 0.2s",cursor:"pointer"}}/>
                   ))}
                 </div>
               )}
@@ -4688,7 +4735,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               sub:"current balance",
               color:"#f8fafc",
               accent:"#6b7280",
-              valColor:"#e0e7ff",
+              valColor:isDark?"#e0e7ff":"#1e1b4b",
               icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="16" height="11" rx="2" stroke="#9ca3af" strokeWidth="1.5"/><path d="M2 9h16" stroke="#9ca3af" strokeWidth="1.5"/><circle cx="6" cy="13" r="1" fill="#9ca3af"/></svg>
             },
             {

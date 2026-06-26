@@ -856,7 +856,9 @@ Respond ONLY with a JSON array of ${clusters.length} strings, one name per clust
   onProgress({type:"done"});
   return withIncome.map(t=>{
     if (t.category!==null) return t;
-    const cat = results.get(t.narrative+t.date+t.amount)||"Other Payments";
+    const rawCat = results.get(t.narrative+t.date+t.amount)||"Other Payments";
+    // Salary is not a valid spend category — merge into Income
+    const cat = rawCat==="Salary" ? "Income" : rawCat;
     // Income should never be classified as a spend category
     if(t.isIncome && !["Income","Transfers","Other Payments"].includes(cat)){
       return {...t, category:"Other Payments"};
@@ -2225,7 +2227,7 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
   const sorted=items.filter(i=>i.category!=="Other Payments"&&i.category!=="Skip");
   const skipped=items.filter(i=>i.category==="Skip");
   const visible=unsorted.slice(0,VISIBLE);
-  const spendCats=categories.filter(c=>c!=="Other Payments"&&c!=="Card Repayment"&&c!=="Investments");
+  const spendCats=categories.filter(c=>c!=="Other Payments"&&c!=="Card Repayment"&&c!=="Investments"&&c!=="Salary");
   const catRepaymentInCats=categories.includes("Card Repayment");
   const investInCats=categories.includes("Investments");
   const allBuckets=[...spendCats,investInCats?"Investments":null,catRepaymentInCats?"Card Repayment":null,"Skip"].filter(Boolean);
@@ -3102,7 +3104,7 @@ function OrientationGate({children}) {
   return children;
 }
 function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback, onAddAccount}) {
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [transactions, setTransactions] = useState(()=>initialTransactions.map(t=>t.category==="Salary"?{...t,category:"Income"}:t));
   const [activeTab, setActiveTab] = useState("cashflow");
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
   const [reviewEditCount, setReviewEditCount] = useState(0);
@@ -3348,6 +3350,23 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [incomeFormState, setIncomeFormState] = useState(null);
   const [reconcileState, setReconcileState] = useState({});
   useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
+  // Auto-match income transactions to declared income events on mount
+  useEffect(()=>{
+    const incomeTxns=transactions.filter(t=>t.category==="Income"||t.category==="Salary");
+    if(!incomeTxns.length||!incomeEvents.length)return;
+    let changed=false;
+    const updated=incomeEvents.map(ev=>{
+      if(ev.status!=='expected'||!ev.expectedDate)return ev;
+      const match=incomeTxns.find(t=>{
+        const diff=ev.amount>0?Math.abs(t.amount-ev.amount)/ev.amount:0;
+        return diff<=0.05&&Math.abs(t.date-ev.expectedDate)/86400000<=5;
+      });
+      if(match){changed=true;return{...ev,status:'received',receivedAmount:match.amount,receivedDate:match.date};}
+      return ev;
+    });
+    if(changed)setIncomeEvents(updated);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
   useEffect(()=>{try{localStorage.setItem("abound_budget_targets",JSON.stringify(monthlyBudgets));}catch{}},[monthlyBudgets]);
   function openAddIncomeForm(x,y){const d=new Date();d.setDate(d.getDate()+30);setIncomeFormState({editId:null,x,y,data:{label:'',amount:'',expectedDate:d.toISOString().slice(0,10),recurrence:'none'}});}
   const fmtDateInput=d=>d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:'';
@@ -3716,7 +3735,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:12},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
   const PREVIEW_COLS=3;
   const visibleForecastWeeks=forecastWeeks.slice(0,isPro?(forecastExpanded?forecastWeeks.length:6):(previewCollapsed||isMobile)?6:Math.min(6+PREVIEW_COLS,forecastWeeks.length));
-  const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const amt=t.category==="Income"?t.amount:-t.amount;weekly[key][t.account][t.category]=(weekly[key][t.account][t.category]||0)+amt;});return weekly;},[transactions]);
+  const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const cat=t.category==="Salary"?"Income":t.category;const amt=cat==="Income"?t.amount:-t.amount;weekly[key][t.account][cat]=(weekly[key][t.account][cat]||0)+amt;});return weekly;},[transactions]);
   const weekBalances = useMemo(()=>{const bal={};[...transactions].sort((a,b)=>a.date-b.date).forEach(t=>{if(t.balance===null)return;const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!bal[key])bal[key]={};bal[key][t.account]=t.balance;});return bal;},[transactions]);
 
 function getLastWorkingDay(year, month) {
@@ -3927,7 +3946,7 @@ function getLastWorkingDay(year, month) {
   const incomeFcstTotalByWeek=useMemo(()=>incomeByFcstWeek.map(pills=>pills.filter(p=>!p.isGhost).reduce((s,p)=>s+(p.ev.receivedAmount??p.ev.amount),0)),[incomeByFcstWeek]);
   const overdueBanners=useMemo(()=>{const t=new Date();t.setHours(0,0,0,0);return incomeEvents.filter(ev=>ev.status==='expected'&&ev.expectedDate&&ev.expectedDate<t&&(!ev.dismissedUntil||Date.now()>ev.dismissedUntil));},[incomeEvents]);
 
-  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments");
+  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Salary"&&c!=="Card Repayment"&&c!=="Investments");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
 
@@ -4228,7 +4247,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const isMainAcc=account==="Main Account";
     const incomeCats=isMainAcc?categories.filter(c=>c==="Income"):categories.filter(c=>c==="Card Repayment");
     // For CC accounts Card Repayment is income, exclude from spend
-    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Income"&&c!=="Investments"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
+    const allSpendCats=[...new Set([...categories.filter(c=>c!=="Income"&&c!=="Salary"&&c!=="Investments"&&(isMainAcc||c!=="Card Repayment")), ...(isMainAcc?[INTERCOMPANY_CATEGORY]:[])  ])];
     // Hide categories with <£5 total spend for this account (keeps table clean on accounts with few transactions)
     const spendCatsLocal=allSpendCats.filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[cat]||0),0);
@@ -4386,7 +4405,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   }
 
   function GroupedSection(){
-    const spendCats=categories.filter(c=>c!=="Income").filter(cat=>{
+    const spendCats=categories.filter(c=>c!=="Income"&&c!=="Salary").filter(cat=>{
       const totalActual=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;

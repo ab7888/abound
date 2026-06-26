@@ -3327,8 +3327,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const isMobile = useIsMobile();
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
-  const [budgets, setBudgets] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_budgets")||"{}");}catch{return {};}});
-  const [editingBudget, setEditingBudget] = useState(null);
+  const [monthlyBudgets, setMonthlyBudgets] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_budget_targets")||"{}");}catch{return {};}});
+  const [showBudgetPanel, setShowBudgetPanel] = useState(false);
   const [showHomeScreenGuide, setShowHomeScreenGuide] = useState(false);
  const [tourStep, setTourStep] = useState(null);
   const [tourVisible, setTourVisible] = useState(false);
@@ -3348,7 +3348,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [incomeFormState, setIncomeFormState] = useState(null);
   const [reconcileState, setReconcileState] = useState({});
   useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
-  useEffect(()=>{try{localStorage.setItem("abound_budgets",JSON.stringify(budgets));}catch{}},[budgets]);
+  useEffect(()=>{try{localStorage.setItem("abound_budget_targets",JSON.stringify(monthlyBudgets));}catch{}},[monthlyBudgets]);
   function openAddIncomeForm(x,y){const d=new Date();d.setDate(d.getDate()+30);setIncomeFormState({editId:null,x,y,data:{label:'',amount:'',expectedDate:d.toISOString().slice(0,10),recurrence:'none'}});}
   const fmtDateInput=d=>d?`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`:'';
   function openEditIncomeForm(ev,x,y){setIncomeFormState({editId:ev.id,x,y,data:{label:ev.label,amount:String(ev.amount),expectedDate:fmtDateInput(normDay(ev.expectedDate)),recurrence:ev.recurrence||'none'}});}
@@ -3590,7 +3590,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     {title:"Your 6-week forecast",body:"Purple columns predict what's coming based on your patterns. Monthly bills land on their usual date; daily spend uses a 6-week rolling average.",cta:"Next →",highlight:"forecast"},
     {title:"Plan a purchase",body:"Click any forecast cell to add a one-off expense — holiday, phone, car repair. It instantly adjusts your future cash balance.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"Your predicted end-of-week cash across all accounts.\n\nGreen = healthy. Red = heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
-    {title:"Set a budget",body:"Click any spend row to set a weekly budget. Forecast cells turn red when you're on track to exceed it.",cta:"Next →",highlight:"budget",scrollTo:"budget-cell"},
+    {title:"Set a budget",body:"Open the Budget panel to set monthly spending targets per category. See projected vs actual and apply targets to your forecast.",cta:"Next →",highlight:"budget",scrollTo:null},
     ...(!isMobile?[{title:"Check your categories",body:"AI is good but not perfect. A quick review makes your forecast dramatically more accurate.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
     ...(!isMobile?[{title:"Grouped or split by card?",body:"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left for forecast weeks. Tap any number to explore.\n\nUse the sidebar to go to Insights or Review.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
   ];
@@ -4082,7 +4082,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const forecasts=forecastData[account]?.[cat]||Array(6).fill(0);
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
-    const budget=budgets[key];
     const rowColor=isIncome?"rgba(16,185,129,0.04)":isInvestments?"rgba(16,185,129,0.04)":isRepayment?"rgba(124,58,237,0.05)":"transparent";
     const textColor=isIncome?"#34d399":isInvestments?"#34d399":isRepayment?"#a78bfa":T.catText;
     return(
@@ -4108,68 +4107,18 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {visibleForecastWeeks.map((_,i)=>{
           const v=forecasts[i]||0;
-          const over=budget!=null&&v>0&&v>budget;
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account===account;
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,over),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
+            <td key={i} style={{...tdAmt(v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,false),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
               onClick={e=>{if(i>=6&&!isPro)return;if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});e.stopPropagation();}}}
               onMouseEnter={e=>{if(i>=6&&!isPro)return;const r=e.currentTarget.getBoundingClientRect();setTooltip({text:getForecastTip(cat,account),x:r.left,y:r.bottom+6});}}
               onMouseLeave={()=>setTooltip(null)}>
-              {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
+              {fmtMoney(v)}
             </td>
           );
         })}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
-        <td style={{padding:"3px 6px",minWidth:120}}>
-          {isIncome ? null : editingBudget===key
-            ?<div style={{padding:"2px 0"}}>
-                <div style={{fontSize:9,color:"#6b7280",marginBottom:2}}>Weekly budget (£)</div>
-                <input autoFocus type="number" defaultValue={budget!=null?budget:""} placeholder="e.g. 50"
-                  onBlur={e=>{const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
-                  style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"4px 6px",outline:"none",background:T.budgetInputBg,color:T.budgetInputColor,boxSizing:"border-box"}}/>
-                <div style={{fontSize:9,color:"#4b5563",marginTop:2}}>Enter to save · Esc to cancel</div>
-              </div>
-            : budget!=null ? (()=>{
-                const avgAct=totalAct/Math.max(actualWeeks.length,1);
-                const pct=budget>0?(avgAct/budget)*100:avgAct>0?Infinity:0;
-                const over=avgAct>budget;
-                const diff=Math.abs(avgAct-budget);
-                const fcstOver=forecasts.filter(v=>v>0&&v>budget).length;
-                const barColor=pct>110?"#ef4444":pct>85?"#f59e0b":"#10b981";
-                const totalOverspend=over?Math.round(diff*actualWeeks.length):0;
-                return(
-                  <div onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",padding:"3px 4px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                      <span style={{fontSize:11,fontWeight:800,color:over?"#ef4444":T.budgetSpendColor}}>£{Math.round(avgAct)}<span style={{fontSize:8,fontWeight:400,color:T.dimText}}> /wk avg</span></span>
-                      <span style={{fontSize:9,color:"#4b5563",cursor:"text"}}>£{budget}/wk</span>
-                    </div>
-                    <div style={{height:4,background:T.progressTrack,borderRadius:99,overflow:"hidden",marginBottom:3}}>
-                      <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:barColor,borderRadius:99,transition:"width 0.4s"}}/>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:9,fontWeight:700,color:over?"#ef4444":"#10b981"}}>
-                        {over?`▲ £${Math.round(diff)} over`:`▼ £${Math.round(diff)} left`}
-                      </span>
-                      {fcstOver>0
-                        ?<span style={{fontSize:8,color:"#f59e0b",fontWeight:700}} title={`${fcstOver} forecast week${fcstOver>1?"s":""} will exceed budget`}>⚠ {fcstOver}wk</span>
-                        :over&&totalOverspend>0
-                          ?<span style={{fontSize:8,color:"#6b7280"}}>£{totalOverspend} total</span>
-                          :null
-                      }
-                    </div>
-                  </div>
-                );
-              })()
-            :<button data-budget-cell onClick={()=>setEditingBudget(key)}
-                style={{width:"100%",padding:"5px 0",fontSize:10,color:T.dimText,border:`1px dashed ${T.dimBorder}`,borderRadius:5,background:"none",cursor:"pointer",transition:"all 0.15s"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="#6366f1";e.currentTarget.style.color="#6366f1";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.dimBorder;e.currentTarget.style.color=T.dimText;}}>
-                + set budget
-              </button>
-          }
-        </td>
         <td style={{padding:"3px 6px",textAlign:"center"}}>
           <button onClick={()=>setHiddenCats(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;})} style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${hidden?T.dimText:T.border}`,background:hidden?"rgba(239,68,68,0.1)":"transparent",color:hidden?"#ef4444":T.dimText,cursor:"pointer"}}>
             {hidden?"show":"hide"}
@@ -4213,7 +4162,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.catRowBorder}`}}/>)}
         <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
         {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.04)",borderRight:i===visibleForecastWeeks.length-1?"none":`1px dashed ${T.border2}`,...blurStyle(i)}}/>)}
-        <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/><td/>
+        <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/>
       </tr>
     );
   }
@@ -4250,7 +4199,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {actuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         <IncomeForecastArea totalFcst={totalFcst}/>
-        <td/><td/>
+        <td/>
       </tr>
       {!empty&&<IncomeAddRow/>}
     </>);
@@ -4269,7 +4218,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {salActuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         <IncomeForecastArea totalFcst={totalFcst}/>
-        <td/><td/>
+        <td/>
       </tr>
       {!empty&&<IncomeAddRow/>}
     </>);
@@ -4328,7 +4277,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {actualWeeks.map((_,i)=><td key={i} style={{background:"transparent",borderRight:`1px solid ${T.dimBorder}`}}/>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
           {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(99,102,241,0.1)",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}/>)}
-          <td style={{background:"rgba(99,102,241,0.1)",borderLeft:`2px solid ${T.border2}`}}/><td colSpan={2}/>
+          <td style={{background:"rgba(99,102,241,0.1)",borderLeft:`2px solid ${T.border2}`}}/><td/>
         </tr>
         {!collapsedAccounts.has(account)&&<tr className="abound-row" style={{background:T.summaryRow,borderBottom:`1px solid ${T.dimBorderMid}`}}>
           <td style={{padding:"5px 6px 5px 12px",fontSize:10,color:T.acctDotColor}}/>
@@ -4340,7 +4289,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           {openingBalances.map((bal,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{bal!==null?fmtMoney(bal):"—"}</td>)}
           <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
           {visibleForecastWeeks.map((_,i)=>{const bal=forecastBalances[i];return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,color:bal===null?T.openBalNullColor:bal>=0?"#10b981":"#ef4444",background:T.forecastCell,borderRight:`1px dashed ${T.dimBorder}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{bal!==null?fmtMoney(bal):"—"}</td>;})}
-          <td style={{borderLeft:`2px solid ${T.dimBorder}`}}/><td/><td/>
+          <td style={{borderLeft:`2px solid ${T.dimBorder}`}}/><td/>
         </tr>}
         {!collapsedAccounts.has(account)&&(isMainAcc?<IncomeEventsRow key="income-events" account={account}/>:incomeCats.map(cat=><CatRow key={cat} cat={cat} account={account}/>))}
         {!collapsedAccounts.has(account)&&spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
@@ -4366,7 +4315,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               );
             })}
             <td style={tdTot(true)}>{fmtMoney(events.reduce((s,ev)=>s+ev.amount,0))}</td>
-            <td/><td/>
+            <td/>
           </tr>
         )}
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
@@ -4378,7 +4327,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
-          <td/><td/>
+          <td/>
         </tr>
       </>
     );
@@ -4394,7 +4343,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const visibleForecasts=visibleForecastWeeks.map((_,i)=>forecasts[i]||0);
     const totalAct=actuals.reduce((a,b)=>a+b,0);
     const totalFcst=forecasts.reduce((a,b)=>a+b,0);
-    const budget=budgets[key];
     const rowColor=isIncome?"rgba(16,185,129,0.04)":isInvestments?"rgba(16,185,129,0.04)":"transparent";
     const textColor=isIncome?"#34d399":isInvestments?"#34d399":T.catText;
     return(
@@ -4418,57 +4366,16 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         {visibleForecasts.map((v,i)=>{
-          const over=budget!=null&&v>0&&v>budget;
           const wk=forecastWeeks[i];
           const isEditing=editingEvent?.weekKey===wk?.key&&editingEvent?.cat===cat&&editingEvent?.account==="ALL";
           return(
-            <td key={i} style={{...tdAmt(over?"#ef4444":v===0?"#d1d5db":PURPLE,true,false,i,over),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
+            <td key={i} style={{...tdAmt(v===0?"#d1d5db":PURPLE,true,false,i,false),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
               onClick={e=>{if(i>=6&&!isPro)return;if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account:"ALL",label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});}}}>
-              {fmtMoney(v)}{over&&<span style={{fontSize:8}}>↑</span>}
+              {fmtMoney(v)}
             </td>
           );
         })}
         <td style={tdTot(true)}>{fmtMoney(totalFcst)}</td>
-        <td style={{padding:"3px 6px",minWidth:120}}>
-          {isIncome?null:editingBudget===key
-            ?<div style={{padding:"2px 0"}}>
-                <div style={{fontSize:9,color:"#6b7280",marginBottom:2}}>Weekly budget (£)</div>
-                <input autoFocus type="number" defaultValue={budget||""} placeholder="e.g. 50"
-                  onBlur={e=>{const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}}
-                  onKeyDown={e=>{if(e.key==="Enter"){const v=+e.target.value;const raw=e.target.value.trim();setBudgets(b=>({...b,[key]:raw!==''&&v>=0?v:undefined}));setEditingBudget(null);}if(e.key==="Escape")setEditingBudget(null);}}
-                  style={{width:"100%",fontSize:12,border:`1px solid ${PURPLE}`,borderRadius:5,padding:"4px 6px",outline:"none",background:T.budgetInputBg,color:T.budgetInputColor,boxSizing:"border-box"}}/>
-              </div>
-            :budget?(()=>{
-                const avgAct=totalAct/Math.max(actualWeeks.length,1);
-                const pct=(avgAct/budget)*100;
-                const over=avgAct>budget;
-                const diff=Math.abs(avgAct-budget);
-                const fcstOver=forecasts.filter(v=>v>0&&v>budget).length;
-                const barColor=pct>110?"#ef4444":pct>85?"#f59e0b":"#10b981";
-                return(
-                  <div onClick={()=>setEditingBudget(key)} style={{cursor:"pointer",padding:"3px 4px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:2}}>
-                      <span style={{fontSize:11,fontWeight:800,color:over?"#ef4444":T.budgetSpendColor}}>£{Math.round(avgAct)}<span style={{fontSize:8,fontWeight:400,color:T.dimText}}> /wk avg</span></span>
-                      <span style={{fontSize:9,color:"#4b5563",cursor:"text"}}>£{budget}/wk</span>
-                    </div>
-                    <div style={{height:4,background:T.progressTrack,borderRadius:99,overflow:"hidden",marginBottom:3}}>
-                      <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:barColor,borderRadius:99,transition:"width 0.4s"}}/>
-                    </div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <span style={{fontSize:9,fontWeight:700,color:over?"#ef4444":"#10b981"}}>{over?`▲ £${Math.round(diff)} over`:`▼ £${Math.round(diff)} left`}</span>
-                      {fcstOver>0&&<span style={{fontSize:8,color:"#f59e0b",fontWeight:700}}>⚠ {fcstOver}wk</span>}
-                    </div>
-                  </div>
-                );
-              })()
-            :<button data-budget-cell onClick={()=>setEditingBudget(key)}
-                style={{width:"100%",padding:"5px 0",fontSize:10,color:T.dimText,border:`1px dashed ${T.dimBorder}`,borderRadius:5,background:"none",cursor:"pointer",transition:"all 0.15s"}}
-                onMouseEnter={e=>{e.currentTarget.style.borderColor="#6366f1";e.currentTarget.style.color="#6366f1";}}
-                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.dimBorder;e.currentTarget.style.color=T.dimText;}}>
-                + set budget
-              </button>
-          }
-        </td>
         <td style={{padding:"3px 6px",textAlign:"center"}}>
           <button onClick={()=>setHiddenCats(s=>{const n=new Set(s);n.has(key)?n.delete(key):n.add(key);return n;})} style={{fontSize:9,padding:"1px 6px",borderRadius:4,border:`1px solid ${hidden?T.dimText:T.border}`,background:hidden?"rgba(239,68,68,0.1)":"transparent",color:hidden?"#ef4444":T.dimText,cursor:"pointer"}}>
             {hidden?"show":"hide"}
@@ -4517,7 +4424,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               );
             })}
             <td style={tdTot(true)}>{fmtMoney(events.reduce((s,ev)=>s+ev.amount,0))}</td>
-            <td/><td/>
+            <td/>
           </tr>
         )}
         <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
@@ -4529,7 +4436,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
           <td style={{...tdTot(true),color:weeklyNetForecast.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetForecast.reduce((a,b)=>a+b,0))}</td>
-          <td/><td/>
+          <td/>
         </tr>
       </>
     );
@@ -5001,6 +4908,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M3 13l4-5 3 3 3-4 4 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 {stocks.length?`Stocks (${stocks.length})`:"+ Stocks"}
               </button>
+              {(()=>{const bc=Object.values(monthlyBudgets).filter(Boolean).length;return(
+              <button data-tour="budget" onClick={()=>setShowBudgetPanel(true)} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:bc?"rgba(99,102,241,0.18)":"rgba(99,102,241,0.07)",border:`1px solid ${bc?"rgba(99,102,241,0.5)":"rgba(99,102,241,0.25)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:bc?"#e0e7ff":"#818cf8",cursor:"pointer",flexShrink:0}}>
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="12" rx="2" stroke="currentColor" strokeWidth="1.8"/><path d="M6 10h8M6 14h5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                {bc?`Budget (${bc})`:"Budget"}
+              </button>
+              );})()}
               <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
               <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
                 <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
@@ -5075,7 +4988,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                       :"FCST"
                   }
                 </th>
-                <th style={{background:T.theadA}} colSpan={2}/>
+                <th style={{background:T.theadA}}/>
               </tr>
               <tr style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
                 <th style={{padding:"3px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130,fontSize:9,fontWeight:700,color:T.dimText,textAlign:"left"}}>↑ Mon&nbsp;&nbsp;&nbsp;Sun ↑</th><th style={{background:T.theadD,width:0,padding:0}}/>
@@ -5090,9 +5003,6 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   </th>;
                 })}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
-                <th data-tour="budget" style={{padding:"3px 8px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"center",whiteSpace:"nowrap",background:T.theadD,cursor:"help"}}
-                  title="Set a weekly spending limit per category. Forecast weeks that exceed your budget turn red."
-                >BUDGET <span style={{fontSize:8,opacity:0.6}}>ⓘ</span></th>
                 <th style={{background:T.theadD}}/>
               </tr>
               {!isPro&&!isMobile&&!previewCollapsed&&(
@@ -5136,7 +5046,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                       </td>
                     );})}
                     <td style={{background:cbg,borderLeft:`2px solid ${T.border2}`}}/>
-                    <td style={{background:"rgba(99,102,241,0.04)"}} colSpan={2}/>
+                    <td style={{background:"rgba(99,102,241,0.04)"}}/>
                   </tr>
                 );
               })()}
@@ -5159,7 +5069,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.catRowBorder}`}}/>)}
                   <td style={{borderLeft:`2px solid ${T.dimBorder}`,borderRight:`2px solid ${T.dimBorder}`}}/>
                   {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.04)",borderRight:i===visibleForecastWeeks.length-1?"none":`1px dashed ${T.border2}`,...blurStyle(i)}}/>)}
-                  <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/><td/>
+                  <td style={{borderLeft:`2px solid ${T.border2}`}}/><td/>
                 </tr>
               )}
               {/* Stock portfolio rows */}
@@ -5172,7 +5082,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.border}`,background:"rgba(16,185,129,0.04)"}}/>)}
                     <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                     {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.06)",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}/>)}
-                    <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}} colSpan={2}/>
+                    <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}}/>
                   </tr>
                   {visibleStocks.map(stock=>{
                     const sd=stockData[stock.ticker];
@@ -5206,7 +5116,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                             {fmtMoney(v)}
                           </td>
                         ))}
-                        <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}} colSpan={2}/>
+                        <td style={{background:"rgba(99,102,241,0.12)",borderLeft:`2px solid ${T.border2}`}}/><td style={{background:T.bg}}/>
                       </tr>
                     );
                   })}
@@ -5375,6 +5285,134 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       {/* Stock setup prompt */}
       {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onDismiss={()=>{setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}
+
+      {/* Budget slide-over panel */}
+      {showBudgetPanel&&(()=>{
+        const today=new Date();
+        const day=today.getDate();
+        const bMonth=day<21?today.getMonth():(today.getMonth()+1)%12;
+        const bYear=day<21?today.getFullYear():(today.getMonth()===11?today.getFullYear()+1:today.getFullYear());
+        const bMonthName=new Date(bYear,bMonth,1).toLocaleString("en-GB",{month:"long"});
+        const panelTitle=day<21?`Budget — rest of ${bMonthName}`:`Budget — ${bMonthName}`;
+        const bActWeeks=actualWeeks.filter(w=>w.date.getMonth()===bMonth&&w.date.getFullYear()===bYear);
+        const bFcstIdxs=forecastWeeks.reduce((arr,w,i)=>{if(w.date.getMonth()===bMonth&&w.date.getFullYear()===bYear)arr.push(i);return arr;},[]);
+        const spendCats=categories.filter(c=>c!=="Income").filter(cat=>{
+          const ta=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
+          const tf=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
+          return ta>=5||tf>=5;
+        });
+        const catRows=spendCats.map(cat=>{
+          const spent=bActWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
+          const fcst=bFcstIdxs.reduce((s,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
+          return{cat,spent,projected:spent+fcst};
+        }).filter(d=>d.projected>0||monthlyBudgets[d.cat]).sort((a,b)=>b.projected-a.projected);
+        const totalProjected=catRows.reduce((s,d)=>s+d.projected,0);
+        const totalBudget=catRows.reduce((s,d)=>s+(monthlyBudgets[d.cat]||0),0);
+        const budgetSet=catRows.filter(d=>monthlyBudgets[d.cat]).length;
+        const quickWins=catRows.filter(d=>!monthlyBudgets[d.cat]||d.projected>monthlyBudgets[d.cat]).slice(0,3);
+        function applyToForecast(){
+          const newOvs=forecastOverrides.filter(ov=>!ov.fromBudget);
+          spendCats.forEach(cat=>{
+            const budget=monthlyBudgets[cat];
+            if(!budget||!bFcstIdxs.length)return;
+            const startWeek=forecastWeeks[bFcstIdxs[0]];
+            if(!startWeek)return;
+            newOvs.push({fromWeekKey:startWeek.key,cat,newAmt:budget/(bFcstIdxs.length||1),fromBudget:true});
+          });
+          setForecastOverrides(newOvs);
+        }
+        function resetAll(){setMonthlyBudgets({});setForecastOverrides(prev=>prev.filter(ov=>!ov.fromBudget));}
+        return(
+          <>
+            <div onClick={()=>setShowBudgetPanel(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:900}}/>
+            <div style={{position:"fixed",top:0,right:0,bottom:0,width:isMobile?"100%":390,background:"#0a0918",borderLeft:"1px solid #1e1d35",zIndex:901,display:"flex",flexDirection:"column",overflow:"hidden",boxShadow:"-8px 0 40px rgba(0,0,0,0.5)"}}>
+              <div style={{padding:"18px 20px 14px",borderBottom:"1px solid #1e1d35",display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexShrink:0}}>
+                <div>
+                  <div style={{fontSize:16,fontWeight:800,color:"#e0e7ff"}}>{panelTitle}</div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:3}}>{bFcstIdxs.length} forecast week{bFcstIdxs.length!==1?"s":""}{bActWeeks.length>0?` · ${bActWeeks.length} actual`:""}  in period</div>
+                </div>
+                <button onClick={()=>setShowBudgetPanel(false)} style={{background:"none",border:"none",color:"rgba(255,255,255,0.4)",fontSize:22,cursor:"pointer",padding:"0 4px",lineHeight:1,marginTop:-2}}>✕</button>
+              </div>
+              <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+                {catRows.map(({cat,spent,projected})=>{
+                  const budget=monthlyBudgets[cat]||0;
+                  const pct=budget>0?(projected/budget)*100:0;
+                  const over=budget>0&&projected>budget;
+                  const barColor=pct>100?"#ef4444":pct>80?"#f59e0b":"#10b981";
+                  const maxSlider=Math.max(Math.round(projected*2.5/10)*10,100);
+                  return(
+                    <div key={cat} style={{padding:"10px 20px",borderBottom:"1px solid rgba(255,255,255,0.04)"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:5}}>
+                        <span style={{fontSize:13,fontWeight:600,color:"#c7d2fe"}}>{cat}</span>
+                        <div>
+                          <span style={{fontSize:12,fontWeight:700,color:over?"#ef4444":"#e0e7ff"}}>{fmtMoney(projected)}</span>
+                          <span style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginLeft:4}}>proj.</span>
+                        </div>
+                      </div>
+                      {budget>0&&(
+                        <div style={{marginBottom:6}}>
+                          <div style={{height:3,background:"rgba(255,255,255,0.07)",borderRadius:99,overflow:"hidden",marginBottom:3}}>
+                            <div style={{height:"100%",width:`${Math.min(pct,100)}%`,background:barColor,borderRadius:99}}/>
+                          </div>
+                          <div style={{display:"flex",justifyContent:"space-between",fontSize:10,color:"rgba(255,255,255,0.35)"}}>
+                            <span style={{color:over?"#ef4444":"#10b981",fontWeight:700}}>
+                              {over?`▲ ${fmtMoney(projected-budget)} over`:`▼ ${fmtMoney(budget-projected)} under`}
+                            </span>
+                            <span>of {fmtMoney(budget)}</span>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                        <input type="range" min={0} max={maxSlider} step={10}
+                          value={budget}
+                          onChange={e=>{const v=Number(e.target.value);setMonthlyBudgets(b=>({...b,[cat]:v>0?v:undefined}));}}
+                          style={{flex:1,accentColor:"#6366f1",cursor:"pointer"}}/>
+                        <input type="number" min={0} step={10}
+                          value={budget||""}
+                          placeholder="No limit"
+                          onChange={e=>{const v=Number(e.target.value);setMonthlyBudgets(b=>({...b,[cat]:v>0?v:undefined}));}}
+                          style={{width:78,padding:"3px 7px",background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:5,color:"#e0e7ff",fontSize:11,outline:"none"}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+                {quickWins.length>0&&(
+                  <div style={{padding:"14px 20px 4px"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.3)",letterSpacing:"0.1em",marginBottom:8}}>QUICK WINS</div>
+                    {quickWins.map(({cat,projected})=>(
+                      <div key={cat} onClick={()=>setMonthlyBudgets(b=>({...b,[cat]:Math.max(Math.round(projected*0.8/10)*10,10)}))}
+                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",marginBottom:5,background:"rgba(99,102,241,0.06)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:8,cursor:"pointer"}}
+                        onMouseEnter={e=>e.currentTarget.style.background="rgba(99,102,241,0.12)"}
+                        onMouseLeave={e=>e.currentTarget.style.background="rgba(99,102,241,0.06)"}>
+                        <span style={{fontSize:12,color:"#c7d2fe"}}>{cat}</span>
+                        <span style={{fontSize:11,color:"#10b981",fontWeight:600}}>Cut 20% → save {fmtMoney(Math.round(projected*0.2))}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div style={{padding:"14px 20px",borderTop:"1px solid #1e1d35",background:"#080716",flexShrink:0}}>
+                {totalBudget>0&&(
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,fontSize:12}}>
+                    <span style={{color:"rgba(255,255,255,0.45)"}}>Total projected vs budget</span>
+                    <span style={{color:totalProjected>totalBudget?"#ef4444":"#10b981",fontWeight:700}}>{fmtMoney(totalProjected)} / {fmtMoney(totalBudget)}</span>
+                  </div>
+                )}
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={applyToForecast} disabled={budgetSet===0||bFcstIdxs.length===0}
+                    style={{flex:1,padding:"10px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:budgetSet===0||bFcstIdxs.length===0?"not-allowed":"pointer",opacity:budgetSet===0||bFcstIdxs.length===0?0.45:1}}>
+                    Apply to forecast
+                  </button>
+                  <button onClick={resetAll}
+                    style={{padding:"10px 14px",background:"none",color:"rgba(255,255,255,0.35)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:8,fontSize:12,cursor:"pointer"}}>
+                    Reset
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Mobile floating sidebar */}
       {isMobile&&(

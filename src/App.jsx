@@ -2771,116 +2771,87 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   const isMobile = useIsMobile();
   const spendCats = useMemo(()=>categories.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments"),[categories]);
 
-  const { weekCount, avgWeeklySpend, netCashFlow, trajectory, topCat, catTotals, salaryTotal, currSym, investmentTotal } = useMemo(()=>{
+  const stats = useMemo(()=>{
     const sym=getCurrencySymbol();
     const allWks=[...new Set(transactions.map(t=>getWeekMonday(t.date).toISOString().slice(0,10)))].sort();
     const recentWks=allWks.slice(-8);
-    const prevWks=allWks.slice(-16,-8);
-    function wkSpend(wks){return wks.map(wk=>transactions.filter(t=>getWeekMonday(t.date).toISOString().slice(0,10)===wk&&spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0));}
-    const rSpend=wkSpend(recentWks);
-    const pSpend=wkSpend(prevWks);
+    const rSpend=recentWks.map(wk=>transactions.filter(t=>getWeekMonday(t.date).toISOString().slice(0,10)===wk&&spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0));
     const rAvg=rSpend.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);
-    const pAvg=pSpend.reduce((a,b)=>a+b,0)/Math.max(prevWks.length,1);
-    const traj=pAvg>0?(rAvg>pAvg*1.05?"up":rAvg<pAvg*0.95?"down":"flat"):"flat";
     const salTot=transactions.filter(t=>t.category==="Income").reduce((s,t)=>s+Math.abs(t.amount),0);
     const spTot=transactions.filter(t=>spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0);
     const invTot=Math.round(transactions.filter(t=>t.category==="Investments").reduce((s,t)=>s+Math.abs(t.amount),0));
     const cTotals={};
     spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
     const topC=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-    return {weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),trajectory:traj,topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),currSym:sym,investmentTotal:invTot};
+    const weeklyData={};
+    transactions.forEach(t=>{
+      const wk=getWeekMonday(t.date).toISOString().slice(0,10);
+      if(!weeklyData[wk])weeklyData[wk]={spend:0,cats:{}};
+      if(spendCats.includes(t.category)){weeklyData[wk].spend+=Math.abs(t.amount);weeklyData[wk].cats[t.category]=(weeklyData[wk].cats[t.category]||0)+Math.abs(t.amount);}
+    });
+    const pressureEntry=Object.entries(weeklyData).sort((a,b)=>b[1].spend-a[1].spend)[0];
+    const pressureWk=pressureEntry?{key:pressureEntry[0],date:new Date(pressureEntry[0]+"T12:00:00"),spend:Math.round(pressureEntry[1].spend),cats:Object.entries(pressureEntry[1].cats).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c,v])=>({cat:c,amount:Math.round(v)}))}:null;
+    return{weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),invTotal:invTot,currSym:sym,pressureWk};
   },[transactions,spendCats]);
-  const latestTxnDate=useMemo(()=>transactions.length?transactions.reduce((m,t)=>t.date>m?t.date:m,transactions[0].date):null,[transactions]);
 
-  const [cards,setCards]=useState(null);
-  const [loading,setLoading]=useState(false);
-  const [fetchError,setFetchError]=useState(null);
-  const [lastFetch,setLastFetch]=useState(null);
-  const [dismissed,setDismissed]=useState({});
-  const [refreshing,setRefreshing]=useState(false);
-  const [chatOpen,setChatOpen]=useState(false);
-  const [chatCtx,setChatCtx]=useState("");
+  const{weekCount,avgWeeklySpend,netCashFlow,topCat,catTotals,salaryTotal,invTotal,currSym,pressureWk}=stats;
+
+  const [phase,setPhase]=useState(()=>localStorage.getItem("abound_insights_phase")||"analysis");
+  const [oneOffText,setOneOffText]=useState(()=>localStorage.getItem("abound_insights_oneoff")||"");
+  const [goals,setGoals]=useState(()=>{try{return new Set(JSON.parse(localStorage.getItem("abound_insights_goals")||"[]"));}catch{return new Set();}});
+  const [chatDisplay,setChatDisplay]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_insights_chat")||"[]");}catch{return[];}});
   const [chatApiHistory,setChatApiHistory]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_chat_api_history")||"[]");}catch{return[];}});
-  const [chatDisplay,setChatDisplay]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_chat_display")||"[]");}catch{return[];}});
   const [chatInput,setChatInput]=useState("");
   const [chatLoading,setChatLoading]=useState(false);
+  const [generating,setGenerating]=useState(false);
   const [showPremiumGate,setShowPremiumGate]=useState(false);
   const chatEndRef=useRef(null);
+  const isPro=isPremium();
 
-  useEffect(()=>{
-    try{const raw=JSON.parse(localStorage.getItem("abound_dismissed_insights")||"{}");const now=Date.now();const valid=Object.fromEntries(Object.entries(raw).filter(([,ts])=>now-ts<7*24*60*60*1000));setDismissed(valid);}catch{}
-    try{const cached=JSON.parse(localStorage.getItem("abound_last_insights")||"null");if(cached&&Array.isArray(cached.cards)&&Date.now()-cached.timestamp<24*60*60*1000){setCards(cached.cards);setLastFetch(new Date(cached.timestamp));return;}}catch{}
-    fetchInsights();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
-
+  useEffect(()=>{localStorage.setItem("abound_insights_phase",phase);},[phase]);
+  useEffect(()=>{localStorage.setItem("abound_insights_oneoff",oneOffText);},[oneOffText]);
+  useEffect(()=>{try{localStorage.setItem("abound_insights_goals",JSON.stringify([...goals]));}catch{}},[goals]);
+  useEffect(()=>{try{localStorage.setItem("abound_insights_chat",JSON.stringify(chatDisplay));}catch{}},[chatDisplay]);
   useEffect(()=>{try{localStorage.setItem("abound_chat_api_history",JSON.stringify(chatApiHistory));}catch{}},[chatApiHistory]);
-  useEffect(()=>{try{localStorage.setItem("abound_chat_display",JSON.stringify(chatDisplay));}catch{}},[chatDisplay]);
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[chatDisplay,chatLoading]);
 
-  function buildPrompt(){
-    const weeksNote=weekCount<4?`(only ${weekCount} week${weekCount!==1?"s":""} of data — estimates only) `:"";
-    const MONTHLY_CATS=["Rent","Memberships"];
+  const GOALS=["Build an emergency fund","Pay off debt / credit card","Cut my weekly spending","Save for a goal","Grow my investments","Understand my cash flow"];
+  function toggleGoal(g){setGoals(prev=>{const n=new Set(prev);n.has(g)?n.delete(g):n.add(g);return n;});}
+
+  function buildCtx(){
     const monthCount=Math.max(weekCount/4.33,1);
-    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>{
-      if(MONTHLY_CATS.includes(c)) return `  - ${c}: ${currSym}${Math.round(v/monthCount)}/month`;
-      return `  - ${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`;
-    }).join("\n");
-    const investNote=investmentTotal>0?`\n- Investment deposits: ${currSym}${investmentTotal} over ${weekCount} weeks (tracked separately — not included in spend or net cash flow)`:"";
-    return `You are a concise personal finance advisor. Based on the data below, generate 4-6 actionable insight cards ${weeksNote}for a cash flow app.
-
-Financial data:
-- Weeks of data: ${weekCount}
-- Avg weekly spend: ${currSym}${avgWeeklySpend}/wk (excludes investments, transfers and card repayments — card repayments are debt settlement not new spend)
-- Total income: ${currSym}${salaryTotal} over ${weekCount} weeks
-- Net cash flow: ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}
-- Spend trend: ${trajectory==="up"?"increasing":trajectory==="down"?"decreasing":"stable"}
-- Spend by category (weekly avg, except Rent/Memberships which are monthly):
-${catLines||"  - (no category data)"}${investNote}
-
-Return ONLY a valid JSON array (no other text). Each item:
-{"id":"unique-kebab-id","type":"forecast_risk|spending_anomaly|savings_opportunity|recurring_charge","title":"5-8 word headline","body":"1-2 sentences of specific insight","metric":"key stat e.g. +18% or ${currSym}240/wk or ${currSym}500/month"${weekCount<4?',"estimated":true':""}}
-
-Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend, savings_opportunity=save suggestions, recurring_charge=subscription patterns. If investment deposits are present, mention them separately (not as spending). Card Repayment is debt settlement — do not flag it as a spending anomaly. Use actual numbers and correct units. Be specific.`;
+    const MONTHLY_CATS=["Rent","Memberships"];
+    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>MONTHLY_CATS.includes(c)?`${c}: ${currSym}${Math.round(v/monthCount)}/month`:`${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`).join(", ");
+    const goalsCtx=goals.size>0?`\nUser goals: ${[...goals].join(", ")}.`:"";
+    const oneOffCtx=oneOffText.trim()?`\nUser noted one-off costs: "${oneOffText}".`:"";
+    const pressureCtx=pressureWk?`\nHighest spending week: w/c ${pressureWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} — ${currSym}${pressureWk.spend} out, mainly ${pressureWk.cats.map(c=>`${c.cat} ${currSym}${c.amount}`).join(", ")}.`:"";
+    const invNote=invTotal>0?`\nInvestment deposits: ${currSym}${invTotal} total (tracked separately).`:"";
+    return `You are a concise, friendly personal finance advisor inside Abound (${weekCount} weeks of data). Snapshot: avg ${currSym}${avgWeeklySpend}/wk spend, income ${currSym}${salaryTotal} total, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top category: ${topCat}. Spend by category: ${catLines||"(none)"}.${invNote}${pressureCtx}${oneOffCtx}${goalsCtx} Reply concisely (3-5 sentences). Use ${currSym} and real numbers. No bullet points unless explicitly asked.`;
   }
 
-  async function fetchInsights(isRefresh=false){
-    if(isRefresh)setRefreshing(true); else setLoading(true);
-    setFetchError(null);
+  async function startChat(){
+    if(generating)return;
+    setPhase("chat");setGenerating(true);
+    const ctx=buildCtx();
+    const goalsStr=goals.size>0?` Goals: ${[...goals].join(", ")}.`:"";
+    const oneOffStr=oneOffText.trim()?` One-offs noted: ${oneOffText}.`:"";
+    const seed=`${ctx}\n\nUser:${oneOffStr}${goalsStr} Give me a short personalised analysis — what stands out and what is your single top recommendation?`;
+    const apiMsgs=[{role:"user",content:seed}];
     try{
-      const text=await callClaude(buildPrompt(),900,35000);
-      const match=text.match(/\[[\s\S]*\]/);
-      if(!match)throw new Error("Invalid response format");
-      const parsed=JSON.parse(match[0]);
-      if(!Array.isArray(parsed))throw new Error("Expected an array");
-      const now=Date.now();
-      setCards(parsed);setLastFetch(new Date(now));
-      localStorage.setItem("abound_last_insights",JSON.stringify({cards:parsed,timestamp:now}));
+      const text=await callClaudeMessages(apiMsgs,500,30000);
+      setChatApiHistory([...apiMsgs,{role:"assistant",content:text}]);
+      setChatDisplay([{role:"assistant",content:text}]);
     }catch(e){
-      setFetchError(e.message||"Unknown error");
-      try{const cached=JSON.parse(localStorage.getItem("abound_last_insights")||"null");if(cached?.cards){setCards(cached.cards);setLastFetch(new Date(cached.timestamp));}}catch{}
+      setChatDisplay([{role:"assistant",content:`Couldn't generate analysis — ${e.message||"please try again"}.`}]);
     }
-    setLoading(false);setRefreshing(false);
-  }
-
-  function dismissCard(id){
-    const next={...dismissed,[id]:Date.now()};
-    setDismissed(next);
-    try{localStorage.setItem("abound_dismissed_insights",JSON.stringify(next));}catch{}
-  }
-
-  function openChatForCard(card){
-    setChatCtx(`Insight: "${card.title}" — ${card.body}${card.metric?` (${card.metric})`:""}. `);
-    setChatApiHistory([]);setChatDisplay([]);setChatInput("");
-    setChatOpen(true);
+    setGenerating(false);
   }
 
   async function sendChat(msg){
     if(!msg.trim()||chatLoading)return;
-    const financialCtx=`You are a personal finance advisor for Abound. Context: ${chatCtx}Financial summary: ${weekCount} weeks of data, avg ${currSym}${avgWeeklySpend}/wk spending, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top spending: ${topCat}. Be concise and specific.`;
-    const apiMsgs=chatApiHistory.length===0
-      ?[{role:"user",content:`${financialCtx}\n\nUser question: ${msg}`}]
-      :[...chatApiHistory,{role:"user",content:msg}];
+    if(!isPro&&chatApiHistory.length>2){setShowPremiumGate(true);return;}
+    const ctx=buildCtx();
+    const apiMsgs=chatApiHistory.length===0?[{role:"user",content:`${ctx}\n\nUser: ${msg}`}]:[...chatApiHistory,{role:"user",content:msg}];
     setChatDisplay(prev=>[...prev,{role:"user",content:msg}]);
     setChatInput("");setChatLoading(true);
     try{
@@ -2888,206 +2859,199 @@ Types: forecast_risk=concerning trends, spending_anomaly=unusual category spend,
       setChatApiHistory([...apiMsgs,{role:"assistant",content:text}]);
       setChatDisplay(prev=>[...prev,{role:"assistant",content:text}]);
     }catch(e){
-      setChatApiHistory([...apiMsgs]);
-      setChatDisplay(prev=>[...prev,{role:"assistant",content:`Sorry, couldn't respond — ${e.message||"please try again"}.`}]);
+      setChatDisplay(prev=>[...prev,{role:"assistant",content:`Sorry — ${e.message||"please try again"}.`}]);
     }
     setChatLoading(false);
   }
 
-  const CARD_CFG={
-    forecast_risk:{color:"#f59e0b",bg:"rgba(245,158,11,0.07)",border:"rgba(245,158,11,0.25)",label:"Forecast Risk"},
-    spending_anomaly:{color:"#f59e0b",bg:"rgba(245,158,11,0.07)",border:"rgba(245,158,11,0.25)",label:"Anomaly"},
-    savings_opportunity:{color:"#34d399",bg:"rgba(52,211,153,0.07)",border:"rgba(52,211,153,0.25)",label:"Save"},
-    recurring_charge:{color:"#6366f1",bg:"rgba(99,102,241,0.07)",border:"rgba(99,102,241,0.25)",label:"Recurring"},
-  };
-
-  const isPro=isPremium();
-  const visibleCards=cards?cards.filter(c=>!dismissed[c.id]):null;
-  const isEstimated=weekCount<4;
-
-  function staleLbl(){
-    if(!lastFetch)return null;
-    const mins=Math.round((Date.now()-lastFetch.getTime())/60000);
-    if(mins<2)return"just now";
-    if(mins<60)return`${mins}m ago`;
-    return`${Math.round(mins/60)}h ago`;
+  function restart(){
+    setPhase("analysis");setOneOffText("");setGoals(new Set());setChatDisplay([]);setChatApiHistory([]);
+    ["abound_insights_phase","abound_insights_oneoff","abound_insights_goals","abound_insights_chat","abound_chat_api_history"].forEach(k=>localStorage.removeItem(k));
   }
-  const trajIcon=trajectory==="up"?"↑":trajectory==="down"?"↓":"→";
-  const trajColor=trajectory==="up"?"#f59e0b":trajectory==="down"?"#34d399":"#a5b4fc";
 
-  const chatPanel=(
-    <div style={{display:"flex",flexDirection:"column",height:"100%",overflow:"hidden"}}>
-      <div style={{padding:"11px 14px",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-        <div style={{width:6,height:6,borderRadius:"50%",background:"#6366f1",boxShadow:"0 0 6px rgba(99,102,241,0.7)"}}/>
-        <span style={{fontSize:12,fontWeight:700,color:"var(--text)",flex:1}}>Ask about this insight</span>
-        <button onClick={()=>setChatOpen(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",lineHeight:1,padding:0}}>×</button>
+  const netPos=netCashFlow>=0;
+  const stepN={analysis:1,oneoffs:2,goals:3,chat:null}[phase];
+  const fmtD=d=>d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+
+  function AiBubble({children}){
+    return(
+      <div style={{display:"flex",gap:10,marginBottom:20}}>
+        <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}>
+          <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
+        </div>
+        <div style={{background:"var(--card)",border:"1px solid var(--snap-border)",borderRadius:"4px 12px 12px 12px",padding:"13px 15px",fontSize:12,color:"var(--text)",lineHeight:1.7,flex:1,maxWidth:540}}>
+          {children}
+        </div>
       </div>
-      {chatCtx&&chatDisplay.length===0&&(
-        <div style={{padding:"9px 14px",fontSize:11,color:"#6b7280",borderBottom:"1px solid var(--snap-border)",lineHeight:1.5,flexShrink:0}}>{chatCtx}</div>
-      )}
-      <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
-        {chatDisplay.map((msg,i)=>(
-          <div key={i} style={{display:"flex",justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
-            <div style={{maxWidth:"86%",padding:"8px 11px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"10px 10px 10px 2px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"var(--card)",fontSize:12,color:"#e0e7ff",lineHeight:1.55,whiteSpace:"pre-wrap"}}>
-              {msg.content}
-            </div>
-          </div>
-        ))}
-        {chatLoading&&(
-          <div style={{display:"flex",gap:4,alignItems:"center",padding:"4px 2px"}}>
-            {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
-          </div>
-        )}
-        <div ref={chatEndRef}/>
+    );
+  }
+
+  const typingDots=(
+    <div style={{display:"flex",gap:10}}>
+      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+        <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
       </div>
-      <div style={{padding:"9px 12px",borderTop:"1px solid var(--snap-border)",display:"flex",gap:6,flexShrink:0}}>
-        <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
-          onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
-          placeholder="Ask a question… (Enter to send)" rows={2}
-          style={{flex:1,background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,padding:"7px 10px",resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
-        <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading}
-          style={{padding:"0 12px",background:chatInput.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"#1f1d35",color:chatInput.trim()?"#fff":"#374151",border:"none",borderRadius:7,fontSize:14,fontWeight:700,cursor:chatInput.trim()?"pointer":"not-allowed",flexShrink:0,alignSelf:"stretch"}}>
-          ↑
-        </button>
+      <div style={{display:"flex",gap:4,alignItems:"center",padding:"12px 14px",background:"var(--card)",border:"1px solid var(--snap-border)",borderRadius:"4px 12px 12px 12px"}}>
+        {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
       </div>
     </div>
   );
 
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--app-bg)",overflow:"hidden",position:"relative"}}>
-      {/* Zone 1: Snapshot Bar */}
-      <div style={{flexShrink:0,padding:isMobile?"10px 14px":"11px 24px",background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:12}}>
-        <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-          <span style={{fontSize:isMobile?16:20,fontWeight:800,color:netCashFlow>=0?"#34d399":"#f87171",fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"}}>
-            {netCashFlow>=0?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()}
-          </span>
-          <span style={{fontSize:10,color:"#374151",fontWeight:500}}>net cash</span>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--app-bg)",overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{flexShrink:0,padding:"10px 20px",background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:10}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#818cf8",letterSpacing:"0.06em",textTransform:"uppercase"}}>✦ AI Insights</span>
+        <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 9px",background:netPos?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",border:`1px solid ${netPos?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"}`,borderRadius:20}}>
+          <span style={{fontSize:11,fontWeight:700,color:netPos?"#34d399":"#f87171"}}>{netPos?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()} net</span>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 8px",background:`${trajColor}15`,border:`1px solid ${trajColor}35`,borderRadius:20}}>
-          <span style={{fontSize:12,color:trajColor}}>{trajIcon}</span>
-          <span style={{fontSize:9,fontWeight:700,color:trajColor,textTransform:"uppercase",letterSpacing:"0.06em"}}>{trajectory==="up"?"Spend ↑":trajectory==="down"?"Spend ↓":"Stable"}</span>
-        </div>
-        {!loading&&cards?.[0]?.title&&(
-          <div style={{flex:1,fontSize:11,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:isMobile?"none":"block"}}>
-            {cards[0].title}
-          </div>
-        )}
-        <div style={{marginLeft:"auto",display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-          {latestTxnDate&&<span style={{fontSize:9,color:"var(--text3)"}}>Updated based on your latest statement · {fmt(latestTxnDate)}</span>}
-          <button onClick={()=>fetchInsights(true)} disabled={loading||refreshing}
-            style={{padding:"4px 10px",background:"none",border:"1px solid rgba(99,102,241,0.3)",borderRadius:6,fontSize:10,color:loading||refreshing?"var(--text3)":"#818cf8",cursor:loading||refreshing?"not-allowed":"pointer",display:"flex",alignItems:"center",gap:4}}>
-            <svg width="10" height="10" viewBox="0 0 20 20" fill="none"><path d="M4 10a6 6 0 1 1 2.1 4.6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"/><path d="M4 6v4h4" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            ↻ Refresh insights
-          </button>
+        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
+          {phase==="chat"&&(
+            <button onClick={restart} style={{fontSize:10,color:"var(--text3)",background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0}}>Start over</button>
+          )}
+          {stepN&&(
+            <div style={{display:"flex",gap:4,alignItems:"center"}}>
+              {[1,2,3].map(n=>(
+                <div key={n} style={{width:n<stepN?18:n===stepN?18:6,height:6,borderRadius:3,background:n<stepN?"#6366f1":n===stepN?"#818cf8":"rgba(99,102,241,0.2)",transition:"all 0.3s"}}/>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Zone 2 + Zone 3 layout */}
-      <div style={{flex:1,overflow:"hidden",display:"flex",position:"relative"}}>
-        {/* Zone 2: Insight Feed */}
-        <div style={{flex:1,overflowY:"auto",padding:isMobile?"14px 12px":"20px 24px",display:"flex",flexDirection:"column",gap:10}}>
-          {/* Sparse data notice */}
-          {isEstimated&&!loading&&(
-            <div style={{padding:"9px 13px",background:"rgba(99,102,241,0.07)",border:"1px solid rgba(99,102,241,0.18)",borderRadius:8,fontSize:11,color:"#818cf8",display:"flex",gap:7,alignItems:"center",flexShrink:0}}>
-              <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="8" stroke="#818cf8" strokeWidth="1.8"/><path d="M10 9v5M10 7v.5" stroke="#818cf8" strokeWidth="1.8" strokeLinecap="round"/></svg>
-              Less than 4 weeks of data — insights are estimated. Accuracy improves with more history.
-            </div>
-          )}
-          {/* Skeleton loader */}
-          {loading&&!cards&&[0,1,2,3].map(i=>(
-            <div key={i} style={{borderRadius:10,border:"1px solid var(--snap-border)",padding:"14px 16px",background:"var(--snapshot-bg)",animation:"skeletonPulse 1.6s ease-in-out infinite",animationDelay:`${i*150}ms`}}>
-              <div style={{height:9,width:"32%",background:"var(--card)",borderRadius:4,marginBottom:9}}/>
-              <div style={{height:12,width:"62%",background:"var(--snapshot-bg)",borderRadius:4,marginBottom:6}}/>
-              <div style={{height:8,width:"82%",background:"var(--snapshot-bg)",borderRadius:4,marginBottom:4}}/>
-              <div style={{height:8,width:"52%",background:"var(--snapshot-bg)",borderRadius:4}}/>
-            </div>
-          ))}
-          {/* Error state — no cache available */}
-          {fetchError&&!cards&&(
-            <div style={{padding:"28px 16px",textAlign:"center"}}>
-              <div style={{fontSize:13,color:"#6b7280",marginBottom:6}}>Couldn't load insights</div>
-              <div style={{fontSize:11,color:"#374151",marginBottom:14,lineHeight:1.5}}>{fetchError}</div>
-              <button onClick={()=>fetchInsights()} style={{padding:"7px 16px",background:"rgba(99,102,241,0.12)",color:"#818cf8",border:"1px solid rgba(99,102,241,0.25)",borderRadius:8,fontSize:12,cursor:"pointer"}}>Try again</button>
-            </div>
-          )}
-          {/* Error banner — with stale cache */}
-          {fetchError&&cards&&(
-            <div style={{padding:"8px 12px",background:"rgba(239,68,68,0.07)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:8,fontSize:11,color:"#f87171",display:"flex",alignItems:"center",gap:8}}>
-              <svg width="11" height="11" viewBox="0 0 20 20" fill="none"><path d="M10 6v5M10 13v.5" stroke="#f87171" strokeWidth="2" strokeLinecap="round"/><circle cx="10" cy="10" r="8" stroke="#f87171" strokeWidth="1.8"/></svg>
-              Showing cached insights — refresh failed.
-              <button onClick={()=>fetchInsights()} style={{marginLeft:"auto",fontSize:10,color:"#f87171",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Retry</button>
-            </div>
-          )}
-          {/* Cards */}
-          {visibleCards&&visibleCards.map((card,idx)=>{
-            const cfg=CARD_CFG[card.type]||CARD_CFG.forecast_risk;
-            const isLocked=!isPro&&idx>=1;
-            return(
-              <div key={card.id||idx} style={{borderRadius:10,border:`1px solid ${cfg.border}`,borderLeft:"3px solid #6366f1",background:cfg.bg,padding:"14px 16px",position:"relative",filter:isLocked?"blur(3.5px)":"none",userSelect:isLocked?"none":"auto",pointerEvents:isLocked?"none":"auto",animation:"fadeUp 0.3s ease both",animationDelay:`${idx*60}ms`}}>
-                <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7}}>
-                  <span style={{fontSize:9,fontWeight:800,color:cfg.color,textTransform:"uppercase",letterSpacing:"0.08em",padding:"2px 6px",background:`${cfg.color}15`,borderRadius:4}}>{cfg.label}</span>
-                  {card.estimated&&<span style={{fontSize:9,color:"#4b5563",padding:"2px 6px",background:"rgba(75,85,99,0.12)",border:"1px solid rgba(75,85,99,0.18)",borderRadius:4}}>Estimated</span>}
-                  {card.metric&&<span style={{marginLeft:"auto",fontSize:14,fontWeight:800,color:cfg.color,fontVariantNumeric:"tabular-nums"}}>{card.metric}</span>}
+      {/* Content */}
+      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px 14px 24px":"24px 28px 32px",display:"flex",flexDirection:"column"}}>
+
+        {/* Phase 1 — Analysis / Low point */}
+        {phase==="analysis"&&(
+          <>
+            <AiBubble>
+              <div style={{marginBottom:10}}>Here's a snapshot of your finances across the last {weekCount} week{weekCount!==1?"s":""}.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:10,fontSize:12}}>
+                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
+                  <span style={{color:"var(--text3)"}}>Average weekly spend</span>
+                  <span style={{fontWeight:700}}>{currSym}{avgWeeklySpend.toLocaleString()}/wk</span>
                 </div>
-                <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:5,lineHeight:1.3}}>{card.title}</div>
-                <div style={{fontSize:11,color:"#9ca3af",lineHeight:1.6}}>{card.body}</div>
-                <div style={{display:"flex",gap:6,marginTop:10,justifyContent:"flex-end"}}>
-                  <button onClick={()=>openChatForCard(card)}
-                    style={{padding:"5px 11px",background:"none",border:`1px solid ${cfg.color}45`,color:cfg.color,borderRadius:6,fontSize:10,fontWeight:600,cursor:"pointer"}}>
-                    Ask AI
+                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
+                  <span style={{color:"var(--text3)"}}>Top spending category</span>
+                  <span style={{fontWeight:700}}>{topCat||"—"}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
+                  <span style={{color:"var(--text3)"}}>Net position</span>
+                  <span style={{fontWeight:700,color:netPos?"#34d399":"#f87171"}}>{netPos?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()}</span>
+                </div>
+                {invTotal>0&&(
+                  <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
+                    <span style={{color:"var(--text3)"}}>Investment deposits</span>
+                    <span style={{fontWeight:700,color:"#10b981"}}>{currSym}{invTotal.toLocaleString()}</span>
+                  </div>
+                )}
+              </div>
+              {pressureWk&&(
+                <div style={{borderTop:"1px solid var(--snap-border)",paddingTop:10,fontSize:12}}>
+                  <span style={{color:"var(--text3)"}}>Your highest spend week was </span>
+                  <strong>w/c {fmtD(pressureWk.date)}</strong>
+                  <span style={{color:"var(--text3)"}}> — </span>
+                  <strong style={{color:"#f87171"}}>{currSym}{pressureWk.spend.toLocaleString()}</strong>
+                  <span style={{color:"var(--text3)"}}> went out, driven by </span>
+                  {pressureWk.cats.map((c,i)=>(
+                    <span key={c.cat}>{i>0?<span style={{color:"var(--text3)"}}>, </span>:null}<strong>{c.cat}</strong><span style={{color:"var(--text3)"}}> ({currSym}{c.amount})</span></span>
+                  ))}
+                  <span style={{color:"var(--text3)"}}>.</span>
+                </div>
+              )}
+            </AiBubble>
+            <div style={{paddingTop:4}}>
+              <button onClick={()=>setPhase("oneoffs")} style={{padding:"10px 22px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Next: any one-off costs? →
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Phase 2 — One-offs */}
+        {phase==="oneoffs"&&(
+          <>
+            <AiBubble>
+              <div style={{marginBottom:6,fontWeight:600}}>Were any of those costs one-offs?</div>
+              <div style={{color:"var(--text3)"}}>e.g. a car repair, annual subscription, holiday, or a big gift — things that won't repeat next month. If so, your regular spending is actually lower than it looks.</div>
+            </AiBubble>
+            <textarea value={oneOffText} onChange={e=>setOneOffText(e.target.value)}
+              placeholder="Describe any one-offs… (optional)"
+              rows={3}
+              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,resize:"none",fontFamily:"inherit",lineHeight:1.5,outline:"none",marginBottom:14}}/>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>setPhase("goals")} style={{padding:"9px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                Next: your goals →
+              </button>
+              <button onClick={()=>{setOneOffText("");setPhase("goals");}} style={{padding:"9px 14px",background:"none",border:"1px solid var(--snap-border)",color:"var(--text3)",borderRadius:8,fontSize:12,cursor:"pointer"}}>
+                Skip
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* Phase 3 — Goals */}
+        {phase==="goals"&&(
+          <>
+            <AiBubble>
+              <div>What's your main financial goal right now? Pick one or more — this helps me focus my analysis.</div>
+            </AiBubble>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:22}}>
+              {GOALS.map(g=>{
+                const sel=goals.has(g);
+                return(
+                  <button key={g} onClick={()=>toggleGoal(g)}
+                    style={{padding:"8px 15px",border:`1px solid ${sel?"#6366f1":"var(--snap-border)"}`,borderRadius:20,background:sel?"rgba(99,102,241,0.15)":"var(--card)",color:sel?"#a5b4fc":"var(--text3)",fontSize:12,fontWeight:sel?600:400,cursor:"pointer",transition:"all 0.15s"}}>
+                    {g}
                   </button>
-                  <button onClick={()=>dismissCard(card.id||String(idx))}
-                    style={{padding:"5px 8px",background:"none",border:"1px solid #1f1d35",color:"#4b5563",borderRadius:6,fontSize:10,cursor:"pointer"}}>
-                    ✕
-                  </button>
+                );
+              })}
+            </div>
+            <div>
+              <button onClick={startChat} style={{padding:"10px 22px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                Analyse my finances →
+              </button>
+              {goals.size===0&&<div style={{marginTop:8,fontSize:11,color:"var(--text3)"}}>or skip goal selection and hit Analyse</div>}
+            </div>
+          </>
+        )}
+
+        {/* Phase 4 — Chat */}
+        {phase==="chat"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14,flex:1}}>
+            {generating&&typingDots}
+            {chatDisplay.map((msg,i)=>(
+              <div key={i} style={{display:"flex",gap:10,justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+                {msg.role==="assistant"&&(
+                  <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}>
+                    <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
+                  </div>
+                )}
+                <div style={{maxWidth:"78%",padding:"10px 13px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"4px 12px 12px 12px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"var(--card)",border:msg.role==="user"?"none":"1px solid var(--snap-border)",fontSize:12,color:msg.role==="user"?"#fff":"var(--text)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>
+                  {msg.content}
                 </div>
               </div>
-            );
-          })}
-          {/* Premium gate */}
-          {!isPro&&visibleCards&&visibleCards.length>1&&(
-            <div style={{borderRadius:10,border:"1px solid rgba(99,102,241,0.25)",background:"linear-gradient(135deg,rgba(30,27,75,0.85),rgba(12,10,30,0.85))",padding:"20px",textAlign:"center",animation:"fadeUp 0.3s ease both"}}>
-              <div style={{width:28,height:28,borderRadius:"50%",background:"rgba(99,102,241,0.15)",border:"1px solid rgba(99,102,241,0.3)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 10px",fontSize:14}}>🔒</div>
-              <div style={{fontSize:13,fontWeight:700,color:"#e0e7ff",marginBottom:5}}>Unlock all insights</div>
-              <div style={{fontSize:11,color:"#818cf8",marginBottom:14,lineHeight:1.5}}>Get all {visibleCards.length} personalised insights plus the focused AI chat.</div>
-              <button onClick={()=>setShowPremiumGate(true)}
-                style={{padding:"8px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 12px rgba(99,102,241,0.4)"}}>
-                Upgrade to Premium
-              </button>
-            </div>
-          )}
-          {/* All dismissed */}
-          {visibleCards&&visibleCards.length===0&&!loading&&(
-            <div style={{textAlign:"center",padding:"52px 20px"}}>
-              <div style={{fontSize:13,color:"#374151",marginBottom:10}}>All insights dismissed</div>
-              <button onClick={()=>{setDismissed({});try{localStorage.removeItem("abound_dismissed_insights");}catch{}}}
-                style={{fontSize:11,color:"#818cf8",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
-                Show again
-              </button>
-            </div>
-          )}
-          <div style={{height:isMobile?80:20,flexShrink:0}}/>
-        </div>
-
-        {/* Zone 3: Desktop right panel */}
-        {!isMobile&&chatOpen&&(
-          <div style={{width:320,background:"var(--snapshot-bg)",borderLeft:"1px solid var(--snap-border)",display:"flex",flexDirection:"column",flexShrink:0,animation:"slideInRight 0.3s cubic-bezier(0.16,1,0.3,1) both"}}>
-            {chatPanel}
+            ))}
+            {chatLoading&&typingDots}
+            <div ref={chatEndRef}/>
           </div>
         )}
       </div>
 
-      {/* Zone 3: Mobile bottom sheet */}
-      {isMobile&&(
-        <>
-          {chatOpen&&<div onClick={()=>setChatOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:799,animation:"fadeIn 0.2s ease both"}}/>}
-          <div style={{position:"fixed",bottom:chatOpen?0:"-62vh",left:0,right:0,height:"62vh",background:"var(--snapshot-bg)",borderTop:"1px solid var(--snap-border)",borderRadius:"16px 16px 0 0",zIndex:800,display:"flex",flexDirection:"column",transition:"bottom 0.35s cubic-bezier(0.16,1,0.3,1)",boxShadow:chatOpen?"0 -8px 32px rgba(0,0,0,0.45)":"none",overflow:"hidden"}}>
-            <div style={{display:"flex",justifyContent:"center",padding:"8px 0 2px",cursor:"pointer",flexShrink:0}} onClick={()=>setChatOpen(false)}>
-              <div style={{width:32,height:4,borderRadius:2,background:"rgba(128,120,200,0.35)"}}/>
-            </div>
-            {chatPanel}
-          </div>
-        </>
+      {/* Chat input */}
+      {phase==="chat"&&!generating&&(
+        <div style={{flexShrink:0,padding:"10px 12px",borderTop:"1px solid var(--snap-border)",background:"var(--snapshot-bg)",display:"flex",gap:6,alignItems:"flex-end"}}>
+          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
+            placeholder={isPro||chatApiHistory.length<=2?"Ask a follow-up… (Enter to send)":"Upgrade to Premium to continue the conversation"}
+            rows={2}
+            style={{flex:1,padding:"7px 10px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
+          <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading}
+            style={{padding:"0 14px",height:52,background:chatInput.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"rgba(99,102,241,0.12)",color:chatInput.trim()?"#fff":"#4b5563",border:"none",borderRadius:7,fontSize:15,fontWeight:700,cursor:chatInput.trim()?"pointer":"not-allowed",flexShrink:0}}>
+            ↑
+          </button>
+        </div>
       )}
 
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}

@@ -4041,8 +4041,8 @@ function getLastWorkingDay(year, month) {
     return tips.slice(0,5);
   },[transactions,categories,actualWeeks,accounts,weeklyByAccountCat,combinedClosingBalances,forecastWeeks,forecastData]);
 
-const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||"#9ca3af",opacity:isForecast&&forecastIdx!=null?1-Math.min(forecastIdx,5)*0.07:1,background:isOverBudget?"rgba(239,68,68,0.08)":isForecast?"rgba(99,102,241,0.04)":"transparent",borderRight:isForecast?"1px dashed #2d2a6e":"1px solid #1a1830",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
-  const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#818cf8":"#c7d2fe",background:isForecast?"rgba(99,102,241,0.12)":"rgba(255,255,255,0.04)",borderLeft:"2px solid #2d2a6e",borderRight:"2px solid #2d2a6e",whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:bold?700:400,color:isOverBudget?"#ef4444":color||T.dimText,opacity:isForecast&&forecastIdx!=null?1-Math.min(forecastIdx,5)*0.07:1,background:isOverBudget?"rgba(239,68,68,0.08)":isForecast?"rgba(99,102,241,0.04)":"transparent",borderRight:isForecast?`1px dashed ${T.border2}`:`1px solid ${T.dimBorderMid}`,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
+  const tdTot=(isForecast)=>({padding:"7px 10px",textAlign:"right",fontSize:12,fontWeight:800,color:isForecast?"#818cf8":T.catText,background:isForecast?"rgba(99,102,241,0.12)":T.totBg,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`,whiteSpace:"nowrap",fontVariantNumeric:"tabular-nums"});
   const blurStyle=(i)=>{
     if(i<6||isPro) return {};
     const narrow={padding:'3px 2px',minWidth:0,width:52,maxWidth:52,overflow:'hidden'};
@@ -4054,11 +4054,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
   function LabelCell({label,account}){
     const tip=ROW_TOOLTIPS[label];
     return(
-      <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default",color:"#9ca3af"}}
+      <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default",color:T.dimText}}
         onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
         onMouseLeave={()=>setTooltip(null)}>
         {label}
-        {tip&&<span style={{marginLeft:4,fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span>}
+        {tip&&<span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>}
       </td>
     );
   }
@@ -4117,10 +4117,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isInvestments?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            style={{...tdAmt(v===0?T.dimBorder:isIncome?"#10b981":isInvestments?"#10b981":isRepayment?"#a78bfa":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
             onClick={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}
             onContextMenu={v>0?e=>openCtxMenu(e,account,cat,actualWeeks[i].key):undefined}>
-            {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
+            {v>0?<span style={{borderBottom:`1px dashed ${T.border2}`}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
@@ -4215,7 +4215,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <td data-sticky-label2 style={{padding:"5px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:"#34d399",background:"rgba(16,185,129,0.04)"}}>
           <span style={{fontSize:9,marginRight:4}}>▲</span>Income
         </td>
-        {actuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
+        {actuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?T.dimBorder:"#10b981",false)}}>{fmtMoney(v)}</td>))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         <IncomeForecastArea totalFcst={totalFcst}/>
         <td/>
@@ -4234,7 +4234,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:"#34d399",background:"rgba(16,185,129,0.04)"}}>
           <span style={{fontSize:9,marginRight:4}}>▲</span>Income
         </td>
-        {salActuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?"#2d2a6e":"#10b981",false)}}>{fmtMoney(v)}</td>))}
+        {salActuals.map((v,i)=>(<td key={i} style={{...tdAmt(v===0?T.dimBorder:"#10b981",false)}}>{fmtMoney(v)}</td>))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
         <IncomeForecastArea totalFcst={totalFcst}/>
         <td/>
@@ -4337,11 +4337,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/>
           </tr>
         )}
-        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
-          <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
-          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
+        <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
+          <td data-sticky-label style={{background:T.summaryRow}}/>
+          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
@@ -4367,7 +4367,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     return(
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
         <td data-sticky-label style={{padding:0,minWidth:isMobile?26:undefined,background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":"transparent"}}/>
-        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":"#0a0919"}}
+        <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":T.tableBg}}
           onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
@@ -4377,10 +4377,10 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         </td>
         {actuals.map((v,i)=>(
           <td key={i}
-            style={{...tdAmt(v===0?"#2d2a6e":isIncome?"#10b981":isInvestments?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
+            style={{...tdAmt(v===0?T.dimBorder:isIncome?"#10b981":isInvestments?"#10b981":"#9ca3af",false),cursor:v>0?"pointer":"default",userSelect:"none"}}
             onClick={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}
             onContextMenu={v>0?e=>openCtxMenu(e,"ALL",cat,actualWeeks[i].key):undefined}>
-            {v>0?<span style={{borderBottom:"1px dashed #2d2a6e"}}>{fmtMoney(v)}</span>:fmtMoney(v)}
+            {v>0?<span style={{borderBottom:`1px dashed ${T.border2}`}}>{fmtMoney(v)}</span>:fmtMoney(v)}
           </td>
         ))}
         <td style={tdTot(false)}>{fmtMoney(totalAct)}</td>
@@ -4446,11 +4446,11 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <td/>
           </tr>
         )}
-        <tr className="abound-row" style={{background:"rgba(255,255,255,0.015)",borderBottom:`2px solid ${T.border2}`}}>
-          <td data-sticky-label style={{background:"rgba(255,255,255,0.015)"}}/>
-          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:"#6b7280",letterSpacing:"0.04em",cursor:"help",background:"rgba(255,255,255,0.015)"}}
+        <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
+          <td data-sticky-label style={{background:T.summaryRow}}/>
+          <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
             onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
-            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:"#374151",verticalAlign:"super"}}>ⓘ</span></td>
+            onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
           {visibleForecastWeeks.map((_,i)=>{const v=weeklyNetForecast[i]||0;return <td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",background:"rgba(99,102,241,0.04)",borderRight:`1px dashed ${T.border2}`,fontVariantNumeric:"tabular-nums",...blurStyle(i)}}>{netFmt(v)}</td>;})}
@@ -4479,7 +4479,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <div style={{position:"fixed",top:incomeFormState.y,left:incomeFormState.x,zIndex:9995,background:T.tooltipBg,border:"1px solid #6366f1",borderRadius:10,padding:"12px 14px",minWidth:270,boxShadow:"0 6px 28px rgba(0,0,0,0.35)",animation:"tooltipIn 0.12s ease both"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:10,color:"#6366f1",fontWeight:700,marginBottom:8,letterSpacing:"0.06em"}}>{incomeFormState.editId?"EDIT INCOME":"ADD INCOME"}</div>
             {!incomeFormState.editId&&salarySuggestion&&(
-              <div style={{marginBottom:10,padding:"10px 12px",background:"#1a1744",border:"1px solid rgba(99,102,241,0.5)",borderRadius:8}}>
+              <div style={{marginBottom:10,padding:"10px 12px",background:T.theadA,border:"1px solid rgba(99,102,241,0.5)",borderRadius:8}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#a5b4fc",marginBottom:5}}>⚡ Last big payment: £{Math.round(salarySuggestion.amount).toLocaleString()} on {fmt(salarySuggestion.date)}</div>
                 <div onClick={()=>applySuggestion(salarySuggestion)} style={{fontSize:11,color:"#818cf8",cursor:"pointer",fontWeight:600}}>Use this as my monthly salary →</div>
               </div>

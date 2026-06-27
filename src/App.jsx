@@ -126,6 +126,7 @@ const GLOBAL_CSS = `
   @keyframes tourBtnPulse { 0%,100%{box-shadow:0 4px 18px rgba(99,102,241,0.55)} 50%{box-shadow:0 4px 28px rgba(99,102,241,0.9),0 0 0 6px rgba(99,102,241,0.2)} }
   @keyframes skeletonPulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
   @keyframes insightsPulse { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
+  @keyframes insightFadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
   @keyframes incomeArrowPulse { 0%,100%{transform:translateY(0);opacity:0.55} 50%{transform:translateY(-4px);opacity:1} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
@@ -2775,76 +2776,82 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const sym=getCurrencySymbol();
     const allWks=[...new Set(transactions.map(t=>getWeekMonday(t.date).toISOString().slice(0,10)))].sort();
     const recentWks=allWks.slice(-8);
-    const rSpend=recentWks.map(wk=>transactions.filter(t=>getWeekMonday(t.date).toISOString().slice(0,10)===wk&&spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0));
-    const rAvg=rSpend.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);
+    function wkSum(wks,pred){return wks.map(wk=>transactions.filter(t=>getWeekMonday(t.date).toISOString().slice(0,10)===wk&&pred(t)).reduce((s,t)=>s+Math.abs(t.amount),0));}
+    const incomeByWk=wkSum(recentWks,t=>t.category==="Income");
+    const avgIncome=incomeByWk.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);
+    const catAvg={};
+    spendCats.forEach(c=>{const vals=wkSum(recentWks,t=>t.category===c);catAvg[c]=vals.reduce((a,b)=>a+b,0)/Math.max(recentWks.length,1);});
+    const avgSpend=Object.values(catAvg).reduce((a,b)=>a+b,0);
+    const weeklyNet=avgIncome-avgSpend;
+    const monday=getWeekMonday(new Date());
+    const forecastDates=Array.from({length:7},(_,i)=>new Date(monday.getTime()+i*7*24*60*60*1000));
+    const balances=forecastDates.map((_,i)=>Math.round(i*weeklyNet));
+    const minVal=Math.min(...balances);
+    const lowIdx=balances.indexOf(minVal);
+    const topCats=Object.entries(catAvg).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c,v])=>({cat:c,amount:Math.round(v)}));
     const salTot=transactions.filter(t=>t.category==="Income").reduce((s,t)=>s+Math.abs(t.amount),0);
     const spTot=transactions.filter(t=>spendCats.includes(t.category)).reduce((s,t)=>s+Math.abs(t.amount),0);
     const invTot=Math.round(transactions.filter(t=>t.category==="Investments").reduce((s,t)=>s+Math.abs(t.amount),0));
     const cTotals={};
     spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
-    const topC=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-    const weeklyData={};
-    transactions.forEach(t=>{
-      const wk=getWeekMonday(t.date).toISOString().slice(0,10);
-      if(!weeklyData[wk])weeklyData[wk]={spend:0,cats:{}};
-      if(spendCats.includes(t.category)){weeklyData[wk].spend+=Math.abs(t.amount);weeklyData[wk].cats[t.category]=(weeklyData[wk].cats[t.category]||0)+Math.abs(t.amount);}
-    });
-    const pressureEntry=Object.entries(weeklyData).sort((a,b)=>b[1].spend-a[1].spend)[0];
-    const pressureWk=pressureEntry?{key:pressureEntry[0],date:new Date(pressureEntry[0]+"T12:00:00"),spend:Math.round(pressureEntry[1].spend),cats:Object.entries(pressureEntry[1].cats).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([c,v])=>({cat:c,amount:Math.round(v)}))}:null;
-    return{weekCount:allWks.length,avgWeeklySpend:Math.round(rAvg),netCashFlow:Math.round(salTot-spTot),topCat:topC,catTotals:cTotals,salaryTotal:Math.round(salTot),invTotal:invTot,currSym:sym,pressureWk};
+    const topCat=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
+    return{sym,allWks,weekCount:allWks.length,avgIncome:Math.round(avgIncome),avgSpend:Math.round(avgSpend),weeklyNet:Math.round(weeklyNet),balances,forecastDates,lowIdx,lowVal:minVal,topCats,catAvg,cTotals,topCat,salaryTotal:Math.round(salTot),netCashFlow:Math.round(salTot-spTot),invTotal:invTot};
   },[transactions,spendCats]);
 
-  const{weekCount,avgWeeklySpend,netCashFlow,topCat,catTotals,salaryTotal,invTotal,currSym,pressureWk}=stats;
+  const{sym:currSym,weekCount,avgIncome,avgSpend,weeklyNet,balances,forecastDates,lowIdx,lowVal,topCats,catAvg,cTotals,topCat,salaryTotal,netCashFlow,invTotal}=stats;
 
-  const [phase,setPhase]=useState(()=>localStorage.getItem("abound_insights_phase")||"analysis");
-  const [oneOffText,setOneOffText]=useState(()=>localStorage.getItem("abound_insights_oneoff")||"");
-  const [goals,setGoals]=useState(()=>{try{return new Set(JSON.parse(localStorage.getItem("abound_insights_goals")||"[]"));}catch{return new Set();}});
+  const WIZARD_KEY="abound_insights_wizard";
+  const savedWizard=useMemo(()=>{try{return JSON.parse(localStorage.getItem(WIZARD_KEY)||"null");}catch{return null;}},[]);
+  const [wizStep,setWizStep]=useState(()=>savedWizard?.complete?"chat":1);
+  const [animKey,setAnimKey]=useState(0);
+  const [oneOffText,setOneOffText]=useState(savedWizard?.oneOffText||"");
+  const [goals,setGoals]=useState(()=>new Set(savedWizard?.goals||[]));
   const [chatDisplay,setChatDisplay]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_insights_chat")||"[]");}catch{return[];}});
   const [chatApiHistory,setChatApiHistory]=useState(()=>{try{return JSON.parse(localStorage.getItem("abound_chat_api_history")||"[]");}catch{return[];}});
   const [chatInput,setChatInput]=useState("");
   const [chatLoading,setChatLoading]=useState(false);
-  const [generating,setGenerating]=useState(false);
+  const [initLoading,setInitLoading]=useState(false);
   const [showPremiumGate,setShowPremiumGate]=useState(false);
   const chatEndRef=useRef(null);
   const isPro=isPremium();
 
-  useEffect(()=>{localStorage.setItem("abound_insights_phase",phase);},[phase]);
-  useEffect(()=>{localStorage.setItem("abound_insights_oneoff",oneOffText);},[oneOffText]);
-  useEffect(()=>{try{localStorage.setItem("abound_insights_goals",JSON.stringify([...goals]));}catch{}},[goals]);
   useEffect(()=>{try{localStorage.setItem("abound_insights_chat",JSON.stringify(chatDisplay));}catch{}},[chatDisplay]);
   useEffect(()=>{try{localStorage.setItem("abound_chat_api_history",JSON.stringify(chatApiHistory));}catch{}},[chatApiHistory]);
   useEffect(()=>{chatEndRef.current?.scrollIntoView({behavior:"smooth"});},[chatDisplay,chatLoading]);
 
-  const GOALS=["Build an emergency fund","Pay off debt / credit card","Cut my weekly spending","Save for a goal","Grow my investments","Understand my cash flow"];
+  function saveWizard(data){try{localStorage.setItem(WIZARD_KEY,JSON.stringify(data));}catch{}}
+  function goNextStep(n){setAnimKey(k=>k+1);setWizStep(n);}
   function toggleGoal(g){setGoals(prev=>{const n=new Set(prev);n.has(g)?n.delete(g):n.add(g);return n;});}
 
   function buildCtx(){
     const monthCount=Math.max(weekCount/4.33,1);
     const MONTHLY_CATS=["Rent","Memberships"];
-    const catLines=Object.entries(catTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>MONTHLY_CATS.includes(c)?`${c}: ${currSym}${Math.round(v/monthCount)}/month`:`${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`).join(", ");
+    const catLines=Object.entries(cTotals).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([c,v])=>MONTHLY_CATS.includes(c)?`${c}: ${currSym}${Math.round(v/monthCount)}/month`:`${c}: ${currSym}${Math.round(v/Math.max(weekCount,1))}/wk`).join(", ");
     const goalsCtx=goals.size>0?`\nUser goals: ${[...goals].join(", ")}.`:"";
     const oneOffCtx=oneOffText.trim()?`\nUser noted one-off costs: "${oneOffText}".`:"";
-    const pressureCtx=pressureWk?`\nHighest spending week: w/c ${pressureWk.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} — ${currSym}${pressureWk.spend} out, mainly ${pressureWk.cats.map(c=>`${c.cat} ${currSym}${c.amount}`).join(", ")}.`:"";
+    const lowDateStr=forecastDates[lowIdx]?.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+    const lowCtx=`\nForecast: balance ${weeklyNet>=0?"grows":"drops"} by ${currSym}${Math.abs(weeklyNet)}/wk on avg. Lowest projected point: w/c ${lowDateStr}, ${lowVal<0?`goes negative by ${currSym}${Math.abs(lowVal)}`:`${currSym}${lowVal} from current`}. Top spend categories: ${topCats.map(c=>`${c.cat} ${currSym}${c.amount}/wk`).join(", ")}.`;
     const invNote=invTotal>0?`\nInvestment deposits: ${currSym}${invTotal} total (tracked separately).`:"";
-    return `You are a concise, friendly personal finance advisor inside Abound (${weekCount} weeks of data). Snapshot: avg ${currSym}${avgWeeklySpend}/wk spend, income ${currSym}${salaryTotal} total, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top category: ${topCat}. Spend by category: ${catLines||"(none)"}.${invNote}${pressureCtx}${oneOffCtx}${goalsCtx} Reply concisely (3-5 sentences). Use ${currSym} and real numbers. No bullet points unless explicitly asked.`;
+    return `You are a concise, direct personal finance advisor inside Abound (${weekCount} weeks of data). Snapshot: ${currSym}${avgSpend}/wk spend, ${currSym}${avgIncome}/wk income, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top category: ${topCat}. Category breakdown: ${catLines||"(none)"}.${invNote}${lowCtx}${oneOffCtx}${goalsCtx} Reply in 4 sentences max. Use ${currSym} and exact data numbers. No bullet points unless explicitly asked.`;
   }
 
   async function startChat(){
-    if(generating)return;
-    setPhase("chat");setGenerating(true);
+    if(initLoading)return;
+    saveWizard({oneOffText,goals:[...goals],complete:true});
+    setWizStep("chat");setInitLoading(true);
     const ctx=buildCtx();
     const goalsStr=goals.size>0?` Goals: ${[...goals].join(", ")}.`:"";
     const oneOffStr=oneOffText.trim()?` One-offs noted: ${oneOffText}.`:"";
-    const seed=`${ctx}\n\nUser:${oneOffStr}${goalsStr} Give me a short personalised analysis — what stands out and what is your single top recommendation?`;
+    const seed=`${ctx}\n\nUser:${oneOffStr}${goalsStr} Give me a 4-sentence personalised analysis: biggest risk, what's driving it, and your single most actionable recommendation.`;
     const apiMsgs=[{role:"user",content:seed}];
     try{
       const text=await callClaudeMessages(apiMsgs,500,30000);
       setChatApiHistory([...apiMsgs,{role:"assistant",content:text}]);
       setChatDisplay([{role:"assistant",content:text}]);
     }catch(e){
-      setChatDisplay([{role:"assistant",content:`Couldn't generate analysis — ${e.message||"please try again"}.`}]);
+      setChatDisplay([{role:"assistant",content:`Couldn't generate your analysis — ${e.message||"please try again"}.`}]);
     }
-    setGenerating(false);
+    setInitLoading(false);
   }
 
   async function sendChat(msg){
@@ -2865,193 +2872,314 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   }
 
   function restart(){
-    setPhase("analysis");setOneOffText("");setGoals(new Set());setChatDisplay([]);setChatApiHistory([]);
-    ["abound_insights_phase","abound_insights_oneoff","abound_insights_goals","abound_insights_chat","abound_chat_api_history"].forEach(k=>localStorage.removeItem(k));
+    setWizStep(1);setAnimKey(k=>k+1);setOneOffText("");setGoals(new Set());
+    setChatDisplay([]);setChatApiHistory([]);
+    ["abound_insights_wizard","abound_insights_chat","abound_chat_api_history","abound_insights_phase","abound_insights_oneoff","abound_insights_goals"].forEach(k=>localStorage.removeItem(k));
   }
 
-  const netPos=netCashFlow>=0;
-  const stepN={analysis:1,oneoffs:2,goals:3,chat:null}[phase];
-  const fmtD=d=>d.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
+  const goesNeg=lowVal<0;
+  const lowDateStr=forecastDates[lowIdx]?.toLocaleDateString("en-GB",{day:"numeric",month:"short",year:"numeric"});
+  const lowDateShort=forecastDates[lowIdx]?.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
 
-  function AiBubble({children}){
+  const GOALS=["Build an emergency fund","Pay off debt / credit card","Cut my weekly spending","Save for a goal","Grow my investments","Understand my cash flow"];
+
+  function MiniChart(){
+    const W=400,H=130,PL=12,PR=12,PT=20,PB=26;
+    const n=balances.length;
+    const minB=Math.min(...balances,0);
+    const maxB=Math.max(...balances,0);
+    const yRange=Math.max(maxB-minB,200);
+    const toX=i=>PL+(i/(n-1))*(W-PL-PR);
+    const toY=v=>PT+(1-(v-minB)/yRange)*(H-PT-PB);
+    const pts=balances.map((b,i)=>[toX(i),toY(b)]);
+    const zeroY=toY(0);
+    function smoothD(points){
+      if(points.length<2)return"";
+      let d=`M${points[0][0].toFixed(1)},${points[0][1].toFixed(1)}`;
+      for(let i=1;i<points.length;i++){const p=points[i-1],c=points[i],cpx=(p[0]+c[0])/2;d+=` C${cpx.toFixed(1)},${p[1].toFixed(1)} ${cpx.toFixed(1)},${c[1].toFixed(1)} ${c[0].toFixed(1)},${c[1].toFixed(1)}`;}
+      return d;
+    }
+    const pathD=smoothD(pts);
+    const areaD=`${pathD} L${pts[n-1][0].toFixed(1)},${zeroY.toFixed(1)} L${pts[0][0].toFixed(1)},${zeroY.toFixed(1)} Z`;
+    const lowPt=pts[lowIdx];
+    const wkLabels=forecastDates.map((d,i)=>{
+      if(i===0)return{x:toX(i),label:"Now"};
+      if(i===n-1||i===Math.floor(n/2))return{x:toX(i),label:d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})};
+      return null;
+    }).filter(Boolean);
+    const labelAbove=lowPt[1]>PT+28;
+    const labelX=Math.min(Math.max(lowPt[0],44),W-44);
+    const labelY=labelAbove?lowPt[1]-14:lowPt[1]+22;
     return(
-      <div style={{display:"flex",gap:10,marginBottom:20}}>
-        <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",overflow:"visible",display:"block"}}>
+        <defs>
+          <linearGradient id="igFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={goesNeg?"#ef4444":"#6366f1"} stopOpacity={goesNeg?"0.2":"0.15"}/>
+            <stop offset="100%" stopColor={goesNeg?"#ef4444":"#6366f1"} stopOpacity="0.01"/>
+          </linearGradient>
+          <linearGradient id="igLine" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="#818cf8"/>
+            <stop offset="100%" stopColor={goesNeg?"#ef4444":"#6366f1"}/>
+          </linearGradient>
+        </defs>
+        {minB<0&&<line x1={PL} y1={zeroY} x2={W-PR} y2={zeroY} stroke="rgba(99,102,241,0.25)" strokeWidth="1" strokeDasharray="5,4"/>}
+        <path d={areaD} fill="url(#igFill)"/>
+        <path d={pathD} fill="none" stroke="url(#igLine)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+        <circle cx={pts[0][0]} cy={pts[0][1]} r="3.5" fill="#818cf8"/>
+        {wkLabels.map(({x,label},i)=>(
+          <text key={i} x={x} y={H-4} textAnchor="middle" fontSize="9" fill="rgba(156,163,175,0.7)">{label}</text>
+        ))}
+        <circle cx={lowPt[0]} cy={lowPt[1]} r="11" fill="none" stroke={goesNeg?"rgba(239,68,68,0.3)":"rgba(245,158,11,0.35)"} strokeWidth="1.5">
+          <animate attributeName="r" values="8;14;8" dur="2.2s" repeatCount="indefinite"/>
+          <animate attributeName="opacity" values="0.5;0.1;0.5" dur="2.2s" repeatCount="indefinite"/>
+        </circle>
+        <circle cx={lowPt[0]} cy={lowPt[1]} r="5" fill={goesNeg?"#ef4444":"#f59e0b"} stroke={goesNeg?"rgba(239,68,68,0.5)":"rgba(245,158,11,0.5)"} strokeWidth="2"/>
+        <text x={labelX} y={labelY} textAnchor="middle" fontSize="10" fontWeight="700" fill={goesNeg?"#f87171":"#fbbf24"}>
+          {goesNeg?`-${currSym}${Math.abs(lowVal).toLocaleString()}`:`${currSym}${lowVal.toLocaleString()} low`}
+        </text>
+      </svg>
+    );
+  }
+
+  function StepDots({current}){
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:24}}>
+        {[1,2,3].map((n,i)=>(
+          <>
+            {i>0&&<div key={`line-${n}`} style={{flex:1,height:1.5,background:n<=current?"#6366f1":"rgba(99,102,241,0.18)",maxWidth:36,transition:"background 0.5s"}}/>}
+            <div key={`dot-${n}`} style={{width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:n<current?"#6366f1":n===current?"rgba(99,102,241,0.12)":"transparent",border:n<current?"none":`2px solid ${n===current?"#6366f1":"rgba(99,102,241,0.22)"}`,transition:"all 0.35s",flexShrink:0}}>
+              {n<current
+                ?<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6l2.5 2.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                :<span style={{fontSize:11,fontWeight:700,color:n===current?"#818cf8":"rgba(99,102,241,0.35)"}}>{n}</span>
+              }
+            </div>
+          </>
+        ))}
+        <div style={{marginLeft:10,fontSize:10,color:"var(--text3)",fontWeight:500,flexShrink:0}}>Step {Math.min(current,3)} of 3</div>
+      </div>
+    );
+  }
+
+  function TypingDots(){
+    return(
+      <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+        <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
         </div>
-        <div style={{background:"var(--card)",border:"1px solid var(--snap-border)",borderRadius:"4px 12px 12px 12px",padding:"13px 15px",fontSize:12,color:"var(--text)",lineHeight:1.7,flex:1,maxWidth:540}}>
-          {children}
+        <div style={{padding:"12px 15px",background:"var(--card)",border:"1px solid var(--snap-border)",borderRadius:"4px 12px 12px 12px",display:"flex",gap:5,alignItems:"center"}}>
+          {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
         </div>
       </div>
     );
   }
 
-  const typingDots=(
-    <div style={{display:"flex",gap:10}}>
-      <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-        <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
-      </div>
-      <div style={{display:"flex",gap:4,alignItems:"center",padding:"12px 14px",background:"var(--card)",border:"1px solid var(--snap-border)",borderRadius:"4px 12px 12px 12px"}}>
-        {[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#6366f1",animation:`typingDot 1.2s ease-in-out ${i*180}ms infinite`}}/>)}
-      </div>
-    </div>
-  );
-
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%",background:"var(--app-bg)",overflow:"hidden"}}>
-      {/* Header */}
-      <div style={{flexShrink:0,padding:"10px 20px",background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:10}}>
-        <span style={{fontSize:11,fontWeight:700,color:"#818cf8",letterSpacing:"0.06em",textTransform:"uppercase"}}>✦ AI Insights</span>
-        <div style={{display:"flex",alignItems:"center",gap:4,padding:"3px 9px",background:netPos?"rgba(52,211,153,0.1)":"rgba(248,113,113,0.1)",border:`1px solid ${netPos?"rgba(52,211,153,0.25)":"rgba(248,113,113,0.25)"}`,borderRadius:20}}>
-          <span style={{fontSize:11,fontWeight:700,color:netPos?"#34d399":"#f87171"}}>{netPos?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()} net</span>
-        </div>
-        <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
-          {phase==="chat"&&(
-            <button onClick={restart} style={{fontSize:10,color:"var(--text3)",background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0}}>Start over</button>
-          )}
-          {stepN&&(
-            <div style={{display:"flex",gap:4,alignItems:"center"}}>
-              {[1,2,3].map(n=>(
-                <div key={n} style={{width:n<stepN?18:n===stepN?18:6,height:6,borderRadius:3,background:n<stepN?"#6366f1":n===stepN?"#818cf8":"rgba(99,102,241,0.2)",transition:"all 0.3s"}}/>
-              ))}
+
+      {wizStep!=="chat"&&(
+        <>
+          <div style={{flexShrink:0,padding:"12px 24px",background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",display:"flex",alignItems:"center",gap:8}}>
+            <div style={{width:22,height:22,borderRadius:6,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <span style={{fontSize:10,color:"#fff",fontWeight:800}}>✦</span>
             </div>
-          )}
-        </div>
-      </div>
+            <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>AI Insights</span>
+            <span style={{fontSize:11,color:"var(--text3)",marginLeft:4}}>— personalised analysis</span>
+          </div>
 
-      {/* Content */}
-      <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px 14px 24px":"24px 28px 32px",display:"flex",flexDirection:"column"}}>
+          <div style={{flex:1,overflowY:"auto",padding:isMobile?"20px 16px 36px":"28px 32px 44px",display:"flex",flexDirection:"column"}}>
+            <div key={animKey} style={{animation:"insightFadeIn 0.38s cubic-bezier(0.16,1,0.3,1) both",flex:1,display:"flex",flexDirection:"column"}}>
+              <StepDots current={wizStep}/>
 
-        {/* Phase 1 — Analysis / Low point */}
-        {phase==="analysis"&&(
-          <>
-            <AiBubble>
-              <div style={{marginBottom:10}}>Here's a snapshot of your finances across the last {weekCount} week{weekCount!==1?"s":""}.</div>
-              <div style={{display:"flex",flexDirection:"column",gap:7,marginBottom:10,fontSize:12}}>
-                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
-                  <span style={{color:"var(--text3)"}}>Average weekly spend</span>
-                  <span style={{fontWeight:700}}>{currSym}{avgWeeklySpend.toLocaleString()}/wk</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
-                  <span style={{color:"var(--text3)"}}>Top spending category</span>
-                  <span style={{fontWeight:700}}>{topCat||"—"}</span>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
-                  <span style={{color:"var(--text3)"}}>Net position</span>
-                  <span style={{fontWeight:700,color:netPos?"#34d399":"#f87171"}}>{netPos?"+":"-"}{currSym}{Math.abs(netCashFlow).toLocaleString()}</span>
-                </div>
-                {invTotal>0&&(
-                  <div style={{display:"flex",justifyContent:"space-between",gap:16}}>
-                    <span style={{color:"var(--text3)"}}>Investment deposits</span>
-                    <span style={{fontWeight:700,color:"#10b981"}}>{currSym}{invTotal.toLocaleString()}</span>
+              {wizStep===1&&(
+                <>
+                  <h2 style={{fontSize:isMobile?19:23,fontWeight:800,color:"var(--text)",margin:"0 0 8px",letterSpacing:"-0.025em",lineHeight:1.2}}>
+                    {goesNeg?"Your balance is forecast to dip negative":"Let's look at your forecast"}
+                  </h2>
+                  <p style={{fontSize:13,color:"var(--text2)",margin:"0 0 18px",lineHeight:1.65,maxWidth:480}}>
+                    {goesNeg
+                      ?`Your cash balance is projected to go negative around w/c ${lowDateStr}. Here's what's putting pressure on it.`
+                      :`Your lowest forecast point is the week of ${lowDateStr}. Here's what's driving your spending.`
+                    }
+                  </p>
+                  <div style={{background:"var(--card)",border:`1px solid ${goesNeg?"rgba(239,68,68,0.2)":"var(--snap-border)"}`,borderRadius:12,padding:"16px 14px 10px",marginBottom:16,position:"relative",overflow:"visible"}}>
+                    {goesNeg&&(
+                      <div style={{position:"absolute",top:10,right:12,fontSize:10,fontWeight:700,color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"2px 8px",zIndex:1}}>
+                        ⚠ Goes negative
+                      </div>
+                    )}
+                    <MiniChart/>
                   </div>
-                )}
+                  {topCats.length>0&&(
+                    <div style={{marginBottom:22}}>
+                      <div style={{fontSize:10,fontWeight:700,color:"var(--text3)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:10}}>Top spending categories</div>
+                      {topCats.map(({cat,amount},i)=>{
+                        const barW=topCats[0].amount>0?Math.round((amount/topCats[0].amount)*100):0;
+                        return(
+                          <div key={cat} style={{display:"flex",alignItems:"center",gap:10,marginBottom:9}}>
+                            <div style={{width:22,height:22,borderRadius:5,background:`rgba(99,102,241,${0.16-i*0.04})`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <span style={{fontSize:10,color:"#818cf8",fontWeight:700}}>{i+1}</span>
+                            </div>
+                            <div style={{flex:1}}>
+                              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                                <span style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>{cat}</span>
+                                <span style={{fontSize:12,fontWeight:700,color:"#818cf8"}}>{currSym}{amount.toLocaleString()}<span style={{fontSize:9,color:"var(--text3)",fontWeight:400}}>/wk avg</span></span>
+                              </div>
+                              <div style={{height:3,borderRadius:2,background:"rgba(99,102,241,0.1)",overflow:"hidden"}}>
+                                <div style={{width:`${barW}%`,height:"100%",background:"linear-gradient(90deg,#6366f1,#818cf8)",borderRadius:2}}/>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <div style={{marginTop:"auto",paddingTop:8}}>
+                    <button onClick={()=>goNextStep(2)}
+                      style={{padding:"11px 28px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 14px rgba(99,102,241,0.35)"}}>
+                      Next →
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {wizStep===2&&(
+                <>
+                  <h2 style={{fontSize:isMobile?19:23,fontWeight:800,color:"var(--text)",margin:"0 0 8px",letterSpacing:"-0.025em",lineHeight:1.2}}>
+                    Any one-off costs?
+                  </h2>
+                  <p style={{fontSize:13,color:"var(--text2)",margin:"0 0 18px",lineHeight:1.65,maxWidth:480}}>
+                    Were any recent costs unusual — a car repair, annual subscription, holiday, or big one-time purchase? Your regular spending may be lower than it looks.
+                  </p>
+                  <textarea value={oneOffText} onChange={e=>setOneOffText(e.target.value)}
+                    placeholder="e.g. Car service £380, flight to Lisbon £220… (or leave blank to skip)"
+                    rows={4}
+                    style={{width:"100%",boxSizing:"border-box",padding:"12px 14px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:10,color:"var(--text)",fontSize:13,resize:"none",fontFamily:"inherit",lineHeight:1.55,outline:"none",marginBottom:20,transition:"border-color 0.2s"}}
+                    onFocus={e=>e.target.style.borderColor="#6366f1"}
+                    onBlur={e=>e.target.style.borderColor=""}/>
+                  <div style={{display:"flex",gap:10,marginTop:"auto"}}>
+                    <button onClick={()=>goNextStep(3)}
+                      style={{padding:"11px 28px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 14px rgba(99,102,241,0.35)"}}>
+                      Next →
+                    </button>
+                    <button onClick={()=>{setOneOffText("");goNextStep(3);}}
+                      style={{padding:"11px 18px",background:"none",border:"1px solid var(--snap-border)",color:"var(--text3)",borderRadius:9,fontSize:13,cursor:"pointer"}}>
+                      Nothing unusual
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {wizStep===3&&(
+                <>
+                  <h2 style={{fontSize:isMobile?19:23,fontWeight:800,color:"var(--text)",margin:"0 0 8px",letterSpacing:"-0.025em",lineHeight:1.2}}>
+                    What's your financial goal?
+                  </h2>
+                  <p style={{fontSize:13,color:"var(--text2)",margin:"0 0 18px",lineHeight:1.65,maxWidth:480}}>
+                    Pick one or more — this shapes the advice and priorities in your analysis.
+                  </p>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:9,marginBottom:24}}>
+                    {GOALS.map(g=>{
+                      const sel=goals.has(g);
+                      return(
+                        <button key={g} onClick={()=>toggleGoal(g)}
+                          style={{padding:"9px 16px",border:`1.5px solid ${sel?"#6366f1":"rgba(99,102,241,0.2)"}`,borderRadius:22,background:sel?"rgba(99,102,241,0.14)":"var(--card)",color:sel?"#a5b4fc":"var(--text3)",fontSize:12,fontWeight:sel?700:400,cursor:"pointer",transition:"all 0.18s",display:"flex",alignItems:"center",gap:6}}>
+                          {sel&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2.5 6l2.5 2.5L9.5 3.5" stroke="#a5b4fc" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          {g}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{marginTop:"auto"}}>
+                    <button onClick={startChat}
+                      style={{padding:"11px 28px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:9,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 14px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:8}}>
+                      <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" fill="#fff" stroke="#fff" strokeWidth="0.5" strokeLinejoin="round"/></svg>
+                      Get my analysis
+                    </button>
+                    {goals.size===0&&<p style={{margin:"10px 0 0",fontSize:11,color:"var(--text3)"}}>No goal selected — you can skip and explore with AI</p>}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+
+      {wizStep==="chat"&&(
+        <>
+          <div style={{flexShrink:0,background:"var(--snapshot-bg)",borderBottom:"1px solid var(--snap-border)",padding:"10px 20px"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:22,height:22,borderRadius:6,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <span style={{fontSize:10,color:"#fff",fontWeight:800}}>✦</span>
+                </div>
+                <span style={{fontSize:11,fontWeight:700,color:"#818cf8",letterSpacing:"0.04em"}}>AI INSIGHTS</span>
               </div>
-              {pressureWk&&(
-                <div style={{borderTop:"1px solid var(--snap-border)",paddingTop:10,fontSize:12}}>
-                  <span style={{color:"var(--text3)"}}>Your highest spend week was </span>
-                  <strong>w/c {fmtD(pressureWk.date)}</strong>
-                  <span style={{color:"var(--text3)"}}> — </span>
-                  <strong style={{color:"#f87171"}}>{currSym}{pressureWk.spend.toLocaleString()}</strong>
-                  <span style={{color:"var(--text3)"}}> went out, driven by </span>
-                  {pressureWk.cats.map((c,i)=>(
-                    <span key={c.cat}>{i>0?<span style={{color:"var(--text3)"}}>, </span>:null}<strong>{c.cat}</strong><span style={{color:"var(--text3)"}}> ({currSym}{c.amount})</span></span>
+              <div style={{display:"flex",alignItems:"center",gap:5}}>
+                <span style={{fontSize:10,color:"var(--text3)"}}>Low point:</span>
+                <span style={{fontSize:10,fontWeight:700,color:goesNeg?"#f87171":"#fbbf24"}}>
+                  {goesNeg?`-${currSym}${Math.abs(lowVal).toLocaleString()}`:`${currSym}${lowVal.toLocaleString()}`} w/c {lowDateShort}
+                </span>
+              </div>
+              {goals.size>0&&(
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                  {[...goals].map(g=>(
+                    <span key={g} style={{fontSize:9,padding:"2px 7px",background:"rgba(99,102,241,0.1)",border:"1px solid rgba(99,102,241,0.22)",borderRadius:20,color:"#818cf8",fontWeight:600}}>
+                      {g}
+                    </span>
                   ))}
-                  <span style={{color:"var(--text3)"}}>.</span>
                 </div>
               )}
-            </AiBubble>
-            <div style={{paddingTop:4}}>
-              <button onClick={()=>setPhase("oneoffs")} style={{padding:"10px 22px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                Next: any one-off costs? →
+              <button onClick={restart} style={{marginLeft:"auto",fontSize:10,color:"var(--text3)",background:"none",border:"none",cursor:"pointer",display:"flex",alignItems:"center",gap:3,flexShrink:0,padding:"3px 6px",borderRadius:5}}>
+                ↩ Start over
               </button>
             </div>
-          </>
-        )}
+          </div>
 
-        {/* Phase 2 — One-offs */}
-        {phase==="oneoffs"&&(
-          <>
-            <AiBubble>
-              <div style={{marginBottom:6,fontWeight:600}}>Were any of those costs one-offs?</div>
-              <div style={{color:"var(--text3)"}}>e.g. a car repair, annual subscription, holiday, or a big gift — things that won't repeat next month. If so, your regular spending is actually lower than it looks.</div>
-            </AiBubble>
-            <textarea value={oneOffText} onChange={e=>setOneOffText(e.target.value)}
-              placeholder="Describe any one-offs… (optional)"
-              rows={3}
-              style={{width:"100%",boxSizing:"border-box",padding:"10px 12px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,resize:"none",fontFamily:"inherit",lineHeight:1.5,outline:"none",marginBottom:14}}/>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setPhase("goals")} style={{padding:"9px 20px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                Next: your goals →
-              </button>
-              <button onClick={()=>{setOneOffText("");setPhase("goals");}} style={{padding:"9px 14px",background:"none",border:"1px solid var(--snap-border)",color:"var(--text3)",borderRadius:8,fontSize:12,cursor:"pointer"}}>
-                Skip
-              </button>
-            </div>
-          </>
-        )}
-
-        {/* Phase 3 — Goals */}
-        {phase==="goals"&&(
-          <>
-            <AiBubble>
-              <div>What's your main financial goal right now? Pick one or more — this helps me focus my analysis.</div>
-            </AiBubble>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:22}}>
-              {GOALS.map(g=>{
-                const sel=goals.has(g);
-                return(
-                  <button key={g} onClick={()=>toggleGoal(g)}
-                    style={{padding:"8px 15px",border:`1px solid ${sel?"#6366f1":"var(--snap-border)"}`,borderRadius:20,background:sel?"rgba(99,102,241,0.15)":"var(--card)",color:sel?"#a5b4fc":"var(--text3)",fontSize:12,fontWeight:sel?600:400,cursor:"pointer",transition:"all 0.15s"}}>
-                    {g}
-                  </button>
-                );
-              })}
-            </div>
-            <div>
-              <button onClick={startChat} style={{padding:"10px 22px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>
-                Analyse my finances →
-              </button>
-              {goals.size===0&&<div style={{marginTop:8,fontSize:11,color:"var(--text3)"}}>or skip goal selection and hit Analyse</div>}
-            </div>
-          </>
-        )}
-
-        {/* Phase 4 — Chat */}
-        {phase==="chat"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:14,flex:1}}>
-            {generating&&typingDots}
+          <div style={{flex:1,overflowY:"auto",padding:isMobile?"16px 14px":"20px 24px",display:"flex",flexDirection:"column",gap:14}}>
+            {initLoading&&<TypingDots/>}
             {chatDisplay.map((msg,i)=>(
-              <div key={i} style={{display:"flex",gap:10,justifyContent:msg.role==="user"?"flex-end":"flex-start"}}>
+              <div key={i} style={{display:"flex",gap:10,justifyContent:msg.role==="user"?"flex-end":"flex-start",animation:"insightFadeIn 0.3s ease both"}}>
                 {msg.role==="assistant"&&(
-                  <div style={{width:28,height:28,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}>
+                  <div style={{width:30,height:30,borderRadius:8,background:"linear-gradient(135deg,#6366f1,#4f46e5)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:2}}>
                     <span style={{fontSize:11,color:"#fff",fontWeight:800}}>✦</span>
                   </div>
                 )}
-                <div style={{maxWidth:"78%",padding:"10px 13px",borderRadius:msg.role==="user"?"10px 10px 2px 10px":"4px 12px 12px 12px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"var(--card)",border:msg.role==="user"?"none":"1px solid var(--snap-border)",fontSize:12,color:msg.role==="user"?"#fff":"var(--text)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>
+                <div style={{maxWidth:"80%",padding:"11px 14px",borderRadius:msg.role==="user"?"11px 11px 2px 11px":"4px 11px 11px 11px",background:msg.role==="user"?"linear-gradient(135deg,#6366f1,#4f46e5)":"var(--card)",border:msg.role==="user"?"none":"1px solid var(--snap-border)",fontSize:12,color:msg.role==="user"?"#fff":"var(--text)",lineHeight:1.7,whiteSpace:"pre-wrap"}}>
                   {msg.content}
                 </div>
               </div>
             ))}
-            {chatLoading&&typingDots}
+            {chatLoading&&<TypingDots/>}
             <div ref={chatEndRef}/>
           </div>
-        )}
-      </div>
 
-      {/* Chat input */}
-      {phase==="chat"&&!generating&&(
-        <div style={{flexShrink:0,padding:"10px 12px",borderTop:"1px solid var(--snap-border)",background:"var(--snapshot-bg)",display:"flex",gap:6,alignItems:"flex-end"}}>
-          <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
-            onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
-            placeholder={isPro||chatApiHistory.length<=2?"Ask a follow-up… (Enter to send)":"Upgrade to Premium to continue the conversation"}
-            rows={2}
-            style={{flex:1,padding:"7px 10px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:7,color:"var(--text)",fontSize:12,resize:"none",fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
-          <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading}
-            style={{padding:"0 14px",height:52,background:chatInput.trim()?"linear-gradient(135deg,#6366f1,#4f46e5)":"rgba(99,102,241,0.12)",color:chatInput.trim()?"#fff":"#4b5563",border:"none",borderRadius:7,fontSize:15,fontWeight:700,cursor:chatInput.trim()?"pointer":"not-allowed",flexShrink:0}}>
-            ↑
-          </button>
-        </div>
+          <div style={{flexShrink:0,padding:"10px 12px",borderTop:"1px solid var(--snap-border)",background:"var(--snapshot-bg)"}}>
+            {(!isPro&&chatApiHistory.length>2)?(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"8px 0"}}>
+                <span style={{fontSize:12,color:"var(--text3)"}}>You've reached the free chat limit</span>
+                <button onClick={()=>setShowPremiumGate(true)}
+                  style={{padding:"8px 22px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  Upgrade to continue chatting
+                </button>
+              </div>
+            ):(
+              <div style={{display:"flex",gap:6,alignItems:"flex-end"}}>
+                <textarea value={chatInput} onChange={e=>setChatInput(e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&chatInput.trim()){e.preventDefault();sendChat(chatInput);}}}
+                  placeholder="Ask a follow-up… (Enter to send)"
+                  rows={2}
+                  disabled={initLoading}
+                  style={{flex:1,padding:"8px 11px",background:"var(--input-bg)",border:"1px solid var(--border2)",borderRadius:8,color:"var(--text)",fontSize:12,resize:"none",fontFamily:"inherit",lineHeight:1.45,outline:"none",transition:"border-color 0.2s",opacity:initLoading?0.4:1}}
+                  onFocus={e=>e.target.style.borderColor="#6366f1"}
+                  onBlur={e=>e.target.style.borderColor=""}/>
+                <button onClick={()=>sendChat(chatInput)} disabled={!chatInput.trim()||chatLoading||initLoading}
+                  style={{padding:"0 15px",height:54,background:chatInput.trim()&&!initLoading?"linear-gradient(135deg,#6366f1,#4f46e5)":"rgba(99,102,241,0.1)",color:chatInput.trim()&&!initLoading?"#fff":"#4b5563",border:"none",borderRadius:8,fontSize:16,fontWeight:700,cursor:chatInput.trim()&&!initLoading?"pointer":"not-allowed",flexShrink:0,transition:"all 0.2s"}}>
+                  ↑
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}

@@ -3620,10 +3620,12 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     if(!els.length) return null;
     let top=Infinity, left=Infinity, right=-Infinity, bottom=-Infinity;
     els.forEach(el=>{const r=el.getBoundingClientRect();top=Math.min(top,r.top);left=Math.min(left,r.left);right=Math.max(right,r.right);bottom=Math.max(bottom,r.bottom);});
-    // For column highlights (actual/forecast), extend down only to the cash balance row
+    // For column highlights (actual/forecast), span from Cash Balance (top) to last data row (bottom)
     if(currentStep.highlight==="actual"||currentStep.highlight==="forecast"){
       const cashBalEl=document.querySelector("[data-tour='cashbalance']");
-      if(cashBalEl){const cr=cashBalEl.getBoundingClientRect();bottom=cr.bottom;}
+      if(cashBalEl){const cr=cashBalEl.getBoundingClientRect(); top=Math.min(top,cr.top);}
+      const rows=document.querySelectorAll("tbody tr");
+      if(rows.length){const lr=rows[rows.length-1].getBoundingClientRect(); bottom=Math.max(bottom,lr.bottom);}
     }
     return {top:top-6, left:left-6, width:right-left+12, height:bottom-top+12};
   };

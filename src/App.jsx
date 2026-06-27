@@ -3824,6 +3824,10 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   },[]);// eslint-disable-line react-hooks/exhaustive-deps
 
   const accounts = useMemo(()=>{const seen=new Set(),list=[];transactions.forEach(t=>{if(!seen.has(t.account)){seen.add(t.account);list.push(t.account);}});list.sort((a,b)=>a==="Main Account"?-1:b==="Main Account"?1:0);return list;},[transactions]);
+  const singleAccount = accounts.length === 1;
+  const netMovementTip = singleAccount
+    ? "Income minus all spending including card repayments."
+    : "Income minus spending. Card repayments excluded to avoid double-counting across accounts.";
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
   const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
   const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:12},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
@@ -4040,7 +4044,7 @@ function getLastWorkingDay(year, month) {
   const incomeFcstTotalByWeek=useMemo(()=>incomeByFcstWeek.map(pills=>pills.filter(p=>!p.isGhost).reduce((s,p)=>s+(p.ev.receivedAmount??p.ev.amount),0)),[incomeByFcstWeek]);
   const overdueBanners=useMemo(()=>{const t=new Date();t.setHours(0,0,0,0);return incomeEvents.filter(ev=>ev.status==='expected'&&ev.expectedDate&&ev.expectedDate<t&&(!ev.dismissedUntil||Date.now()>ev.dismissedUntil));},[incomeEvents]);
 
-  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Salary"&&c!=="Card Repayment"&&c!=="Investments");
+  const spendCats=categories.filter(c=>c!=="Income"&&c!=="Salary"&&(singleAccount||c!=="Card Repayment")&&c!=="Investments");
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
 
@@ -4105,7 +4109,7 @@ function getLastWorkingDay(year, month) {
     }
 
     // 2. Biggest spend category with weekly breakdown
-    const top=Object.entries(totals).filter(([c])=>c!=="Income"&&c!=="Card Repayment").sort((a,b)=>b[1]-a[1])[0];
+    const top=Object.entries(totals).filter(([c])=>c!=="Income"&&(singleAccount||c!=="Card Repayment")).sort((a,b)=>b[1]-a[1])[0];
     if(top){
       const weeklyAvg=Math.round(totals[top[0]]/Math.max(actualWeeks.length,1));
       tips.push({icon:"chart",color:PURPLE,title:`Top spend: ${top[0]}`,body:`£${weeklyAvg.toLocaleString()}/wk avg · £${Math.round(top[1]).toLocaleString()} total.`,detail:`${top[0]} is your biggest spending category at £${Math.round(top[1]).toLocaleString()} over ${actualWeeks.length} weeks — £${weeklyAvg.toLocaleString()} per week on average. Your forecast adds another £${Math.round((forecastData[accounts[0]]?.[top[0]]||[]).reduce((a,b)=>a+b,0)).toLocaleString()} over the next 6 weeks.`,trend:null});
@@ -4113,7 +4117,7 @@ function getLastWorkingDay(year, month) {
 
     // 3. Spending spikes
     categories.forEach(cat=>{
-      if(cat==="Income"||cat==="Card Repayment")return;
+      if(cat==="Income"||(cat==="Card Repayment"&&!singleAccount))return;
       const vals=weeklyTotals[cat]||[];
       const avg=rollingAvg(vals),last=vals[vals.length-1];
       if(avg>0&&last>avg*1.6)tips.push({icon:"warn",color:"#f59e0b",title:`${cat} up ${Math.round((last/avg-1)*100)}% last week`,body:`£${Math.round(last).toLocaleString()} vs £${Math.round(avg).toLocaleString()} avg.`,detail:`Your ${cat} spending last week was £${Math.round(last).toLocaleString()}, which is ${Math.round((last/avg-1)*100)}% above your usual weekly average of £${Math.round(avg).toLocaleString()}. This could be a one-off or a new recurring cost — worth checking.`,trend:"warn"});
@@ -4348,7 +4352,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       const totalForecast=(forecastData[account]?.[cat]||[]).reduce((s,v)=>s+(v||0),0);
       return totalActual>=5||totalForecast>=5;
     });
-    const netSpendCats=spendCatsLocal.filter(c=>c!=="Card Repayment");
+    const netSpendCats=singleAccount?spendCatsLocal:spendCatsLocal.filter(c=>c!=="Card Repayment");
     const accActuals=actualWeeks.map(w=>netSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0));
     const accForecasts=forecastWeeks.map((_,i)=>netSpendCats.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
     const incomeCatList=isMainAcc?["Income"]:["Card Repayment"];
@@ -4434,7 +4438,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:T.summaryRow}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:netMovementTip,x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
@@ -4504,7 +4508,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;
     });
-    const netSpendCats=spendCats.filter(c=>c!=="Card Repayment");
+    const netSpendCats=singleAccount?spendCats:spendCats.filter(c=>c!=="Card Repayment");
     const accActuals=actualWeeks.map(w=>netSpendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
     const accForecasts=forecastWeeks.map((_,i)=>netSpendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
     const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0)));
@@ -4543,7 +4547,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:T.summaryRow}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Net Movement"],x:r.left,y:r.bottom+6});}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:netMovementTip,x:r.left,y:r.bottom+6});}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
@@ -5244,7 +5248,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const lastActual = combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
           const forecastEnd = combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
           const topSpendCat = categories
-            .filter(c=>c!=="Income"&&c!=="Card Repayment")
+            .filter(c=>c!=="Income"&&(singleAccount||c!=="Card Repayment"))
             .map(c=>({c, total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)}))
             .sort((a,b)=>b.total-a.total)[0];
           const weeklyTopSpend = topSpendCat ? Math.round(topSpendCat.total / Math.max(actualWeeks.length,1)) : 0;
@@ -5409,7 +5413,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         const panelTitle=day<21?`Budget — rest of ${bMonthName}`:`Budget — ${bMonthName}`;
         const bActWeeks=actualWeeks.filter(w=>w.date.getMonth()===bMonth&&w.date.getFullYear()===bYear);
         const bFcstIdxs=forecastWeeks.reduce((arr,w,i)=>{if(w.date.getMonth()===bMonth&&w.date.getFullYear()===bYear)arr.push(i);return arr;},[]);
-        const spendCats=categories.filter(c=>c!=="Income").filter(cat=>{
+        const spendCats=categories.filter(c=>c!=="Income"&&(singleAccount||c!=="Card Repayment")).filter(cat=>{
           const ta=actualWeeks.reduce((s,w)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0);
           const tf=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
           return ta>=5||tf>=5;

@@ -13,7 +13,8 @@
       "PowerShell(git -C \"c:\\\\Users\\\\Lenovo\\\\Desktop\\\\Abound\" commit -m \"feat: replace Salary row with Income Events system`n`nprojectIncomeEvents\\(\\) bins events into forecast week columns with recurrence.`nPills: indigo=expected, green=received, ghost=late arrival.`nReconciliation banner for overdue events. Add/edit overlay form.`nNet Movement + Cash Balance driven by income events forecast.`n`nCo-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>\")",
       "Bash(npx tsc *)",
       "Bash(git stash *)",
-      "Bash(git apply *)"
+      "Bash(git apply *)",
+      "Bash(git checkout *)"
     ],
     "additionalDirectories": [
       "c:\\Users\\Lenovo\\Desktop\\Abound\\api",

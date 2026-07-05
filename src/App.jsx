@@ -393,7 +393,7 @@ function readExcelFile(file) {
         const allRows = XLSX.utils.sheet_to_json(sheet, {header:1, defval:"", raw:true});
         const dateRx = /\bdate\b/i;
         const descRx = /\b(description|narrative|details|merchant|payee|reference|transaction.?desc)\b/i;
-        const amtRx  = /\b(amount|debit|credit|value)\b/i;
+        const amtRx  = /\b(amount|debit|credit|value|trans)\b/i;
         let headerRowIndex = -1;
         let dateKey, descKey, amtKey;
         for (let i = 0; i < Math.min(allRows.length, 20); i++) {

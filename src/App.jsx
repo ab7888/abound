@@ -3415,13 +3415,23 @@ function AnimatedCursor({targetSelector, offsetX=0, offsetY=0}) {
      if(!el) return;
       const r = el.getBoundingClientRect();
       if(r.width===0||r.height===0) return;
-      setCellRect({left:r.left, top:r.top, width:r.width, height:r.height});
-      setPos({x: r.left + r.width*0.5 - 4, y: r.top + r.height*0.5 - 4});
+      const vv=window.visualViewport;
+      const vvX=vv?vv.offsetLeft:0, vvY=vv?vv.offsetTop:0;
+      setCellRect({left:r.left+vvX, top:r.top+vvY, width:r.width, height:r.height});
+      setPos({x: r.left+vvX + r.width*0.5 - 4, y: r.top+vvY + r.height*0.5 - 4});
     }
     measure();
     const t = setTimeout(measure, 600);
     window.addEventListener("resize", measure);
-    return ()=>{ clearTimeout(t); window.removeEventListener("resize", measure); };
+    window.addEventListener("orientationchange", measure);
+    const vv=window.visualViewport;
+    if(vv){vv.addEventListener('resize',measure);vv.addEventListener('scroll',measure);}
+    return ()=>{
+      clearTimeout(t);
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("orientationchange", measure);
+      if(vv){vv.removeEventListener('resize',measure);vv.removeEventListener('scroll',measure);}
+    };
   },[targetSelector]);
 
   useEffect(()=>{
@@ -3526,6 +3536,7 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [tourVisible, setTourVisible] = useState(false);
   const [investigationOpen, setInvestigationOpen] = useState(false);
   const [tourHighlightTick, setTourHighlightTick] = useState(0);
+  const [tourHighlightRect, setTourHighlightRect] = useState(null);
   const [showStocksTooltip, setShowStocksTooltip] = useState(false);
   const [tooltip, setTooltip] = useState(null);
   const tooltipTimer = useRef(null);
@@ -3800,8 +3811,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     {title:"Plan a purchase",body:"Click any forecast cell to add a one-off expense — holiday, phone, car repair. It instantly adjusts your future cash balance.",cta:"Next →",highlight:null,cursorTarget:"forecast-cell"},
     {title:"Cash Balance",body:"Your predicted end-of-week cash across all accounts.\n\nGreen = healthy. Red = heading negative.",cta:"Next →",highlight:"cashbalance",scrollTo:"cashbalance"},
     {title:"Set a budget",body:"Open the Budget panel to set monthly spending targets per category. See projected vs actual and apply targets to your forecast.",cta:"Next →",highlight:"budget",scrollTo:null},
-    ...(!isMobile?[{title:"Check your categories",body:"AI is good but not perfect. A quick review makes your forecast dramatically more accurate.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null}]:[]),
-    ...(!isMobile?[{title:"Grouped or split by card?",body:"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"}]:[{title:"That's your cash flow",body:"Swipe left for forecast weeks. Tap any number to explore.\n\nUse the sidebar to go to Insights or Review.",cta:"Got it →",skip:null,isFinal:true,highlight:null}]),
+    {title:"Check your categories",body:"AI is good but not perfect. A quick review makes your forecast dramatically more accurate.",cta:"Next →",skip:null,isReviewPrompt:true,highlight:null},
+    {title:"Grouped or split by card?",body:isMobile?"All accounts are combined by default. Tap the Grouped toggle on the right edge to split by card.":"All accounts are combined by default. Use the toggle above the table to split by card.",cta:"Got it →",skip:null,isFinal:true,highlight:"view-toggle"},
   ];
 
   const getHighlightRect = () => {
@@ -3817,9 +3828,33 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
       const rows=document.querySelectorAll("tbody tr");
       if(rows.length){const lr=rows[rows.length-1].getBoundingClientRect(); bottom=Math.max(bottom,lr.bottom);}
     }
-    return {top:top-6, left:left-6, width:right-left+12, height:bottom-top+12};
+    // Offset by visualViewport to compensate for URL bar shifting fixed-position coords
+    const vv=window.visualViewport;
+    const vvX=vv?vv.offsetLeft:0, vvY=vv?vv.offsetTop:0;
+    return {top:top-6+vvY, left:left-6+vvX, width:right-left+12, height:bottom-top+12};
   };
-  
+
+  // Live-update tourHighlightRect on visualViewport and scroll events (fixes Safari URL-bar offset)
+  useEffect(()=>{
+    if(!tourVisible||!currentStep?.highlight){setTourHighlightRect(null);return;}
+    let tid;
+    const schedule=()=>{clearTimeout(tid);tid=setTimeout(()=>setTourHighlightRect(getHighlightRect()),100);};
+    setTourHighlightRect(getHighlightRect());
+    const vv=window.visualViewport;
+    if(vv){vv.addEventListener('resize',schedule);vv.addEventListener('scroll',schedule);}
+    window.addEventListener('orientationchange',schedule);
+    const tableDiv=document.querySelector('[data-tour-table]');
+    if(tableDiv)tableDiv.addEventListener('scroll',schedule);
+    return()=>{
+      clearTimeout(tid);
+      if(vv){vv.removeEventListener('resize',schedule);vv.removeEventListener('scroll',schedule);}
+      window.removeEventListener('orientationchange',schedule);
+      if(tableDiv)tableDiv.removeEventListener('scroll',schedule);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tourStep,tourVisible,tourHighlightTick]);
+
+
 
   function finishTour(){
     localStorage.setItem("cashFlowTourSeen_v2","1");
@@ -4822,7 +4857,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {/* Tour spotlight overlay */}
       {tourVisible&&currentStep&&(()=>{
         void tourHighlightTick;
-        const hr=getHighlightRect();
+        const hr=tourHighlightRect;
         return(
           <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
             {/* Only show spotlight overlay on desktop — on mobile it blocks scroll */}
@@ -4905,7 +4940,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
 
      {/* Main table area */}
-      <div style={{flex:1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"8px 0 0":"20px 24px",background:"transparent",transition:"background 0.25s",zoom:isMobile?"0.6":undefined,position:"relative",zIndex:1}}>
+      <div style={{flex:isMobile?"none":1,overflow:"auto",display:isMobile?"block":"flex",flexDirection:"column",padding:isMobile?"8px 0 0":"20px 24px",background:"transparent",transition:"background 0.25s",position:"relative",zIndex:1,...(isMobile?{transform:"scale(0.6)",transformOrigin:"top left",width:"calc(100% / 0.6)",height:"calc(100% / 0.6)"}:{})}}>
         {(()=>{
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
@@ -5633,7 +5668,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {isMobile&&(
         <div style={{position:'fixed',right:0,top:'50%',transform:'translateY(-50%)',zIndex:810,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
           {/* Review */}
-          <button onClick={onGoToReview} data-tour='view-toggle'
+          <button onClick={onGoToReview}
             style={{position:'relative',background:'linear-gradient(180deg,#6366f1,#4f46e5)',color:'#fff',border:'none',borderRadius:'8px 0 0 8px',padding:'13px 8px',fontSize:10,fontWeight:800,cursor:'pointer',letterSpacing:'0.07em',boxShadow:'-3px 0 14px rgba(99,102,241,0.45)',writingMode:'vertical-rl'}}>
             {showReviewPrompt&&<span style={{position:'absolute',top:6,right:6,width:7,height:7,borderRadius:'50%',background:'#ef4444',flexShrink:0,display:'block'}}/>}
             Review
@@ -5644,7 +5679,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             Insights
           </button>
           {/* Grouped toggle */}
-          <button onClick={()=>setSplitByCard(s=>!s)}
+          <button onClick={()=>setSplitByCard(s=>!s)} data-tour='view-toggle'
             style={{background:'rgba(30,27,56,0.95)',border:'1px solid rgba(99,102,241,0.2)',borderRight:'none',borderRadius:'8px 0 0 8px',padding:'8px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:4,boxShadow:'-2px 0 8px rgba(0,0,0,0.3)',cursor:'pointer'}}>
             <span style={{fontSize:8,color:'#6b7280',fontWeight:600,writingMode:'vertical-rl',letterSpacing:'0.06em',lineHeight:1}}>{splitByCard?'By card':'Grouped'}</span>
             <div style={{position:'relative',width:20,height:11,borderRadius:6,background:splitByCard?'#6366f1':'#374151',transition:'background 0.2s',flexShrink:0}}>

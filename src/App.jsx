@@ -2303,132 +2303,180 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
   function onTouchMove(e){if(touchStartX.current===null)return;const dx=e.touches[0].clientX-touchStartX.current,dy=e.touches[0].clientY-touchStartY.current;if(Math.abs(dy)>Math.abs(dx)+10)return;e.preventDefault();setSwipeOffset(dx);if(dx>SWIPE_THRESHOLD&&visibleMobileCats[0])setSwipeTarget(visibleMobileCats[0]);else if(dx<-SWIPE_THRESHOLD&&visibleMobileCats[1])setSwipeTarget(visibleMobileCats[1]);else setSwipeTarget(null);}
   function onTouchEnd(){if(touchStartX.current===null)return;const topItem=unsorted[0];if(topItem&&swipeTarget)assignItem(topItem.narrative,swipeTarget);else{setSwipeOffset(0);setSwipeTarget(null);}touchStartX.current=null;touchStartY.current=null;}
   function getBucketIcon(cat, color, size=22){return <CatIcon cat={cat} size={size} color={color}/>;}
-  const DesktopSort=()=>(
-    <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
-      <div style={{width:280,flexShrink:0,background:"#0a0818",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{padding:"16px 16px 12px",borderBottom:"1px solid #1f1d35",flexShrink:0}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5,marginBottom:2}}>TO SORT</div>
-          <div style={{fontSize:22,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
-          {continueSince&&<div style={{fontSize:10,color:"#6366f1",marginTop:4,fontWeight:600}}>New since {new Date(continueSince).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>}
+  const [flyNarrative,setFlyNarrative]=useState(null);
+  const [pulsingCat,setPulsingCat]=useState(null);
+  function triggerAssign(narrative,cat){if(flyNarrative)return;setFlyNarrative(narrative);setTimeout(()=>{assignItem(narrative,cat);setFlyNarrative(null);setPulsingCat(cat);setTimeout(()=>setPulsingCat(null),600);},350);}
+  useEffect(()=>{const handler=e=>{if(isMobileView||flyNarrative)return;if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA')return;if(e.ctrlKey||e.metaKey||e.altKey)return;const idx=e.key>='1'&&e.key<='9'?parseInt(e.key)-1:e.key==='0'?9:-1;const top=unsorted[0];if(idx>=0&&idx<allBuckets.length&&top)triggerAssign(top.narrative,allBuckets[idx]);};window.addEventListener('keydown',handler);return()=>window.removeEventListener('keydown',handler);},[unsorted,allBuckets,flyNarrative,isMobileView]);
+  const DesktopSort=()=>{
+    const sym=getCurrencySymbol();
+    const topItem=unsorted[0];
+    const dotBg=`url("data:image/svg+xml,%3Csvg width='20' height='20' viewBox='0 0 20 20' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1' cy='1' r='0.8' fill='rgba(99%2C102%2C241%2C0.12)'/%3E%3C/svg%3E")`;
+    if(unsorted.length===0){
+      return(
+        <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",background:"#08070f",position:"relative"}}>
+          <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 600px 400px at 50% 50%, rgba(99,102,241,0.10), transparent)",pointerEvents:"none"}}/>
+          <div style={{textAlign:"center",position:"relative",zIndex:1}}>
+            <div style={{width:180,margin:"0 auto 24px",opacity:0.85}}><IllustrationSortBlocks/></div>
+            <div style={{fontSize:22,fontWeight:800,color:"#fff",marginBottom:10}}>All sorted!</div>
+            <div style={{fontSize:13,color:"#6b7280",marginBottom:28}}>Your cash flow is ready to view.</div>
+            <button onClick={handleConfirm} style={{padding:"12px 32px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:12,fontSize:15,fontWeight:700,cursor:"pointer",boxShadow:"0 0 32px rgba(99,102,241,0.4)"}}>View Cash Flow →</button>
+          </div>
         </div>
-        <div style={{flex:1,padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:6,overflowY:"auto"}}>
-          {unsorted.length===0&&(
-            <div style={{textAlign:"center",padding:"32px 20px"}}>
-              <div style={{width:150,margin:"0 auto 16px",opacity:0.78}}>
-                <IllustrationSortBlocks/>
+      );
+    }
+    return(
+      <div style={{flex:1,display:"flex",minHeight:0,overflow:"hidden"}}>
+        <div style={{width:240,flexShrink:0,background:"#0a0818",borderRight:"1px solid #1f1d35",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+          <div style={{padding:"16px 16px 12px",borderBottom:"1px solid #1f1d35",flexShrink:0}}>
+            <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5,marginBottom:2}}>TO SORT</div>
+            <div style={{fontSize:22,fontWeight:800,color:"#fff",fontVariantNumeric:"tabular-nums"}}>{unsorted.length} <span style={{fontSize:13,fontWeight:400,color:"#4b5563"}}>remaining</span></div>
+            {continueSince&&<div style={{fontSize:10,color:"#6366f1",marginTop:4,fontWeight:600}}>New since {new Date(continueSince).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</div>}
+          </div>
+          <div style={{flex:1,padding:"12px 12px 8px",display:"flex",flexDirection:"column",gap:4,overflowY:"auto"}}>
+            <div style={{fontSize:9,fontWeight:700,color:"#374151",letterSpacing:1.2,marginBottom:4}}>UP NEXT</div>
+            {unsorted.slice(1,7).map((item,idx)=>(
+              <div key={item.narrative} style={{padding:"6px 10px",borderRadius:8,background:"rgba(255,255,255,0.02)",border:"1px solid #1f1d35",opacity:1-(idx*0.15)}}>
+                <div style={{fontSize:11,color:"#6b7280",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                <div style={{fontSize:10,color:"#374151",marginTop:1,fontVariantNumeric:"tabular-nums"}}>{sym}{Math.abs(Math.round(item.total)).toLocaleString()}</div>
               </div>
-              <div style={{fontSize:15,fontWeight:700,color:"#fff",marginBottom:8}}>All sorted!</div>
-              <div style={{fontSize:12,color:"#4b5563",marginBottom:20}}>Your cash flow is ready.</div>
-              <button onClick={handleConfirm} style={{padding:"10px 24px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>View Cash Flow →</button>
+            ))}
+            {unsorted.length>8&&<div style={{fontSize:10,color:"#374151",textAlign:"center",padding:"4px 0"}}>+{unsorted.length-7} more</div>}
+          </div>
+          {(sorted.length>0||skipped.length>0)&&(
+            <div style={{borderTop:"1px solid #1f1d35",padding:"10px 12px",maxHeight:200,overflowY:"auto",flexShrink:0}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:6}}>SORTED ✓</div>
+              {[...sorted,...skipped].slice(-8).map(item=>(
+                <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:"1px solid #1a1830"}}>
+                  <div style={{width:6,height:6,borderRadius:"50%",background:item.category==="Skip"?"#374151":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
+                  <div style={{flex:1,fontSize:10,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
+                  <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:9,color:"#374151",border:"none",background:"none",cursor:"pointer",padding:"1px 4px",flexShrink:0}}>undo</button>
+                </div>
+              ))}
             </div>
           )}
-          {visible.map((item,idx)=>{
-            const isTop=idx===0;
-            return(
-              <div key={item.narrative} draggable={isTop} onDragStart={e=>{dragRef.current=item.narrative;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',item.narrative);}} onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
-                style={{background:isTop?"linear-gradient(135deg,#1e1b38,#2d2a52)":"rgba(20,18,42,0.6)",border:`1px solid ${isTop?"#4338ca":"#1f1d35"}`,borderRadius:12,padding:isTop?"14px 14px 12px":"8px 14px",cursor:isTop?"grab":"default",opacity:isTop?1:0.5-(idx*0.08),transform:`scale(${1-idx*0.01})`,transformOrigin:"top center",userSelect:"none",flexShrink:0,boxShadow:isTop?"0 4px 20px rgba(0,0,0,0.4)":"none",transition:"opacity 0.2s"}}>
-                {isTop&&<div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:1,marginBottom:6}}>DRAG TO SORT ↗</div>}
-                <div style={{fontSize:isTop?13:11,fontWeight:isTop?600:400,color:isTop?"#e0e7ff":"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-                {isTop&&(
-                  <div style={{display:"flex",alignItems:"center",gap:8,marginTop:8,paddingTop:8,borderTop:"1px solid #2d2a6e"}}>
-                    <span style={{fontSize:18,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(item.total).toLocaleString()}</span>
-                    <span style={{fontSize:11,color:"#4b5563"}}>{item.count} occurrence{item.count>1?"s":""}</span>
+        </div>
+        <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",background:"#08070f",backgroundImage:dotBg,position:"relative"}}>
+          <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse 700px 500px at 50% 42%, rgba(99,102,241,0.07), transparent)",pointerEvents:"none",zIndex:0}}/>
+          <div style={{padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:10,flexShrink:0,position:"relative",zIndex:2}}>
+            <button onClick={undoLast} disabled={!undoHistory.length} title="Undo last (Ctrl+Z)" style={{padding:"5px 12px",background:undoHistory.length?"rgba(99,102,241,0.10)":"rgba(255,255,255,0.03)",border:`1px solid ${undoHistory.length?"#4338ca":"#2d2a6e"}`,borderRadius:7,color:undoHistory.length?"#818cf8":"#374151",fontSize:11,fontWeight:700,cursor:undoHistory.length?"pointer":"default",display:"flex",alignItems:"center",gap:5,transition:"all 0.2s"}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
+              Undo
+            </button>
+            {showAddCat?(
+              <div style={{display:"flex",gap:6}}>
+                <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>
+                <button onClick={addCategory} style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>Add</button>
+                <button onClick={()=>setShowAddCat(false)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
+              </div>
+            ):(
+              <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
+            )}
+          </div>
+          <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative",zIndex:1}}>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16}}>
+              <div style={{position:"relative",width:480}}>
+                {unsorted.length>2&&<div style={{position:"absolute",top:8,left:"50%",transform:"translateX(-50%) scale(0.92)",width:480,height:146,background:"linear-gradient(135deg,#14103a,#1e1b38)",border:"1px solid #2d2a52",borderRadius:20,zIndex:0}}/>}
+                {unsorted.length>1&&<div style={{position:"absolute",top:4,left:"50%",transform:"translateX(-50%) scale(0.96)",width:480,height:146,background:"linear-gradient(135deg,#18154a,#2a2752)",border:"1px solid #3d3a72",borderRadius:20,zIndex:1}}/>}
+                {topItem&&(
+                  <div
+                    draggable
+                    onDragStart={e=>{dragRef.current=topItem.narrative;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',topItem.narrative);}}
+                    onDragEnd={()=>{dragRef.current=null;setHoveredCat(null);}}
+                    style={{
+                      position:"relative",zIndex:2,
+                      width:480,
+                      background:"linear-gradient(135deg,#1e1b38,#2d2a52)",
+                      border:"1px solid #4338ca",
+                      borderRadius:20,
+                      padding:"28px 32px 24px",
+                      cursor:"grab",
+                      boxShadow:"0 8px 40px rgba(0,0,0,0.5), 0 0 60px rgba(99,102,241,0.12)",
+                      userSelect:"none",
+                      transform:flyNarrative===topItem.narrative?"translateY(120px) scale(0.25)":"translateY(0) scale(1)",
+                      opacity:flyNarrative===topItem.narrative?0:1,
+                      transition:flyNarrative===topItem.narrative?"transform 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.35s ease":"transform 0.2s ease, opacity 0.2s ease",
+                    }}
+                  >
+                    <div style={{fontSize:9,fontWeight:700,color:"#6366f1",letterSpacing:1.5,marginBottom:10}}>DRAG TO SORT · PRESS 1–{Math.min(allBuckets.length,9)} TO ASSIGN</div>
+                    <div style={{fontSize:23,fontWeight:700,color:"#e0e7ff",marginBottom:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{topItem.narrative}</div>
+                    <div style={{fontSize:44,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums",lineHeight:1,marginBottom:12}}>{sym}{Math.abs(Math.round(topItem.total)).toLocaleString()}</div>
+                    <div style={{fontSize:12,color:"#4b5563"}}>{topItem.count} occurrence{topItem.count>1?"s":""} in your data</div>
                   </div>
                 )}
               </div>
-            );
-          })}
-          {unsorted.length>VISIBLE&&<div style={{textAlign:"center",padding:"8px 0",fontSize:11,color:"#374151"}}>+{unsorted.length-VISIBLE} more to sort</div>}
-          {(()=>{const topItem=visible[0];const showHint=topItem&&INVESTMENT_SIGNALS.test(topItem.narrative)&&!investHintDismissed.includes(topItem.narrative)&&topItem.category!=="Investments";if(!showHint)return null;return(
-            <div style={{margin:"8px 0 4px",background:"#0f0c2e",border:"1px solid rgba(16,185,129,0.4)",borderRadius:12,padding:"14px 16px",flexShrink:0}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#34d399",marginBottom:6}}>Looks like an investment deposit?</div>
-              <div style={{fontSize:11,color:"#6ee7b7",lineHeight:1.5,marginBottom:10}}>Drop it into Investments to track it separately from your spending.</div>
-              <button onClick={()=>{const next=[...investHintDismissed,topItem.narrative];setInvestHintDismissed(next);localStorage.setItem("abound_investment_hints_dismissed",JSON.stringify(next));}} style={{fontSize:11,color:"#10b981",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontWeight:700}}>Got it ✓</button>
-            </div>
-          );})()}
-        </div>
-        {(sorted.length>0||skipped.length>0)&&(
-          <div style={{borderTop:"1px solid #1f1d35",padding:"10px 12px",maxHeight:200,overflowY:"auto",flexShrink:0}}>
-            <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1,marginBottom:6}}>SORTED ✓</div>
-            {[...sorted,...skipped].slice(-8).map(item=>(
-              <div key={item.narrative} style={{display:"flex",alignItems:"center",gap:6,padding:"4px 0",borderBottom:"1px solid #1a1830"}}>
-                <div style={{width:6,height:6,borderRadius:"50%",background:item.category==="Skip"?"#374151":catColor(item.category,spendCats.indexOf(item.category)),flexShrink:0}}/>
-                <div style={{flex:1,fontSize:10,color:"#4b5563",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.narrative}</div>
-                <button onClick={()=>undoItem(item.narrative,item.category)} style={{fontSize:9,color:"#374151",border:"none",background:"none",cursor:"pointer",padding:"1px 4px",flexShrink:0}}>undo</button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-        <div style={{padding:"14px 20px 12px",borderBottom:"1px solid #1f1d35",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
-          <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:1.5}}>DROP INTO A CATEGORY</div>
-          <div style={{flex:1}}/>
-          <button onClick={undoLast} disabled={!undoHistory.length} title="Undo last (Ctrl+Z)" style={{padding:"5px 12px",background:undoHistory.length?"rgba(99,102,241,0.10)":"rgba(255,255,255,0.03)",border:`1px solid ${undoHistory.length?"#4338ca":"#2d2a6e"}`,borderRadius:7,color:undoHistory.length?"#818cf8":"#374151",fontSize:11,fontWeight:700,cursor:undoHistory.length?"pointer":"default",display:"flex",alignItems:"center",gap:5,transition:"all 0.2s"}}>
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>
-            Undo
-          </button>
-          {showAddCat?(
-            <div style={{display:"flex",gap:6}}>
-              <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>
-              <button onClick={addCategory} style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>Add</button>
-              <button onClick={()=>setShowAddCat(false)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
-            </div>
-          ):(
-            <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
-          )}
-        </div>
-        <div style={{flex:1,padding:"16px 20px",overflow:"auto",display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(155px,1fr))",alignContent:"start",gap:12}}>
-          {spendCats.map((cat,i)=>{
-            const color=catColor(cat,i),isHovered=hoveredCat===cat;
-            const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
-            const isDefault=DEFAULT_CATEGORIES.includes(cat);
-            return(
-              <div key={cat} onDragEnter={e=>{e.preventDefault();setHoveredCat(cat);}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
-                style={{border:`2px ${isHovered?"solid":"dashed"} ${isHovered?color:`${color}55`}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?`${color}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,position:"relative",boxShadow:isHovered?`0 0 24px ${color}33`:"none"}}>
-                {!isDefault&&<button onClick={()=>removeCategory(cat)} style={{position:"absolute",top:6,right:8,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1,opacity:0.6}}>×</button>}
-                <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon(cat,isHovered?"#fff":color,24)}</div>
-                <div style={{fontSize:13,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.3}}>{cat}</div>
-                <div style={{fontSize:10,fontWeight:600,color:totalCount>0?color:"#2d2a6e",background:totalCount>0?`${color}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${totalCount>0?`${color}44`:"#1f1d35"}`}}>
-                  {totalCount>0?`${totalCount} txn${totalCount>1?"s":""}`:isHovered?"drop here":"empty"}
+              <div style={{width:480,display:"flex",alignItems:"center",gap:10}}>
+                <div style={{flex:1,height:3,background:"#1f1d35",borderRadius:999,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${pct}%`,background:"linear-gradient(90deg,#6366f1,#10b981)",transition:"width 0.4s"}}/>
                 </div>
+                <span style={{fontSize:11,color:pct===100?"#10b981":"#6366f1",fontWeight:700,flexShrink:0,fontVariantNumeric:"tabular-nums"}}>{sorted.length+skipped.length} of {allItems.length} sorted</span>
               </div>
-            );
-          })}
-          {investInCats&&(()=>{const ivHovered=hoveredCat==="Investments";const ivColor="#10b981";const ivCount=(txnCountByCat["Investments"]||0)+(bucketCounts["Investments"]||0);return(
-            <div key="Investments" onDragEnter={e=>{e.preventDefault();setHoveredCat("Investments");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Investments");}}
-              style={{border:`2px ${ivHovered?"solid":"dashed"} ${ivHovered?ivColor:`${ivColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:ivHovered?`${ivColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:ivHovered?`0 0 24px ${ivColor}33`:"none"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon("Investments",ivHovered?"#fff":ivColor,24)}</div>
-              <div style={{fontSize:13,fontWeight:700,color:ivHovered?"#fff":ivColor,textAlign:"center",lineHeight:1.3}}>Investments</div>
-              <div style={{fontSize:10,fontWeight:600,color:ivCount>0?ivColor:"#2d2a6e",background:ivCount>0?`${ivColor}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${ivCount>0?`${ivColor}44`:"#1f1d35"}`}}>
-                {ivCount>0?`${ivCount} txn${ivCount>1?"s":""}`:ivHovered?"drop here":"empty"}
-              </div>
+              {(()=>{if(!topItem)return null;const showHint=INVESTMENT_SIGNALS.test(topItem.narrative)&&!investHintDismissed.includes(topItem.narrative)&&topItem.category!=="Investments";if(!showHint)return null;return(
+                <div style={{width:480,background:"#0f0c2e",border:"1px solid rgba(16,185,129,0.4)",borderRadius:12,padding:"12px 16px",display:"flex",alignItems:"flex-start",gap:12}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700,color:"#34d399",marginBottom:4}}>Looks like an investment deposit?</div>
+                    <div style={{fontSize:11,color:"#6ee7b7",lineHeight:1.5}}>Drop it into Investments to track it separately from your spending.</div>
+                  </div>
+                  <button onClick={()=>{const next=[...investHintDismissed,topItem.narrative];setInvestHintDismissed(next);localStorage.setItem("abound_investment_hints_dismissed",JSON.stringify(next));}} style={{fontSize:11,color:"#10b981",background:"rgba(16,185,129,0.1)",border:"1px solid rgba(16,185,129,0.3)",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontWeight:700,flexShrink:0}}>Got it ✓</button>
+                </div>
+              );})()}
             </div>
-          );})()}
-          {catRepaymentInCats&&(()=>{const crHovered=hoveredCat==="Card Repayment";const crColor="#ec4899";const crCount=(txnCountByCat["Card Repayment"]||0)+(bucketCounts["Card Repayment"]||0);return(
-            <div key="Card Repayment" onDragEnter={e=>{e.preventDefault();setHoveredCat("Card Repayment");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Card Repayment");}}
-              style={{border:`2px ${crHovered?"solid":"dashed"} ${crHovered?crColor:`${crColor}55`}`,borderRadius:14,padding:"14px 12px 12px",background:crHovered?`${crColor}1a`:"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8,boxShadow:crHovered?`0 0 24px ${crColor}33`:"none"}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,marginTop:2}}>{getBucketIcon("Card Repayment",crHovered?"#fff":crColor,24)}</div>
-              <div style={{fontSize:13,fontWeight:700,color:crHovered?"#fff":crColor,textAlign:"center",lineHeight:1.3}}>Card Repayment</div>
-              <div style={{fontSize:10,fontWeight:600,color:crCount>0?crColor:"#2d2a6e",background:crCount>0?`${crColor}18`:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:`1px solid ${crCount>0?`${crColor}44`:"#1f1d35"}`}}>
-                {crCount>0?`${crCount} txn${crCount>1?"s":""}`:crHovered?"drop here":"empty"}
-              </div>
+          </div>
+          <div style={{padding:"16px 20px 20px",borderTop:"1px solid #1f1d35",flexShrink:0,position:"relative",zIndex:2,background:"rgba(8,7,15,0.85)"}}>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,justifyContent:"center"}}>
+              {allBuckets.map((cat,i)=>{
+                const color=cat==="Skip"?"#6b7280":catColor(cat,i);
+                const isHovered=hoveredCat===cat;
+                const isPulsing=pulsingCat===cat;
+                const totalCount=(txnCountByCat[cat]||0)+(bucketCounts[cat]||0);
+                const isDefault=DEFAULT_CATEGORIES.includes(cat)||cat==="Skip";
+                const keyLabel=i<9?String(i+1):i===9?"0":null;
+                return(
+                  <div key={cat}
+                    onDragEnter={e=>{e.preventDefault();setHoveredCat(cat);}}
+                    onDragOver={e=>{e.preventDefault();}}
+                    onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}}
+                    onDrop={e=>{e.preventDefault();dropIntoCat(cat);}}
+                    onClick={()=>topItem&&triggerAssign(topItem.narrative,cat)}
+                    style={{
+                      position:"relative",
+                      minWidth:130,
+                      flex:"1 1 130px",
+                      maxWidth:200,
+                      minHeight:90,
+                      border:`2px ${isHovered?"solid":"dashed"} ${isHovered||isPulsing?color:`${color}55`}`,
+                      borderRadius:14,
+                      padding:"10px 12px",
+                      background:isHovered?`${color}1a`:isPulsing?`${color}22`:"rgba(255,255,255,0.02)",
+                      transition:"all 0.15s",
+                      cursor:"pointer",
+                      display:"flex",
+                      flexDirection:"column",
+                      alignItems:"center",
+                      justifyContent:"center",
+                      gap:6,
+                      boxShadow:isHovered?`0 0 24px ${color}33`:isPulsing?`0 0 32px ${color}55`:"none",
+                      transform:isHovered?"translateY(-4px)":"translateY(0)",
+                    }}
+                  >
+                    {keyLabel&&<div style={{position:"absolute",top:6,left:8,fontSize:9,fontWeight:700,color:isHovered?"#fff":`${color}bb`,background:isHovered?`${color}33`:"rgba(255,255,255,0.06)",borderRadius:4,padding:"1px 5px",lineHeight:"14px"}}>{keyLabel}</div>}
+                    {!isDefault&&<button onClick={e=>{e.stopPropagation();removeCategory(cat);}} style={{position:"absolute",top:5,right:7,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:28,height:28}}>
+                      {cat==="Skip"
+                        ?<svg viewBox="0 0 20 20" width="22" height="22" fill="none"><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 8.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg>
+                        :getBucketIcon(cat,isHovered?"#fff":color,22)
+                      }
+                    </div>
+                    <div style={{fontSize:12,fontWeight:700,color:isHovered?"#fff":color,textAlign:"center",lineHeight:1.2}}>{cat==="Skip"?"Not sure":cat}</div>
+                    {totalCount>0&&<div style={{fontSize:9,color:color,background:`${color}18`,borderRadius:20,padding:"1px 8px",border:`1px solid ${color}44`}}>{totalCount} txn{totalCount>1?"s":""}</div>}
+                  </div>
+                );
+              })}
             </div>
-          );})()}
-          {(()=>{const isHovered=hoveredCat==="Skip",count=skipped.length;return(
-            <div onDragEnter={e=>{e.preventDefault();setHoveredCat("Skip");}} onDragOver={e=>{e.preventDefault();}} onDragLeave={e=>{if(!e.currentTarget.contains(e.relatedTarget))setHoveredCat(null);}} onDrop={e=>{e.preventDefault();dropIntoCat("Skip");}}
-              style={{border:`2px dashed ${isHovered?"#9ca3af":"#374151"}`,borderRadius:14,padding:"14px 12px 12px",background:isHovered?"rgba(107,114,128,0.12)":"rgba(255,255,255,0.02)",transition:"all 0.15s",cursor:"default",display:"flex",flexDirection:"column",alignItems:"center",gap:8}}>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:30,height:30,opacity:isHovered?1:0.6,marginTop:2}}><svg viewBox="0 0 20 20" width="24" height="24" fill="none"><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 9.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg></div>
-              <div style={{fontSize:13,fontWeight:700,color:isHovered?"#9ca3af":"#6b7280",textAlign:"center",lineHeight:1.3}}>Not sure</div>
-              <div style={{fontSize:10,fontWeight:600,color:count>0?"#6b7280":"#374151",background:"rgba(255,255,255,0.03)",borderRadius:20,padding:"2px 10px",border:"1px solid #1f1d35"}}>
-                {count>0?`${count} txn${count>1?"s":""}`:isHovered?"drop here":"stays in Other Payments"}
-              </div>
-            </div>
-          );})()}
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
 const MobileSort=()=>{
     const topItem=unsorted[0];

@@ -407,13 +407,34 @@ function readExcelFile(file) {
             break;
           }
         }
-        if (headerRowIndex === -1) { resolve([]); return; }
+        if (headerRowIndex === -1) { resolve({rows:[],summaryBalance:null}); return; }
         const headers = allRows[headerRowIndex].map(h => String(h).trim());
         const dataRows = allRows.slice(headerRowIndex + 1)
           .filter(r => r.some(c => c !== "" && c !== null && c !== undefined))
           .map(r => { const obj = {}; headers.forEach((h, i) => { if (h) obj[h] = r[i] ?? ""; }); return obj; });
-        resolve(dataRows);
-      } catch(err) { console.error("Error reading file:", err); resolve([]); }
+        const hasBalanceCol=headers.some(h=>/^(balance|running.?balance|account.?balance)$/i.test(h));
+        let summaryBalance=null;
+        if(!hasBalanceCol&&wb.SheetNames.length>1){
+          const PREFER=['new balance','closing balance','balance','total'];
+          const found={};
+          for(let si=1;si<wb.SheetNames.length;si++){
+            const sRows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[si]],{header:1,defval:"",raw:true});
+            for(const sRow of sRows){
+              const cells=sRow.map(c=>String(c).trim());
+              for(let ci=0;ci<cells.length;ci++){
+                const lbl=cells[ci].toLowerCase().replace(/\s+/g,' ').trim();
+                if(/^(total|balance|closing balance|new balance)$/.test(lbl)&&!(lbl in found)){
+                  const neighbors=[cells[ci+1],cells[ci-1],cells[ci+2],cells[ci-2]].filter(Boolean);
+                  const val=neighbors.map(n=>parseFloat(String(n).replace(/[£$€,]/g,''))).find(v=>!isNaN(v));
+                  if(val!==undefined)found[lbl]=val;
+                }
+              }
+            }
+          }
+          for(const key of PREFER){if(found[key]!==undefined){summaryBalance=found[key];break;}}
+        }
+        resolve({rows:dataRows,summaryBalance});
+      } catch(err){console.error("Error reading file:",err);resolve({rows:[],summaryBalance:null});}
     };
     if (ext==="csv") reader.readAsText(file);
     else reader.readAsArrayBuffer(file);
@@ -574,7 +595,7 @@ async function readPdfFile(file) {
   return rows;
 }
 
-function normaliseRows(rawRows, accountLabel) {
+function normaliseRows(rawRows, accountLabel, summaryBalance=null) {
   let rows = rawRows;
   if (!rows.length) return [];
   const keys = Object.keys(rows[0]);
@@ -608,7 +629,25 @@ function normaliseRows(rawRows, accountLabel) {
     return [];
   }
 
-  return rows.map(row=>{
+  // Strip trailer/balance-summary rows (e.g. NatWest CC "Balance as at DD Mon YYYY"):
+  // rows where the amount column(s) are empty/zero but the balance column has a value.
+  let trailerBalance = null;
+  if (balKey) {
+    rows = rows.filter(row => {
+      const narVal = String(row[narKey]||"").trim();
+      const amtZero = splitMode
+        ? toNum(row[creditKey])===0 && toNum(row[debitKey])===0
+        : toNum(row[amtKey])===0;
+      const balVal = toNum(row[balKey]);
+      if (amtZero && balVal!==0 && /\bbalance\b/i.test(narVal)) {
+        trailerBalance = balVal;
+        return false;
+      }
+      return true;
+    });
+  }
+
+  const txnList = rows.map(row=>{
     const date = parseDate(row[dateKey]);
     const narrative = String(row[narKey]||"").replace(/\r\n|\r|\n/g," ").trim();
     const balance = balKey?(toNum(row[balKey])||null):null;
@@ -631,6 +670,15 @@ function normaliseRows(rawRows, accountLabel) {
     const isIncome = isMainAccount ? rawAmt>0 : rawAmt<0;
     return {date, narrative, amount, isIncome, balance, account:accountLabel, category:null};
   }).filter(Boolean);
+
+  // Inject trailer balance (Case 1) or sheet-summary balance (Case 2) onto the most recent
+  // transaction when no per-row balance was present in the data.
+  const injectBal = trailerBalance !== null ? trailerBalance : summaryBalance;
+  if (injectBal !== null && !txnList.some(t => t.balance !== null)) {
+    const maxDate = txnList.reduce((max, t) => t.date > max ? t.date : max, new Date(0));
+    txnList.forEach(t => { if (t.date.getTime() === maxDate.getTime()) t.balance = injectBal; });
+  }
+  return txnList;
 }
 
 function hasAnyBalance(txns) {
@@ -1651,13 +1699,15 @@ function UploadScreen({onDone, onAddAccount=null}) {
     for(const acc of accounts){
       if(!acc.file)continue;
       const ext=acc.file.name.split('.').pop().toLowerCase();
-      const rows=ext==="pdf"?await readPdfFile(acc.file):await readExcelFile(acc.file);
+      let rows,fileSummaryBalance=null;
+      if(ext==="pdf"){rows=await readPdfFile(acc.file);}
+      else{const r=await readExcelFile(acc.file);rows=r.rows;fileSummaryBalance=r.summaryBalance;}
       const isFirst=acc.id===accounts[0].id;
       let label;
       if(isFirst)label="Main Account";
       else if(ccIndex===1){label="Credit Card";ccIndex++;}
       else{label=`Credit Card ${ccIndex}`;ccIndex++;}
-      const txns=normaliseRows(rows,label);
+      const txns=normaliseRows(rows,label,fileSummaryBalance);
       allRows.push(...txns);
       if(!hasAnyBalance(txns)) missing.push({label, txns});
     }

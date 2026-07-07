@@ -128,6 +128,7 @@ const GLOBAL_CSS = `
   @keyframes insightsPulse { 0%,100%{opacity:0.5;transform:scale(1)} 50%{opacity:1;transform:scale(1.4)} }
   @keyframes insightFadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
   @keyframes incomeArrowPulse { 0%,100%{transform:translateY(0);opacity:0.55} 50%{transform:translateY(-4px);opacity:1} }
+  @keyframes sheetUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
@@ -3303,6 +3304,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
   const [insightsVisited, setInsightsVisited] = useState(false);
   const [showWizardCard, setShowWizardCard] = useState(false);
   const isMobile = useIsMobile();
+  const [mobileMainMoreOpen, setMobileMainMoreOpen] = useState(false);
   const userIsPremium = isPremium();
   const runsUsed = getAiRunsUsed();
   const runsLeft = Math.max(0, FREE_AI_RUNS - runsUsed);
@@ -3315,7 +3317,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
     <div style={{display:"flex",flexDirection:"column",height:"100vh",fontFamily:"'Inter',system-ui,sans-serif"}}>
       <style>{GLOBAL_CSS}</style>
 
-      <div style={{background:"var(--nav-bg)",borderBottom:"1px solid var(--nav-border)",padding:"0 24px",display:isMobile&&activeTab==="cashflow"?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
+      <div style={{background:"var(--nav-bg)",borderBottom:"1px solid var(--nav-border)",padding:"0 24px",display:isMobile?"none":"flex",alignItems:"center",height:57,flexShrink:0}}>
         <img src={logo} alt="Abound" style={{height:36,marginRight:24,mixBlendMode:"screen"}}/>
         <button onClick={()=>setActiveTab("cashflow")} style={{padding:"0 18px",height:"100%",border:"none",borderBottom:activeTab==="cashflow"?`2px solid ${PURPLE}`:"2px solid transparent",background:"none",fontSize:13,fontWeight:activeTab==="cashflow"?700:500,color:activeTab==="cashflow"?"var(--nav-tab-active)":"var(--nav-tab-inactive)",cursor:"pointer",transition:"all 0.2s",display:"flex",alignItems:"center",gap:5}}>
           <svg width="13" height="13" viewBox="0 0 20 20" fill="none"><path stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" d="M3 15l4-6 4 3 4-8"/></svg>Cash Flow
@@ -3372,9 +3374,58 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
         );
       })()}
-      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0}}><OrientationGate><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback} onTourFinish={onTourFinish} onAddAccount={onAddAccount}/></OrientationGate></div>
-      {activeTab==="review"&&<ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/>}
-      {activeTab==="insights"&&<InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/>}
+      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0,paddingBottom:isMobile?56:0}}><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback} onTourFinish={onTourFinish} onAddAccount={onAddAccount}/></div>
+      {activeTab==="review"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isMobile?56:0}}><ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/></div>}
+      {activeTab==="insights"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isMobile?56:0}}><InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/></div>}
+      {/* Mobile bottom tab bar */}
+      {isMobile&&(
+        <>
+          <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:800,background:"#0a0818",borderTop:"1px solid #1f1d35",display:"flex",height:56,paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
+            {[
+              {id:"cashflow",label:"Cash Flow",icon:<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M3 15l4-6 4 3 4-8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>},
+              {id:"review",label:"Review",icon:<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="9" cy="9" r="5" stroke="currentColor" strokeWidth="1.8"/><path d="M14 14l3 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>,badge:otherCount>0?otherCount:0},
+              {id:"insights",label:"Insights",icon:<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>},
+              {id:"more",label:"More",icon:<svg width="18" height="18" viewBox="0 0 20 20" fill="none"><circle cx="5" cy="10" r="1.5" fill="currentColor"/><circle cx="10" cy="10" r="1.5" fill="currentColor"/><circle cx="15" cy="10" r="1.5" fill="currentColor"/></svg>},
+            ].map(tab=>(
+              <button key={tab.id}
+                onClick={()=>tab.id==="more"?setMobileMainMoreOpen(true):(tab.id==="review"?goToReview():tab.id==="insights"?goToInsights():setActiveTab(tab.id))}
+                style={{flex:1,background:"none",border:"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,cursor:"pointer",color:activeTab===tab.id&&tab.id!=="more"?"#6366f1":"#4b5563",position:"relative"}}>
+                {tab.icon}
+                <span style={{fontSize:9,fontWeight:activeTab===tab.id&&tab.id!=="more"?700:500,letterSpacing:"0.01em"}}>{tab.label}</span>
+                {tab.badge>0&&<span style={{position:"absolute",top:6,right:"calc(50% - 16px)",background:"#ef4444",color:"#fff",borderRadius:8,fontSize:9,fontWeight:700,padding:"0 4px",minWidth:14,textAlign:"center",lineHeight:"14px"}}>{tab.badge}</span>}
+              </button>
+            ))}
+          </div>
+          <BottomSheet open={mobileMainMoreOpen} onClose={()=>setMobileMainMoreOpen(false)} title="More">
+            <div style={{padding:"0 20px 8px"}}>
+              {onAddAccount&&<button onClick={()=>{setMobileMainMoreOpen(false);onAddAccount();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+                <div style={{width:36,height:36,borderRadius:18,background:"rgba(99,102,241,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 4v12M4 10h12" stroke="#818cf8" strokeWidth="1.8" strokeLinecap="round"/></svg>
+                </div>
+                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Add another account</div><div style={{fontSize:11,color:"#6b7280"}}>Upload another CSV file</div></div>
+              </button>}
+              <button onClick={()=>{setMobileMainMoreOpen(false);onFeedback();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+                <div style={{width:36,height:36,borderRadius:18,background:"rgba(34,197,94,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l1.8 3.6 4 .6-2.9 2.8.68 4-3.58-1.88L6.42 13l.68-4L4.2 6.2l4-.6L10 2z" stroke="#22c55e" strokeWidth="1.5" strokeLinejoin="round"/></svg>
+                </div>
+                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Leave a review</div><div style={{fontSize:11,color:"#6b7280"}}>Share your feedback</div></div>
+              </button>
+              {!userIsPremium&&<button onClick={()=>{setMobileMainMoreOpen(false);redirectToCheckout();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+                <div style={{width:36,height:36,borderRadius:18,background:"rgba(99,102,241,0.12)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.8 5.3.8-3.85 3.75.91 5.3L10 14.27l-4.76 2.38.91-5.3L2.3 7.6l5.3-.8L10 2z" fill="#a5b4fc"/></svg>
+                </div>
+                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Upgrade to Premium</div><div style={{fontSize:11,color:"#6b7280"}}>AI Insights, 12-week view &amp; more</div></div>
+              </button>}
+              <button onClick={()=>{setMobileMainMoreOpen(false);onStartOver();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",cursor:"pointer",color:"#9ca3af",textAlign:"left"}}>
+                <div style={{width:36,height:36,borderRadius:18,background:"rgba(107,114,128,0.08)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 10a7 7 0 1 0 7-7" stroke="#6b7280" strokeWidth="1.7" strokeLinecap="round"/><path d="M3 4v6h6" stroke="#6b7280" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </div>
+                <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Start over</div><div style={{fontSize:11,color:"#4b5563"}}>Upload a new file</div></div>
+              </button>
+            </div>
+          </BottomSheet>
+        </>
+      )}
     </div>
   );
 }
@@ -3524,9 +3575,29 @@ function projectIncomeEvents(events, weeks) {
   });
 }
 
+// ─── Bottom Sheet ─────────────────────────────────────────────────────────────
+function BottomSheet({open,onClose,title,children}){
+  if(!open)return null;
+  return(
+    <>
+      <div style={{position:"fixed",inset:0,zIndex:1200,background:"rgba(0,0,0,0.55)",backdropFilter:"blur(2px)"}} onClick={onClose}/>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,zIndex:1201,background:"#0f0c2e",borderRadius:"20px 20px 0 0",maxHeight:"85vh",display:"flex",flexDirection:"column",animation:"sheetUp 0.28s cubic-bezier(0.32,0.72,0,1) both",paddingBottom:"env(safe-area-inset-bottom,8px)"}}>
+        <div style={{display:"flex",justifyContent:"center",padding:"10px 0 6px",flexShrink:0}}>
+          <div style={{width:36,height:4,borderRadius:2,background:"rgba(255,255,255,0.18)"}}/>
+        </div>
+        {title&&<div style={{padding:"0 20px 12px",fontSize:15,fontWeight:700,color:"#e0e7ff",flexShrink:0}}>{title}</div>}
+        <div style={{overflow:"auto",flex:1,padding:"0 0 8px"}}>{children}</div>
+      </div>
+    </>
+  );
+}
+
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
 function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback, onTourFinish=()=>{}, onAddAccount=null}) {
   const isMobile = useIsMobile();
+  const isLandscape = useOrientation();
+  const [mobileWeekIdx, setMobileWeekIdx] = useState(null);
+  const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
   const [hiddenCats, setHiddenCats] = useState(new Set());
   const [collapsedAccounts, setCollapsedAccounts] = useState(new Set());
   const [monthlyBudgets, setMonthlyBudgets] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_budget_targets")||"{}");}catch{return {};}});
@@ -4694,6 +4765,159 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
   const currentStep = tourStep!==null ? TOUR_STEPS[tourStep] : null;
 
+  // ─── Mobile portrait cash flow ───────────────────────────────────────────────
+  const MobileCashFlowView = () => {
+    const allWeeks=[...actualWeeks,...forecastWeeks];
+    const clampIdx=Math.max(0,Math.min(mobileWeekIdx??actualWeeks.length-1,allWeeks.length-1));
+    const selWeek=allWeeks[clampIdx];
+    const isFcstWeek=clampIdx>=actualWeeks.length;
+    const fcstIdx=isFcstWeek?clampIdx-actualWeeks.length:-1;
+    function weekAmt(cat){
+      if(isFcstWeek){
+        if(cat==="Income")return incomeFcstTotalByWeek[fcstIdx]||0;
+        return accounts.reduce((s,acc)=>s+(forecastData[acc]?.[cat]?.[fcstIdx]||0),0);
+      }
+      return accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[selWeek?.key]?.[acc]?.[cat]||0),0);
+    }
+    const selIncome=weekAmt("Income");
+    const netSpendLocal=singleAccount?spendCats:spendCats.filter(c=>c!=="Card Repayment");
+    const selSpend=netSpendLocal.reduce((s,c)=>s+weekAmt(c),0);
+    const selNet=selIncome-selSpend;
+    const selBal=isFcstWeek?(combinedClosingBalances.forecast[fcstIdx]??null):(combinedClosingBalances.actual[clampIdx]??null);
+    const sym=getCurrencySymbol();
+    const catRows=[{cat:"Income",amt:selIncome,isIncome:true},...spendCats.map(cat=>({cat,amt:weekAmt(cat),isIncome:false})).filter(r=>r.amt>0.5)];
+    // Sparkline
+    const actV=combinedClosingBalances.actual;const fcstV=combinedClosingBalances.forecast;
+    const allSpark=[...actV,...fcstV].filter(v=>v!=null);
+    const sparkH=44;
+    const sparkMn=allSpark.length?Math.min(...allSpark,0):0,sparkMx=allSpark.length?Math.max(...allSpark):1,sparkRange=sparkMx-sparkMn||1;
+    const toX=i=>2+(i/Math.max(actV.length+fcstV.length-1,1))*296;
+    const toY=v=>4+(sparkH-8)*((sparkMx-v)/sparkRange);
+    const actPts=actV.map((v,i)=>v!=null?`${toX(i).toFixed(1)},${toY(v).toFixed(1)}`:null).filter(Boolean);
+    const lastAct=actV.filter(v=>v!=null).slice(-1)[0];
+    const fcstPts=[lastAct!=null?`${toX(actV.length-1).toFixed(1)},${toY(lastAct).toFixed(1)}`:null,...fcstV.map((v,i)=>v!=null?`${toX(actV.length+i).toFixed(1)},${toY(v).toFixed(1)}`:null)].filter(Boolean);
+    const selX=toX(clampIdx);const selY=selBal!=null?toY(selBal):null;
+    return(
+      <div style={{display:"flex",flexDirection:"column",height:"100%",background:"#08070f",overflow:"hidden"}}>
+        {/* Sticky header: balance + sparkline */}
+        <div style={{flexShrink:0,background:"#09081a",borderBottom:"1px solid #1f1d35",padding:"14px 20px 0"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:8}}>
+            <div>
+              <div style={{fontSize:10,fontWeight:700,color:"#4b5563",letterSpacing:"0.08em",marginBottom:2}}>CASH BALANCE</div>
+              <div style={{fontSize:28,fontWeight:800,color:selBal==null?"#e0e7ff":selBal>=0?"#22c55e":"#ef4444",lineHeight:1.1}}>
+                {selBal==null?"—":`${sym}${Math.abs(Math.round(selBal)).toLocaleString()}`}
+                {selBal!=null&&selBal<0&&<span style={{fontSize:12,fontWeight:600,color:"#ef4444",marginLeft:4}}>overdrawn</span>}
+              </div>
+            </div>
+            <button onClick={()=>setMobileMoreOpen(true)}
+              style={{background:"none",border:"1px solid #1f1d35",borderRadius:8,color:"#9ca3af",padding:"6px 11px",cursor:"pointer",fontSize:18,lineHeight:1,marginTop:4}}>⋯</button>
+          </div>
+          {allSpark.length>=2&&(
+            <svg viewBox={`0 0 300 ${sparkH}`} fill="none" preserveAspectRatio="none"
+              style={{width:"100%",height:sparkH,display:"block",marginBottom:-1}}>
+              {actPts.length>1&&<polyline points={actPts.join(' ')} stroke="#6366f1" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>}
+              {fcstPts.length>1&&<polyline points={fcstPts.join(' ')} stroke="#818cf8" strokeWidth="1.5" strokeDasharray="4 3" fill="none" strokeLinecap="round" strokeLinejoin="round"/>}
+              {selY!=null&&<>
+                <line x1={selX} y1="3" x2={selX} y2={sparkH-3} stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
+                <circle cx={selX} cy={selY} r="4" fill={isFcstWeek?"#818cf8":"#6366f1"} stroke="#09081a" strokeWidth="1.5"/>
+              </>}
+            </svg>
+          )}
+        </div>
+        {/* Week chip scroller */}
+        <div style={{flexShrink:0,overflowX:"auto",padding:"10px 16px",display:"flex",gap:8,background:"#09081a",scrollbarWidth:"none",WebkitScrollbarWidth:"none"}}>
+          {allWeeks.map((w,i)=>{
+            const isSel=i===clampIdx,isFcst=i>=actualWeeks.length;
+            const label=fmt(w.date).replace(/,?\s*\d{4}$/,"").trim();
+            return(
+              <button key={w.key} onClick={()=>setMobileWeekIdx(i)}
+                style={{flexShrink:0,padding:"6px 14px",borderRadius:20,
+                  border:isSel?"none":(isFcst?"1px dashed #2d2a6e":"1px solid #1f1d35"),
+                  background:isSel?(isFcst?"#4338ca":"#6366f1"):(isFcst?"rgba(99,102,241,0.08)":"rgba(255,255,255,0.04)"),
+                  color:isSel?"#fff":(isFcst?"#818cf8":"#6b7280"),
+                  fontSize:11,fontWeight:isSel?700:500,cursor:"pointer",whiteSpace:"nowrap"}}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        {/* Category list */}
+        <div style={{flex:1,overflowY:"auto",paddingBottom:8}}>
+          {catRows.length===0?(
+            <div style={{padding:"40px 20px",textAlign:"center",color:"#4b5563",fontSize:13}}>No activity this week</div>
+          ):catRows.map(({cat,amt,isIncome})=>(
+            <div key={cat} style={{display:"flex",alignItems:"center",padding:"13px 20px",borderBottom:"1px solid #0d0c1e",gap:12}}>
+              <div style={{width:36,height:36,borderRadius:18,background:isIncome?"rgba(34,197,94,0.1)":"rgba(99,102,241,0.09)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <CatIcon cat={cat} size={16} color={isIncome?"#22c55e":"#6366f1"}/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:600,color:"#e0e7ff"}}>{cat}</div>
+                {isFcstWeek&&<div style={{fontSize:10,color:"#6b7280"}}>forecast</div>}
+              </div>
+              <div style={{fontSize:14,fontWeight:700,color:isIncome?"#22c55e":"#c7d2fe",fontVariantNumeric:"tabular-nums"}}>
+                {isIncome?"":"-"}{fmtMoney(amt)}
+              </div>
+            </div>
+          ))}
+        </div>
+        {/* Footer: net movement + balance */}
+        <div style={{flexShrink:0,background:"#09081a",borderTop:"1px solid #1f1d35",padding:"12px 20px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontSize:9,fontWeight:700,color:"#4b5563",letterSpacing:"0.07em",marginBottom:2}}>NET MOVEMENT</div>
+              <div style={{fontSize:18,fontWeight:800,color:selNet>=0?"#22c55e":"#ef4444",fontVariantNumeric:"tabular-nums"}}>
+                {selNet>=0?"+":""}{fmtMoney(selNet)}
+              </div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:9,fontWeight:700,color:"#4b5563",letterSpacing:"0.07em",marginBottom:2}}>CASH BALANCE</div>
+              <div style={{fontSize:18,fontWeight:800,color:selBal==null?"#9ca3af":selBal>=0?"#22c55e":"#ef4444",fontVariantNumeric:"tabular-nums"}}>
+                {selBal==null?"—":`${sym}${Math.round(selBal).toLocaleString()}`}
+              </div>
+            </div>
+          </div>
+        </div>
+        {/* Options bottom sheet */}
+        <BottomSheet open={mobileMoreOpen} onClose={()=>setMobileMoreOpen(false)} title="Options">
+          <div style={{padding:"0 20px 8px"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 0",borderBottom:"1px solid #1f1d35"}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:600,color:"#e0e7ff"}}>Split by card</div>
+                <div style={{fontSize:11,color:"#6b7280"}}>Show each account separately</div>
+              </div>
+              <button onClick={()=>setSplitByCard(s=>!s)} style={{width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",position:"relative",flexShrink:0,transition:"background 0.2s"}}>
+                <span style={{position:"absolute",top:3,left:splitByCard?23:3,width:18,height:18,borderRadius:"50%",background:"#fff",display:"block",transition:"left 0.2s"}}/>
+              </button>
+            </div>
+            <button onClick={()=>{setMobileMoreOpen(false);setShowBudgetPanel(true);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:"rgba(217,119,6,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="5" width="14" height="10" rx="2" stroke="#d97706" strokeWidth="1.6"/><path d="M7 10h6M10 7v6" stroke="#d97706" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Budget targets</div><div style={{fontSize:11,color:"#6b7280"}}>Set weekly spend limits</div></div>
+            </button>
+            <button onClick={()=>{setMobileMoreOpen(false);openStocks();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:"rgba(16,185,129,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><path d="M3 15l4-6 4 3 4-8" stroke="#10b981" strokeWidth="1.7" strokeLinecap="round"/></svg>
+              </div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Stocks{stocks.length>0&&` (${stocks.length})`}</div><div style={{fontSize:11,color:"#6b7280"}}>Track your portfolio</div></div>
+            </button>
+            <button onClick={()=>{setMobileMoreOpen(false);reopenTour();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:"rgba(99,102,241,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18,color:"#6366f1",fontWeight:800}}>?</div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Cash flow tour</div><div style={{fontSize:11,color:"#6b7280"}}>Replay the walkthrough</div></div>
+            </button>
+            <button onClick={()=>{setMobileMoreOpen(false);setShowHomeScreenGuide(true);}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:"rgba(99,102,241,0.08)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="4" y="4" width="12" height="12" rx="2" stroke="#818cf8" strokeWidth="1.6"/><path d="M10 8v4M8 10h4" stroke="#818cf8" strokeWidth="1.5" strokeLinecap="round"/></svg>
+              </div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Add to Home Screen</div><div style={{fontSize:11,color:"#6b7280"}}>Install Abound on your device</div></div>
+            </button>
+          </div>
+        </BottomSheet>
+      </div>
+    );
+  };
+  if(isMobile&&!isLandscape) return <MobileCashFlowView/>;
+
   return(
     <div style={{display:"flex",flex:1,overflow:"hidden",position:"relative",background:T.bg,transition:"background 0.25s"}}>
       <style>{GLOBAL_CSS}</style>
@@ -5664,51 +5888,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         );
       })()}
 
-      {/* Mobile floating sidebar */}
-      {isMobile&&(
-        <div style={{position:'fixed',right:0,top:'50%',transform:'translateY(-50%)',zIndex:810,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
-          {/* Review */}
-          <button onClick={onGoToReview}
-            style={{position:'relative',background:'linear-gradient(180deg,#6366f1,#4f46e5)',color:'#fff',border:'none',borderRadius:'8px 0 0 8px',padding:'13px 8px',fontSize:10,fontWeight:800,cursor:'pointer',letterSpacing:'0.07em',boxShadow:'-3px 0 14px rgba(99,102,241,0.45)',writingMode:'vertical-rl'}}>
-            {showReviewPrompt&&<span style={{position:'absolute',top:6,right:6,width:7,height:7,borderRadius:'50%',background:'#ef4444',flexShrink:0,display:'block'}}/>}
-            Review
-          </button>
-          {/* Insights */}
-          <button onClick={onGoToInsights}
-            style={{background:'rgba(30,27,56,0.95)',color:'#818cf8',border:'1px solid rgba(99,102,241,0.3)',borderRight:'none',borderRadius:'8px 0 0 8px',padding:'13px 8px',fontSize:10,fontWeight:700,cursor:'pointer',letterSpacing:'0.07em',boxShadow:'-3px 0 10px rgba(0,0,0,0.35)',writingMode:'vertical-rl'}}>
-            Insights
-          </button>
-          {/* Grouped toggle */}
-          <button onClick={()=>setSplitByCard(s=>!s)} data-tour='view-toggle'
-            style={{background:'rgba(30,27,56,0.95)',border:'1px solid rgba(99,102,241,0.2)',borderRight:'none',borderRadius:'8px 0 0 8px',padding:'8px 9px',display:'flex',flexDirection:'column',alignItems:'center',gap:4,boxShadow:'-2px 0 8px rgba(0,0,0,0.3)',cursor:'pointer'}}>
-            <span style={{fontSize:8,color:'#6b7280',fontWeight:600,writingMode:'vertical-rl',letterSpacing:'0.06em',lineHeight:1}}>{splitByCard?'By card':'Grouped'}</span>
-            <div style={{position:'relative',width:20,height:11,borderRadius:6,background:splitByCard?'#6366f1':'#374151',transition:'background 0.2s',flexShrink:0}}>
-              <span style={{position:'absolute',top:2,left:splitByCard?11:2,width:7,height:7,borderRadius:'50%',background:'#fff',transition:'left 0.2s',display:'block'}}/>
-            </div>
-          </button>
-          {/* Stocks */}
-          <button onClick={openStocks}
-            style={{background:stocks.length?'rgba(16,185,129,0.12)':'rgba(30,27,56,0.95)',color:stocks.length?'#10b981':'#6b7280',border:`1px solid ${stocks.length?'rgba(16,185,129,0.35)':'rgba(99,102,241,0.2)'}`,borderRight:'none',borderRadius:'8px 0 0 8px',padding:'12px 7px',fontSize:10,fontWeight:700,cursor:'pointer',writingMode:'vertical-rl',boxShadow:'-2px 0 8px rgba(0,0,0,0.3)'}}>
-            {stocks.length?`Stocks(${stocks.length})`:'Stocks'}
-          </button>
-          {/* Free / Premium badge */}
-          {(()=>{const pro=isPremium();return(
-            <div onClick={pro?undefined:()=>setShowPremiumGate(true)}
-              style={{background:pro?'rgba(16,185,129,0.12)':'rgba(99,102,241,0.1)',border:`1px solid ${pro?'rgba(16,185,129,0.3)':'rgba(99,102,241,0.2)'}`,borderRight:'none',borderRadius:'8px 0 0 8px',padding:'7px 5px',cursor:pro?'default':'pointer',boxShadow:'-2px 0 6px rgba(0,0,0,0.25)'}}>
-              <div style={{writingMode:'vertical-rl',fontSize:8,fontWeight:800,color:pro?'#10b981':'#818cf8',letterSpacing:'0.08em',whiteSpace:'nowrap'}}>{pro?'Premium':'Free'}</div>
-            </div>
-          );})()}
-        </div>
-      )}
-
-      {/* Tour reopen button */}
-      {(()=>{
+      {/* Tour reopen button — desktop only; mobile uses ⋯ sheet */}
+      {!isMobile&&(()=>{
         const tourSeen = !!localStorage.getItem("cashFlowTourSeen_v2");
         return(
           <button onClick={reopenTour} title="Tour & tips"
-            style={{position:"fixed",bottom:isMobile?16:28,right:isMobile?16:28,height:isMobile?36:46,borderRadius:isMobile?18:23,background:"#6366f1",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:isMobile?"0 12px":"0 20px",gap:6,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
-            <span style={{fontSize:isMobile?16:18,lineHeight:1}}>?</span>
-            {!isMobile&&<span style={{fontSize:14,letterSpacing:"0.02em"}}>Tour</span>}
+            style={{position:"fixed",bottom:28,right:28,height:46,borderRadius:23,background:"#6366f1",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:"0 20px",gap:6,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
+            <span style={{fontSize:18,lineHeight:1}}>?</span>
+            <span style={{fontSize:14,letterSpacing:"0.02em"}}>Tour</span>
           </button>
         );
       })()}
@@ -6085,7 +6272,7 @@ function AppInner() {
       {screen==="main"&&continueToast&&<ContinueToast toast={continueToast} onDismiss={()=>setContinueToast(null)}/>}
       {screen==="feedback"&&<FeedbackScreen txnCount={sortedTransactions.length} onDone={()=>setScreen("session-complete")}/>}
       {screen==="session-complete"&&<SessionCompleteScreen txnCount={sortedTransactions.length} onRestart={()=>{setScreen("hero");setRawTransactions([]);setSortedTransactions([]);setCategorisedTransactions([]);setFinalCategories([]);}}/>}
-      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:(screen==="main"&&typeof window!=="undefined"&&window.innerWidth<768)?"none":"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>
+      <div style={{position:"fixed",bottom:0,left:0,right:0,padding:"6px 16px",display:((screen==="main"||screen==="sort")&&typeof window!=="undefined"&&window.innerWidth<768)?"none":"flex",justifyContent:"center",gap:16,pointerEvents:"none",zIndex:1}}>
         <a href="https://www.iubenda.com/privacy-policy/95322623" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Privacy Policy</a>
         <a href="https://www.iubenda.com/privacy-policy/95322623/cookie-policy" target="_blank" rel="noopener noreferrer" style={{fontSize:10,color:"#6b7280",textDecoration:"none",pointerEvents:"all"}}>Cookie Policy</a>
       </div>

@@ -140,6 +140,7 @@ const GLOBAL_CSS = `
   @keyframes insightFadeIn { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
   @keyframes incomeArrowPulse { 0%,100%{transform:translateY(0);opacity:0.55} 50%{transform:translateY(-4px);opacity:1} }
   @keyframes sheetUp { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  @keyframes rowGlow { 0%,100%{background:rgba(217,119,6,0.06)} 50%{background:rgba(217,119,6,0.26)} }
   .abound-row:hover td { background: rgba(99,102,241,0.07) !important; transition: background 0.1s; }
   @media (max-width: 1024px) {
     [data-sticky-label] { position: sticky !important; left: 0; z-index: 2; background: var(--sticky-bg, #0d0c1e) !important; }
@@ -3600,12 +3601,13 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     setTooltip({text, x, y});
     tooltipTimer.current = setTimeout(()=>setTooltip(null), 3000);
   }
-  const [events, setEvents] = useState([]);
+  const [events, setEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_planned_events_v1")||"[]");}catch{return[];}});
   const [editingEvent, setEditingEvent] = useState(null);
   const [incomeEvents, setIncomeEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_income_events")||"[]").map(e=>({...e,expectedDate:e.expectedDate?new Date(e.expectedDate):null,receivedDate:e.receivedDate?new Date(e.receivedDate):null}));}catch{return[];}});
   const [incomeFormState, setIncomeFormState] = useState(null);
   const [reconcileState, setReconcileState] = useState({});
   useEffect(()=>{try{localStorage.setItem("abound_income_events",JSON.stringify(incomeEvents.map(e=>({...e,expectedDate:e.expectedDate?.toISOString(),receivedDate:e.receivedDate?.toISOString()}))));}catch{}},[incomeEvents]);
+  useEffect(()=>{try{localStorage.setItem("abound_planned_events_v1",JSON.stringify(events));}catch{}},[events]);
   // Auto-match income transactions to declared income events on mount
   useEffect(()=>{
     const incomeTxns=transactions.filter(t=>t.category==="Income"||t.category==="Salary");
@@ -3689,17 +3691,24 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     return next;
   }
   function triggerIncomeWizard(){
-    if(incomeEvents.length>0) return;
-    if(localStorage.getItem("abound_income_wizard_skipped")) return;
+    if(localStorage.getItem("abound_setup_wizard_done")) return;
+    setDraftPurchases([]);
+    setPurchaseForm({label:'',amount:'',weekKey:forecastWeeks[0]?.key||''});
+    if(incomeEvents.length>0){
+      setSetupWizardPage(2);
+      setShowIncomeWizard(true);
+      return;
+    }
     const d=new Date();d.setDate(d.getDate()+30);
     setWizardForm({label:'',amount:'',expectedDate:fmtDateInput(d),recurrence:'monthly'});
     setIncomeWizardStep(wizardSuggestion?"suggest":"manual");
+    setSetupWizardPage(1);
     setShowIncomeWizard(true);
   }
   function applyWizardSuggestion(txn){
     const ev={id:String(Date.now()),label:'Salary',amount:Math.round(txn.amount),expectedDate:_wizardNextDate(txn.date),recurrence:'monthly',status:'expected'};
     setIncomeEvents(evs=>[...evs,ev]);
-    setShowIncomeWizard(false);
+    setSetupWizardPage(2);
   }
   function switchWizardToManual(){
     if(wizardSuggestion){
@@ -3713,12 +3722,26 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     if(!wizardForm.label||isNaN(amount)||amount<=0||!wizardForm.expectedDate) return;
     const ev={id:String(Date.now()),label:wizardForm.label,amount,expectedDate:new Date(wizardForm.expectedDate+'T00:00:00'),recurrence:wizardForm.recurrence,status:'expected'};
     setIncomeEvents(evs=>[...evs,ev]);
-    setShowIncomeWizard(false);
+    setSetupWizardPage(2);
   }
   function skipIncomeWizard(){
-    try{localStorage.setItem("abound_income_wizard_skipped","1");}catch{}
+    setSetupWizardPage(2);
+  }
+  function finishSetupWizard(purchases){
+    try{localStorage.setItem("abound_setup_wizard_done","1");}catch{}
     setIncomeWizardSkipped(true);
     setShowIncomeWizard(false);
+    if(purchases.length>0){
+      setEvents(evs=>[...evs,...purchases.map(p=>({id:p.id,label:p.label,amount:p.amount,weekKey:p.weekKey}))]);
+      setPulseExpenses(true);
+      setTimeout(()=>setPulseExpenses(false),2600);
+    }
+  }
+  function openPurchasePlanner(){
+    setSetupWizardPage(2);
+    setDraftPurchases([]);
+    setPurchaseForm({label:'',amount:'',weekKey:forecastWeeks[0]?.key||''});
+    setShowIncomeWizard(true);
   }
   const [ctxMenu, setCtxMenu] = useState(null);
   function txnKey(t){return t.narrative+'|'+t.date.getTime()+'|'+t.amount;}
@@ -3746,7 +3769,11 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [showIncomeWizard,setShowIncomeWizard]=useState(false);
   const [incomeWizardStep,setIncomeWizardStep]=useState("suggest");
   const [wizardForm,setWizardForm]=useState({label:'',amount:'',expectedDate:'',recurrence:'monthly'});
-  const [incomeWizardSkipped,setIncomeWizardSkipped]=useState(()=>!!localStorage.getItem("abound_income_wizard_skipped"));
+  const [incomeWizardSkipped,setIncomeWizardSkipped]=useState(()=>!!localStorage.getItem("abound_setup_wizard_done"));
+  const [setupWizardPage,setSetupWizardPage]=useState(1);
+  const [draftPurchases,setDraftPurchases]=useState([]);
+  const [purchaseForm,setPurchaseForm]=useState({label:'',amount:'',weekKey:''});
+  const [pulseExpenses,setPulseExpenses]=useState(false);
   useEffect(()=>{
     if(!stocks.length) return;
     stocks.forEach(async(s)=>{
@@ -4019,6 +4046,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const mostRecentDate = useMemo(()=>transactions.reduce((max,t)=>t.date>max?t.date:max,new Date(0)),[transactions]);
   const actualWeeks = useMemo(()=>{const lastMonday=getWeekMonday(mostRecentDate);return Array.from({length:6},(_,i)=>{const mon=new Date(lastMonday);mon.setDate(mon.getDate()-(5-i)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[mostRecentDate]);
   const forecastWeeks = useMemo(()=>{if(!actualWeeks.length)return[];const last=actualWeeks[actualWeeks.length-1].date;return Array.from({length:12},(_,i)=>{const mon=new Date(last);mon.setDate(mon.getDate()+(i+1)*7);return{key:mon.toISOString().slice(0,10),date:mon,sunday:getWeekSunday(mon)};});},[actualWeeks]);
+  // Prune planned events that predate the earliest actual week (already spent/past)
+  useEffect(()=>{if(!actualWeeks.length)return;const earliest=actualWeeks[0].key;setEvents(evs=>evs.filter(ev=>ev.weekKey>=earliest));},[actualWeeks]);
   const PREVIEW_COLS=3;
   const visibleForecastWeeks=forecastWeeks.slice(0,isPro?(forecastExpanded?forecastWeeks.length:6):(previewCollapsed||isMobile)?6:Math.min(6+PREVIEW_COLS,forecastWeeks.length));
   const weeklyByAccountCat = useMemo(()=>{const weekly={};transactions.forEach(t=>{const key=getWeekMonday(t.date).toISOString().slice(0,10);if(!weekly[key])weekly[key]={};if(!weekly[key][t.account])weekly[key][t.account]={};const cat=t.category==="Salary"?"Income":t.category;const amt=cat==="Income"?t.amount:-t.amount;weekly[key][t.account][cat]=(weekly[key][t.account][cat]||0)+amt;});return weekly;},[transactions]);
@@ -4600,7 +4629,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         {!collapsedAccounts.has(account)&&spendCatsLocal.filter(c=>c!=="Card Repayment").map(cat=><CatRow key={cat} cat={cat} account={account}/>)}
         {!collapsedAccounts.has(account)&&isMainAcc&&<CatRow key="Card Repayment" cat="Card Repayment" account={account}/>}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
-          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
+          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)",animation:pulseExpenses?"rowGlow 0.75s ease 2":"none"}}>
             <td data-sticky-label style={{background:"rgba(217,119,6,0.06)"}}/>
             <td data-sticky-label2 style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706",background:"rgba(217,119,6,0.06)"}}>Planned expenses</td>
             {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
@@ -4709,7 +4738,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <IncomeEventsGroupedRow/>
         {spendCats.map(cat=><GroupedCatRow key={cat} cat={cat}/>)}
         {events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length>0&&(
-          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)"}}>
+          <tr className="abound-row" style={{background:"rgba(217,119,6,0.06)",borderBottom:"1px solid rgba(217,119,6,0.15)",animation:pulseExpenses?"rowGlow 0.75s ease 2":"none"}}>
             <td data-sticky-label style={{background:"rgba(217,119,6,0.06)"}}/>
             <td data-sticky-label2 style={{padding:"5px 12px",fontSize:11,fontWeight:700,color:"#d97706",background:"rgba(217,119,6,0.06)"}}>Planned expenses</td>
             {actualWeeks.map((_,i)=><td key={i} style={tdAmt("#d1d5db",false)}>—</td>)}
@@ -4878,6 +4907,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><rect x="3" y="5" width="14" height="10" rx="2" stroke="#d97706" strokeWidth="1.6"/><path d="M7 10h6M10 7v6" stroke="#d97706" strokeWidth="1.5" strokeLinecap="round"/></svg>
               </div>
               <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Budget targets</div><div style={{fontSize:11,color:"#6b7280"}}>Set weekly spend limits</div></div>
+            </button>
+            <button onClick={()=>{setMobileMoreOpen(false);openPurchasePlanner();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
+              <div style={{width:36,height:36,borderRadius:18,background:"rgba(217,119,6,0.08)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <svg width="16" height="16" viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="16.5" r="1.5" fill="#d97706"/><circle cx="14.5" cy="16.5" r="1.5" fill="#d97706"/><path d="M2 3h2.5l2 8h7.5l2-6H6" stroke="#d97706" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </div>
+              <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>Plan a purchase</div><div style={{fontSize:11,color:"#6b7280"}}>Add upcoming one-off costs</div></div>
             </button>
             <button onClick={()=>{setMobileMoreOpen(false);openStocks();}} style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"14px 0",background:"none",border:"none",borderBottom:"1px solid #1f1d35",cursor:"pointer",color:"#e0e7ff",textAlign:"left"}}>
               <div style={{width:36,height:36,borderRadius:18,background:"rgba(16,185,129,0.1)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -5372,6 +5407,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 {bc?`Budget (${bc})`:"Budget"}
               </button>
               );})()}
+              {(()=>{const ec=events.filter(ev=>forecastWeeks.some(w=>w.key===ev.weekKey)).length;return(
+              <button onClick={openPurchasePlanner} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 12px",height:30,background:ec?"rgba(217,119,6,0.14)":"rgba(99,102,241,0.07)",border:`1px solid ${ec?"rgba(217,119,6,0.45)":"rgba(99,102,241,0.25)"}`,borderRadius:8,fontSize:11,fontWeight:700,color:ec?"#d97706":"#818cf8",cursor:"pointer",flexShrink:0}}>
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><circle cx="7.5" cy="16.5" r="1.5" fill="currentColor"/><circle cx="14.5" cy="16.5" r="1.5" fill="currentColor"/><path d="M2 3h2.5l2 8h7.5l2-6H6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                {ec?`Purchases (${ec})`:"Plan a purchase"}
+              </button>
+              );})()}
               <span style={{fontSize:11,color:T.dimText,fontWeight:500}}>{splitByCard?"Split by card":"All accounts grouped"}</span>
               <button onClick={()=>setSplitByCard(s=>!s)} style={{position:"relative",width:44,height:24,borderRadius:12,border:"none",background:splitByCard?"#6366f1":"#374151",cursor:"pointer",padding:0,transition:"background 0.2s",flexShrink:0}}>
                 <span style={{position:"absolute",top:3,left:splitByCard?22:3,width:18,height:18,borderRadius:9,background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.25)",display:"block"}}/>
@@ -5695,15 +5736,29 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {/* Premium gate modal */}
       {showPremiumGate&&<UpgradeModal runsUsed={getAiRunsUsed()} onUpgrade={redirectToCheckout} onDismiss={()=>setShowPremiumGate(false)}/>}
 
-      {/* Income wizard modal */}
-      {showIncomeWizard&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
-          <div style={{background:"#0d0c1e",border:"1px solid #2d2a6e",borderRadius:16,padding:28,maxWidth:440,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.6)"}}>
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:6}}>Income Setup</div>
-              <div style={{fontSize:18,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>When do you next get paid?</div>
-              <div style={{fontSize:13,color:"#9ca3af"}}>Set up your income so we can forecast your cash flow accurately.</div>
-            </div>
+      {/* Setup wizard — 2-step "Set up your forecast" */}
+      {showIncomeWizard&&(()=>{
+        const chips=["Holiday","Tech","Car","Home","Event","Gift","Other"];
+        const wkOpts=forecastWeeks.map(w=>{const d=w.date;return{key:w.key,label:`w/c ${d.getDate()} ${d.toLocaleString('en-GB',{month:'short'})}`};});
+        const curWkKey=purchaseForm.weekKey||(forecastWeeks[0]?.key||'');
+        function addDraftPurchase(){
+          const amt=parseFloat(purchaseForm.amount);
+          if(!purchaseForm.label.trim()||isNaN(amt)||amt<=0||!curWkKey) return;
+          setDraftPurchases(ps=>[...ps,{id:String(Date.now()),label:purchaseForm.label.trim(),amount:amt,weekKey:curWkKey}]);
+          setPurchaseForm(f=>({...f,label:'',amount:''}));
+        }
+        const adjustedFcst=combinedClosingBalances.forecast.map((bal,i)=>{
+          if(bal===null) return null;
+          const cut=draftPurchases.reduce((s,p)=>{const pi=forecastWeeks.findIndex(w=>w.key===p.weekKey);return(pi!==-1&&pi<=i)?s+p.amount:s;},0);
+          return bal-cut;
+        });
+        const lowPt=adjustedFcst.reduce((w,v,i)=>v===null?w:(!w||v<w.v)?{v,i,wk:forecastWeeks[i]}:w,null);
+        const canAdd=!!(purchaseForm.label.trim()&&purchaseForm.amount&&parseFloat(purchaseForm.amount)>0);
+        const step1=(
+          <>
+            <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Set up your forecast — Step 1 of 2</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>When do you next get paid?</div>
+            <div style={{fontSize:13,color:"#9ca3af",marginBottom:20}}>Set up your income so we can forecast your cash flow accurately.</div>
             {incomeWizardStep==="suggest"&&wizardSuggestion?(
               <>
                 <div style={{background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.3)",borderRadius:10,padding:"14px 16px",marginBottom:16}}>
@@ -5711,35 +5766,112 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <div style={{fontSize:12,color:"#9ca3af"}}>Use this as your monthly income?</div>
                 </div>
                 <div style={{display:"flex",gap:10,marginBottom:16}}>
-                  <button onClick={()=>applyWizardSuggestion(wizardSuggestion)} style={{flex:1,padding:"10px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Yes, use £{Math.round(wizardSuggestion.amount).toLocaleString()}/month</button>
-                  <button onClick={switchWizardToManual} style={{padding:"10px 14px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#a5b4fc",fontSize:13,cursor:"pointer"}}>Enter manually</button>
+                  <button onClick={()=>applyWizardSuggestion(wizardSuggestion)} style={{flex:1,padding:"12px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",minHeight:44}}>Yes, use £{Math.round(wizardSuggestion.amount).toLocaleString()}/month</button>
+                  <button onClick={switchWizardToManual} style={{padding:"12px 14px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#a5b4fc",fontSize:13,cursor:"pointer",minHeight:44}}>Enter manually</button>
                 </div>
                 <div style={{textAlign:"center"}}>
-                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline"}}>Skip — I'll add this later</button>
+                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"8px 0",minHeight:44}}>Skip — I'll add this later</button>
                 </div>
               </>
             ):(
               <>
                 <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
-                  <input placeholder="Label (Salary, freelance, etc.)" value={wizardForm.label} onChange={e=>setWizardForm(f=>({...f,label:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
-                  <input type="number" placeholder="Amount (£)" value={wizardForm.amount} onChange={e=>setWizardForm(f=>({...f,amount:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
-                  <input type="date" value={wizardForm.expectedDate} onChange={e=>setWizardForm(f=>({...f,expectedDate:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
-                  <select value={wizardForm.recurrence} onChange={e=>setWizardForm(f=>({...f,recurrence:e.target.value}))} style={{padding:"9px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}>
+                  <input placeholder="Label (Salary, freelance, etc.)" value={wizardForm.label} onChange={e=>setWizardForm(f=>({...f,label:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+                  <input type="number" placeholder="Amount (£)" value={wizardForm.amount} onChange={e=>setWizardForm(f=>({...f,amount:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+                  <input type="date" value={wizardForm.expectedDate} onChange={e=>setWizardForm(f=>({...f,expectedDate:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+                  <select value={wizardForm.recurrence} onChange={e=>setWizardForm(f=>({...f,recurrence:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}>
                     <option value="none">One-off</option>
                     <option value="weekly">Weekly</option>
                     <option value="biweekly">Every 2 weeks</option>
                     <option value="monthly">Monthly</option>
                   </select>
                 </div>
-                <button onClick={saveWizardForm} style={{width:"100%",padding:"10px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12}}>Save income</button>
+                <button onClick={saveWizardForm} style={{width:"100%",padding:"12px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:12,minHeight:44}}>Save income</button>
                 <div style={{textAlign:"center"}}>
-                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline"}}>Skip — I'll add this later</button>
+                  <button onClick={skipIncomeWizard} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"8px 0",minHeight:44}}>Skip — I'll add this later</button>
                 </div>
               </>
             )}
+          </>
+        );
+        const step2=(
+          <>
+            <div style={{fontSize:10,fontWeight:700,color:"#6366f1",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Set up your forecast — Step 2 of 2</div>
+            <div style={{fontSize:18,fontWeight:700,color:"#e0e7ff",marginBottom:6}}>Any big purchases coming up?</div>
+            <div style={{fontSize:13,color:"#9ca3af",marginBottom:16}}>One-off costs — a holiday, car work, new phone — so your forecast shows the dip before it happens.</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {chips.map(chip=>(
+                <button key={chip} onClick={()=>{
+                  setPurchaseForm(f=>({...f,label:chip==="Other"?"":chip}));
+                  setTimeout(()=>{const el=document.getElementById(chip==="Other"?"wz-label":"wz-amount");el?.focus();},40);
+                }} style={{padding:"5px 12px",background:purchaseForm.label===chip&&chip!=="Other"?"rgba(99,102,241,0.22)":"rgba(99,102,241,0.08)",border:`1px solid ${purchaseForm.label===chip&&chip!=="Other"?"rgba(99,102,241,0.55)":"rgba(99,102,241,0.2)"}`,borderRadius:20,fontSize:12,color:purchaseForm.label===chip&&chip!=="Other"?"#e0e7ff":"#818cf8",cursor:"pointer",fontWeight:600}}>
+                  {chip}
+                </button>
+              ))}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+              <input id="wz-label" placeholder="Label" value={purchaseForm.label} onChange={e=>setPurchaseForm(f=>({...f,label:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+              <div style={{display:"flex",alignItems:"center",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,overflow:"hidden"}}>
+                <span style={{padding:"0 8px 0 12px",color:"#6b7280",fontSize:15,flexShrink:0}}>£</span>
+                <input id="wz-amount" type="number" min="0" placeholder="0" value={purchaseForm.amount} onChange={e=>setPurchaseForm(f=>({...f,amount:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")addDraftPurchase();}} style={{flex:1,padding:"12px 12px 12px 0",background:"none",border:"none",color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+              </div>
+              {wkOpts.length>0&&(
+                <select value={curWkKey} onChange={e=>setPurchaseForm(f=>({...f,weekKey:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}>
+                  {wkOpts.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}
+                </select>
+              )}
+            </div>
+            <button onClick={addDraftPurchase} disabled={!canAdd} style={{width:"100%",padding:"11px 14px",background:canAdd?"#6366f1":"rgba(99,102,241,0.22)",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:14,cursor:canAdd?"pointer":"default",marginBottom:16,minHeight:44}}>Add</button>
+            {draftPurchases.length>0&&(
+              <div style={{marginBottom:12,borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:10}}>
+                <div style={{fontSize:10,fontWeight:700,color:"rgba(255,255,255,0.3)",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:8}}>Added</div>
+                {draftPurchases.map(p=>{
+                  const wk=forecastWeeks.find(w=>w.key===p.weekKey);
+                  return(
+                    <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                      <div style={{flex:1,minWidth:0}}>
+                        <span style={{fontSize:13,color:"#e0e7ff",fontWeight:600}}>{p.label}</span>
+                        <span style={{fontSize:12,color:"#9ca3af",marginLeft:8}}>£{p.amount.toLocaleString()}</span>
+                        {wk&&<span style={{fontSize:11,color:"#6b7280",marginLeft:8}}>{`w/c ${wk.date.getDate()} ${wk.date.toLocaleString('en-GB',{month:'short'})}`}</span>}
+                      </div>
+                      <button onClick={()=>setDraftPurchases(ps=>ps.filter(x=>x.id!==p.id))} style={{background:"none",border:"none",color:"#ef4444",fontSize:18,cursor:"pointer",padding:"4px 8px",lineHeight:1,flexShrink:0}}>×</button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {lowPt!==null&&(
+              <div style={{marginBottom:16,padding:"10px 14px",background:lowPt.v<0?"rgba(239,68,68,0.1)":lowPt.v<200?"rgba(245,158,11,0.1)":"rgba(99,102,241,0.07)",border:`1px solid ${lowPt.v<0?"rgba(239,68,68,0.3)":lowPt.v<200?"rgba(245,158,11,0.3)":"rgba(99,102,241,0.15)"}`,borderRadius:8,fontSize:12,color:lowPt.v<0?"#fca5a5":lowPt.v<200?"#fbbf24":"#a5b4fc"}}>
+                Lowest projected balance:{" "}
+                <strong style={{color:lowPt.v<0?"#ef4444":lowPt.v<200?"#f59e0b":"#e0e7ff"}}>£{Math.round(lowPt.v).toLocaleString()}</strong>
+                {lowPt.wk&&<> · w/c {lowPt.wk.date.getDate()} {lowPt.wk.date.toLocaleString('en-GB',{month:'short'})}</>}
+              </div>
+            )}
+            <button onClick={()=>finishSetupWizard(draftPurchases)} style={{width:"100%",padding:"12px 14px",background:"#6366f1",border:"none",borderRadius:8,color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer",marginBottom:10,minHeight:44}}>
+              {draftPurchases.length>0?"Save & finish":"Finish"}
+            </button>
+            <div style={{textAlign:"center"}}>
+              <button onClick={()=>finishSetupWizard([])} style={{background:"none",border:"none",color:"#4b5563",fontSize:11,cursor:"pointer",textDecoration:"underline",padding:"8px 0"}}>No big purchases — finish</button>
+            </div>
+          </>
+        );
+        const content=setupWizardPage===1?step1:step2;
+        if(isMobile){
+          return(
+            <BottomSheet open={true} onClose={()=>setShowIncomeWizard(false)} title="">
+              <div style={{padding:"0 20px 24px"}}>{content}</div>
+            </BottomSheet>
+          );
+        }
+        return(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:900,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+            <div style={{background:"#0d0c1e",border:"1px solid #2d2a6e",borderRadius:16,padding:28,maxWidth:460,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.6)",maxHeight:"90vh",overflowY:"auto",position:"relative"}}>
+              <button onClick={()=>setShowIncomeWizard(false)} style={{position:"absolute",top:16,right:18,background:"none",border:"none",color:"rgba(255,255,255,0.35)",fontSize:20,cursor:"pointer",lineHeight:1,padding:0}}>✕</button>
+              {content}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Stock setup prompt */}
       {showStockSetup&&<StockSetupModal stocks={stocks} onSave={(s)=>{saveStocks(s);setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onDismiss={()=>{setShowStockSetup(false);setTimeout(triggerIncomeWizard,400);}} onStockDataFetched={(d)=>setStockData(prev=>({...prev,...d}))}/>}

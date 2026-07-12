@@ -14,7 +14,7 @@ export default async function handler(req, res) {
       payment_method_types: ['card'],
       mode: 'subscription',
       line_items: [{ price: 'price_1TPlZvPcKkSmNBEQXzjOGBqB', quantity: 1 }],
-      success_url: `${origin}?upgraded=true`,
+      success_url: `${origin}?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}?upgraded=false`,
       allow_promotion_codes: true,
     });

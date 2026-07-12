@@ -1,6 +1,8 @@
 // In-memory rate limiting — survives within a warm Vercel instance, resets on cold start.
 // Good enough for abuse prevention on a personal-finance app.
 // To upgrade to persistent limits: install @vercel/kv, swap in kv.incr / kv.expire below.
+import { verifyToken } from "./_token.js";
+
 const sessionCounts = new Map(); // sessionId → count
 const ipWindows    = new Map(); // ip → { count, windowStart }
 
@@ -32,13 +34,18 @@ function checkIP(raw) {
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
 
-  const sessionId = req.headers["x-session-id"] || "";
-  const ip        = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "";
+  const sessionId    = req.headers["x-session-id"] || "";
+  const ip           = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "";
+  const premiumToken = req.headers["x-premium-token"] || "";
 
-  if (checkSession(sessionId)) {
+  // A verified server-signed premium token bypasses free-tier rate limits.
+  // verifyToken checks the HMAC signature and expiry — client cannot forge this.
+  const isPremiumUser = !!verifyToken(premiumToken);
+
+  if (!isPremiumUser && checkSession(sessionId)) {
     return res.status(429).json({ error: "limit_reached", message: "Categorisation limit reached for this session." });
   }
-  if (checkIP(ip)) {
+  if (!isPremiumUser && checkIP(ip)) {
     return res.status(429).json({ error: "limit_reached", message: "Too many requests from this location. Please try again in an hour." });
   }
 

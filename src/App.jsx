@@ -38,12 +38,23 @@ class ErrorBoundary extends Component {
 const STRIPE_PUBLISHABLE_KEY = "pk_test_51TPlSFPcKkSmNBEQqNiWP7J3Udw0PywkFDsHYQIXIbnAQKbKj9bvBvz1aHa0otuA2UJi2E9AXU3npqBuQMD4FuCt00W7xaqHZ6";
 const FREE_AI_RUNS = 3;
 const AI_RUNS_KEY = "abound_ai_runs_v1";
-const PREMIUM_KEY = "abound_premium_v1";
+const TOKEN_KEY = "abound_premium_token_v1";
 
 function getAiRunsUsed() { try { return parseInt(localStorage.getItem(AI_RUNS_KEY)||"0",10); } catch{ return 0; } }
 function incrementAiRuns() { try { localStorage.setItem(AI_RUNS_KEY, String(getAiRunsUsed()+1)); } catch{} }
-function isPremium() { try { return localStorage.getItem(PREMIUM_KEY)==="1"; } catch{ return false; } }
-function setPremium() { try { localStorage.setItem(PREMIUM_KEY,"1"); } catch{} }
+function getPremiumToken() { try { return localStorage.getItem(TOKEN_KEY)||null; } catch { return null; } }
+function setPremiumToken(t) { try { localStorage.setItem(TOKEN_KEY, t); } catch {} }
+function isPremium() {
+  const token = getPremiumToken();
+  if (!token) return false;
+  try {
+    const [part] = token.split(".");
+    const b64 = part.replace(/-/g,"+").replace(/_/g,"/");
+    const padded = b64 + "==".slice(0,(4-b64.length%4)%4);
+    const payload = JSON.parse(atob(padded));
+    return typeof payload.exp === "number" && payload.exp > Date.now();
+  } catch { return false; }
+}
 
 async function redirectToCheckout() {
   try {
@@ -714,7 +725,7 @@ async function callClaudeMessages(messages, maxTokens=800, timeoutMs=15000) {
   try {
     const res = await fetch("/api/categorise",{
       method:"POST",
-      headers:{"content-type":"application/json","x-session-id":SESSION_ID},
+      headers:{"content-type":"application/json","x-session-id":SESSION_ID,"x-premium-token":getPremiumToken()||""},
       body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages}),
       signal: ctrl.signal,
     });
@@ -740,7 +751,7 @@ async function callClaude(prompt, maxTokens=800, timeoutMs=15000) {
   try {
     const res = await fetch("/api/categorise",{
       method:"POST",
-      headers:{"content-type":"application/json","x-session-id":SESSION_ID},
+      headers:{"content-type":"application/json","x-session-id":SESSION_ID,"x-premium-token":getPremiumToken()||""},
       body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:maxTokens,messages:[{role:"user",content:prompt}]}),
       signal: ctrl.signal,
     });
@@ -1195,10 +1206,6 @@ function HeroScreen({onEnter, onResume}) {
   const [phase, setPhase] = useState(0);
   const [leaving, setLeaving] = useState(false);
   const [session, setSession] = useState(null);
-  const [showAdminModal, setShowAdminModal] = useState(false);
-  const [adminCode, setAdminCode] = useState("");
-  const [adminError, setAdminError] = useState(false);
-  const tapRef = useRef({count:0,timer:null});
   useEffect(()=>{
     const t1=setTimeout(()=>setPhase(1),500);
     const t2=setTimeout(()=>setPhase(2),1200);
@@ -1207,22 +1214,8 @@ function HeroScreen({onEnter, onResume}) {
   },[]);
   function handleEnter(){setLeaving(true);setTimeout(onEnter,500);}
   function handleResume(){setLeaving(true);setTimeout(onResume,500);}
-  function handleVersionTap(){
-    tapRef.current.count++;
-    clearTimeout(tapRef.current.timer);
-    if(tapRef.current.count>=7){
-      tapRef.current.count=0;
-      setAdminCode("");setAdminError(false);setShowAdminModal(true);
-    } else {
-      tapRef.current.timer=setTimeout(()=>{tapRef.current.count=0;},2000);
-    }
-  }
-  function submitAdminCode(){
-    if(adminCode==="ab7888"){setPremium();window.location.reload();}
-    else{setAdminError(true);setAdminCode("");}
-  }
   const features=[
-    {dot:"#10b981",text:"Your statement never leaves your device — we never see your data."},
+    {dot:"#10b981",text:"Your file never leaves your device. AI categorisation sends only descriptions and amounts — never your file, account numbers, or balances."},
     {dot:"#6366f1",text:"Upload your statement. See 6 weeks ahead."},
     {dot:"#f59e0b",text:"Built for people who want to actually understand their money."},
   ];
@@ -1281,30 +1274,9 @@ function HeroScreen({onEnter, onResume}) {
             {session?"Start fresh instead":"Get started →"}
           </button>
           <div style={{marginTop:14,fontSize:11,color:"#3f3f46",letterSpacing:"0.08em"}}>FREE · NO ACCOUNT REQUIRED</div>
-          <div onClick={handleVersionTap} style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em",userSelect:"none"}}>v{APP_VERSION}</div>
+          <div style={{marginTop:8,fontSize:10,color:"#27272a",letterSpacing:"0.06em",userSelect:"none"}}>v{APP_VERSION}</div>
         </div>
       </div>
-      {showAdminModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:24}} onClick={()=>setShowAdminModal(false)}>
-          <div style={{background:"#111827",border:"1px solid #1f2937",borderRadius:16,padding:28,width:"100%",maxWidth:300,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
-            <div style={{fontSize:13,fontWeight:700,color:"#9ca3af",marginBottom:16,letterSpacing:"0.04em"}}>ADMIN ACCESS</div>
-            <input
-              autoFocus
-              type="password"
-              value={adminCode}
-              onChange={e=>{setAdminCode(e.target.value);setAdminError(false);}}
-              onKeyDown={e=>e.key==="Enter"&&submitAdminCode()}
-              placeholder="Enter code"
-              style={{width:"100%",boxSizing:"border-box",padding:"10px 14px",borderRadius:8,border:`1px solid ${adminError?"#ef4444":"#374151"}`,background:"#0d1117",color:"#f9fafb",fontSize:15,outline:"none",marginBottom:adminError?6:16,textAlign:"center",letterSpacing:"0.1em"}}
-            />
-            {adminError&&<div style={{fontSize:11,color:"#ef4444",marginBottom:12}}>Incorrect code</div>}
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={()=>setShowAdminModal(false)} style={{flex:1,padding:"10px",borderRadius:8,border:"1px solid #374151",background:"transparent",color:"#6b7280",cursor:"pointer",fontSize:13,fontWeight:600}}>Cancel</button>
-              <button onClick={submitAdminCode} style={{flex:1,padding:"10px",borderRadius:8,border:"none",background:"#6366f1",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>Unlock</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -1684,6 +1656,7 @@ function UploadScreen({onDone, onAddAccount=null}) {
   const [prevSession, setPrevSession] = useState(null);
   const [continueChosen, setContinueChosen] = useState(false);
   const [continueDismissed, setContinueDismissed] = useState(false);
+  const [showPrivacyDetail, setShowPrivacyDetail] = useState(false);
   useEffect(()=>{
     const s = loadSession();
     if(s && s.transactions && s.transactions.length > 0) setPrevSession(s);
@@ -1844,9 +1817,20 @@ function UploadScreen({onDone, onAddAccount=null}) {
       <style>{GLOBAL_CSS}</style>
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%,rgba(99,102,241,0.07) 0%,transparent 50%)",pointerEvents:"none"}}/>
       {/* Privacy banner — permanent, not fading */}
-      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,display:"flex",justifyContent:"center",alignItems:"center",gap:8,padding:"9px 16px",background:"rgba(16,185,129,0.08)",borderBottom:"1px solid rgba(16,185,129,0.15)"}}>
-        <div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 6px #10b981",flexShrink:0}}/>
-        <span style={{fontSize:12,color:"#6ee7b7",fontWeight:600}}>Your statement is processed <strong style={{color:"#34d399"}}>entirely on your device</strong> — we never see, store, or transmit your bank data.</span>
+      <div style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"rgba(16,185,129,0.08)",borderBottom:"1px solid rgba(16,185,129,0.15)"}}>
+        <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,padding:"9px 16px",flexWrap:"wrap"}}>
+          <div style={{width:7,height:7,borderRadius:"50%",background:"#10b981",boxShadow:"0 0 6px #10b981",flexShrink:0}}/>
+          <span style={{fontSize:12,color:"#6ee7b7",fontWeight:600}}>Your file is read <strong style={{color:"#34d399"}}>locally in your browser</strong> — it's never uploaded.</span>
+          <button onClick={()=>setShowPrivacyDetail(v=>!v)}
+            style={{fontSize:11,color:"#10b981",background:"none",border:"1px solid rgba(16,185,129,0.35)",borderRadius:6,padding:"1px 8px",cursor:"pointer",fontWeight:600,flexShrink:0}}>
+            {showPrivacyDetail?"Hide":"What gets sent? ▾"}
+          </button>
+        </div>
+        {showPrivacyDetail&&(
+          <div style={{padding:"8px 20px 12px",textAlign:"center",fontSize:11,color:"#6ee7b7",lineHeight:1.6,borderTop:"1px solid rgba(16,185,129,0.1)"}}>
+            To categorise with AI, only <strong style={{color:"#34d399"}}>transaction descriptions and amounts</strong> are sent securely to our categorisation service — never your file, account numbers, or balances. Skip AI and nothing is sent at all.
+          </div>
+        )}
       </div>
       <div style={{width:"100%",maxWidth:420,position:"relative",zIndex:1,animation:"fadeUp 0.6s ease both"}}>
         {/* Mobile: save to home screen tip */}
@@ -1974,7 +1958,7 @@ function UploadScreen({onDone, onAddAccount=null}) {
         )}
         <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
           <svg width="12" height="12" viewBox="0 0 20 20" fill="none"><rect x="5" y="9" width="10" height="9" rx="2" stroke="#10b981" strokeWidth="1.5"/><path d="M7 9V6a3 3 0 0 1 6 0v3" stroke="#10b981" strokeWidth="1.5" strokeLinecap="round"/></svg>
-          <span style={{fontSize:11,color:"#4b7a68",textAlign:"center",lineHeight:1.4}}>Your file is read locally in your browser. Nothing is uploaded to any server. We never see your transactions.</span>
+          <span style={{fontSize:11,color:"#4b7a68",textAlign:"center",lineHeight:1.4}}>Your file is read locally and never uploaded. If you use AI categorisation, only transaction descriptions and amounts are sent — never your file, account numbers, or balances.</span>
         </div>
       </div>
     </div>
@@ -2065,7 +2049,7 @@ function CategoriseScreen({transactions, multipleAccounts, onDone}) {
           setPct(10);
           setLogLines([
             {text:`Income & salary routed (${update.known} transactions)`,done:true,active:false},
-            {text:`Sending ${update.unknown} transactions to Claude...`,done:false,active:true},
+            {text:`Categorising ${update.unknown} transactions with AI...`,done:false,active:true},
           ]);
         } else if(update?.type==="progress"){
           setPct(update.pct);
@@ -6058,6 +6042,24 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
 
 function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
   const mob = useIsMobile();
+  const [showPromo, setShowPromo] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoStatus, setPromoStatus] = useState(null); // null | "loading" | "ok" | "error"
+  async function redeemCode(){
+    if(!promoCode.trim()) return;
+    setPromoStatus("loading");
+    try {
+      const r = await fetch("/api/redeem-code",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:promoCode.trim()})});
+      const data = await r.json();
+      if(r.ok && data.token){
+        setPremiumToken(data.token);
+        setPromoStatus("ok");
+        setTimeout(()=>window.location.reload(), 1500);
+      } else {
+        setPromoStatus("error");
+      }
+    } catch { setPromoStatus("error"); }
+  }
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:mob?12:24,backdropFilter:"blur(6px)"}}>
       <div style={{background:"linear-gradient(135deg,#1a1830,#0f0e1f)",border:"1px solid #4338ca",borderRadius:mob?14:20,padding:mob?"16px 18px":"36px 32px",maxWidth:460,width:"100%",boxShadow:"0 24px 80px rgba(0,0,0,0.7)",textAlign:"center"}}>
@@ -6084,6 +6086,26 @@ function UpgradeModal({runsUsed, onUpgrade, onDismiss}) {
           Continue free (rule-based only)
         </button>
         {!mob&&<p style={{fontSize:11,color:"#374151",marginTop:12}}>Cancel anytime · Secure payment via Stripe</p>}
+        {promoStatus==="ok"?(
+          <p style={{fontSize:12,color:"#10b981",marginTop:10,fontWeight:600}}>✓ Promo code applied — you're now Premium!</p>
+        ):(
+          <div style={{marginTop:10}}>
+            {!showPromo?(
+              <button onClick={()=>setShowPromo(true)} style={{fontSize:11,color:"#4b5563",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>Have a promo code?</button>
+            ):(
+              <div style={{display:"flex",gap:6,marginTop:2}}>
+                <input value={promoCode} onChange={e=>{setPromoCode(e.target.value);setPromoStatus(null);}} onKeyDown={e=>e.key==="Enter"&&redeemCode()}
+                  placeholder="Enter code" autoFocus
+                  style={{flex:1,padding:"7px 10px",background:"#0d0c1e",border:`1px solid ${promoStatus==="error"?"#ef4444":"#1f1d35"}`,borderRadius:7,color:"#e0e7ff",fontSize:12,outline:"none"}}/>
+                <button onClick={redeemCode} disabled={promoStatus==="loading"}
+                  style={{padding:"7px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                  {promoStatus==="loading"?"…":"Apply"}
+                </button>
+              </div>
+            )}
+            {promoStatus==="error"&&<p style={{fontSize:11,color:"#ef4444",marginTop:4}}>Code not recognised — check and try again.</p>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -6107,17 +6129,25 @@ function AppInner() {
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
 
   useEffect(()=>{
-    // Handle return from Stripe Checkout + secret admin override
+    // Handle return from Stripe Checkout — verify the session server-side before granting premium.
     const params = new URLSearchParams(window.location.search);
-    if(params.get("upgraded")==="true"){
-      setPremium();
-      setPremiumState(true);
+    const stripeSessionId = params.get("session_id");
+    if(stripeSessionId){
       window.history.replaceState({},"",window.location.pathname);
-    }
-    if(params.get("admin")==="ab7888" || window.location.hash==="#admin=ab7888"){
-      setPremium();
-      setPremiumState(true);
-      window.history.replaceState({},"",window.location.pathname);
+      (async()=>{
+        try{
+          const r = await fetch("/api/verify-checkout",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({sessionId:stripeSessionId}),
+          });
+          const data = await r.json();
+          if(r.ok && data.token){
+            setPremiumToken(data.token);
+            setPremiumState(true);
+          }
+        }catch{}
+      })();
     }
     // Fix viewport to prevent zoom on input focus (iOS)
     let meta = document.querySelector('meta[name="viewport"]');

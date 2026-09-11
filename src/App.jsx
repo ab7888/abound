@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef, Component } from "react";
+import { useState, useEffect, useMemo, useRef, Component, Fragment } from "react";
 import * as XLSX from "xlsx";
 import logo from "./logo.png";
 
@@ -2891,10 +2891,21 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const cTotals={};
     spendCats.forEach(c=>{cTotals[c]=Math.round(transactions.filter(t=>t.category===c).reduce((s,t)=>s+Math.abs(t.amount),0));});
     const topCat=Object.entries(cTotals).sort((a,b)=>b[1]-a[1])[0]?.[0]||"";
-    return{sym,allWks,weekCount:allWks.length,avgIncome:Math.round(avgIncome),avgSpend:Math.round(avgSpend),weeklyNet:Math.round(weeklyNet),balances,forecastDates,lowIdx,lowVal:minVal,topCats,catAvg,cTotals,topCat,salaryTotal:Math.round(salTot),netCashFlow:Math.round(salTot-spTot),invTotal:invTot};
+    // Today's real combined balance: latest known statement balance per account, summed
+    // (credit card balances are already stored negative — see signBalance in normaliseRows —
+    // so this naturally nets debt against cash, same convention as the Cash Flow screen).
+    const byAccount={};
+    transactions.forEach(t=>{
+      if(t.balance===null||t.balance===undefined)return;
+      const cur=byAccount[t.account];
+      if(!cur||t.date>cur.date)byAccount[t.account]={date:t.date,balance:t.balance};
+    });
+    const accountBals=Object.values(byAccount);
+    const currentBalance=accountBals.length?accountBals.reduce((s,a)=>s+a.balance,0):null;
+    return{sym,allWks,weekCount:allWks.length,avgIncome:Math.round(avgIncome),avgSpend:Math.round(avgSpend),weeklyNet:Math.round(weeklyNet),balances,forecastDates,lowIdx,lowVal:minVal,topCats,catAvg,cTotals,topCat,salaryTotal:Math.round(salTot),netCashFlow:Math.round(salTot-spTot),invTotal:invTot,currentBalance};
   },[transactions,spendCats]);
 
-  const{sym:currSym,weekCount,avgIncome,avgSpend,weeklyNet,balances,forecastDates,lowIdx,lowVal,topCats,catAvg,cTotals,topCat,salaryTotal,netCashFlow,invTotal}=stats;
+  const{sym:currSym,weekCount,avgIncome,avgSpend,weeklyNet,balances,forecastDates,lowIdx,lowVal,topCats,catAvg,cTotals,topCat,salaryTotal,netCashFlow,invTotal,currentBalance}=stats;
 
   const WIZARD_KEY="abound_insights_wizard";
   const savedWizard=useMemo(()=>{try{return JSON.parse(localStorage.getItem(WIZARD_KEY)||"null");}catch{return null;}},[]);
@@ -3006,6 +3017,10 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const labelAbove=lowPt[1]>PT+28;
     const labelX=Math.min(Math.max(lowPt[0],44),W-44);
     const labelY=labelAbove?lowPt[1]-14:lowPt[1]+22;
+    // "Now" reference point: anchor the drop to a real, recognisable £ figure instead of an
+    // unlabelled baseline dot, so the chart reads correctly even without color/hue.
+    const nowAbove=pts[0][1]>PT+24;
+    const nowLabelY=nowAbove?pts[0][1]-10:pts[0][1]+18;
     return(
       <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",overflow:"visible",display:"block"}}>
         <defs>
@@ -3022,6 +3037,11 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
         <path d={areaD} fill="url(#igFill)"/>
         <path d={pathD} fill="none" stroke="url(#igLine)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
         <circle cx={pts[0][0]} cy={pts[0][1]} r="3.5" fill="#818cf8"/>
+        {currentBalance!==null&&(
+          <text x={pts[0][0]} y={nowLabelY} textAnchor="start" fontSize="10" fontWeight="700" fill="#a5b4fc">
+            {currSym}{Math.round(currentBalance).toLocaleString()}
+          </text>
+        )}
         {wkLabels.map(({x,label},i)=>(
           <text key={i} x={x} y={H-4} textAnchor="middle" fontSize="9" fill="rgba(156,163,175,0.7)">{label}</text>
         ))}
@@ -3031,7 +3051,9 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
         </circle>
         <circle cx={lowPt[0]} cy={lowPt[1]} r="5" fill={goesNeg?"#ef4444":"#f59e0b"} stroke={goesNeg?"rgba(239,68,68,0.5)":"rgba(245,158,11,0.5)"} strokeWidth="2"/>
         <text x={labelX} y={labelY} textAnchor="middle" fontSize="10" fontWeight="700" fill={goesNeg?"#f87171":"#fbbf24"}>
-          {goesNeg?`-${currSym}${Math.abs(lowVal).toLocaleString()}`:`${currSym}${lowVal.toLocaleString()} low`}
+          {/* Arrow glyph carries the same "this is bad" meaning as the red hue, so the
+              chart doesn't rely on color alone to convey the trend (WCAG 1.4.1). */}
+          {goesNeg?`▼ -${currSym}${Math.abs(lowVal).toLocaleString()}`:`▼ ${currSym}${lowVal.toLocaleString()} low`}
         </text>
       </svg>
     );
@@ -3040,17 +3062,27 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   function StepDots({current}){
     return(
       <div style={{display:"flex",alignItems:"center",gap:0,marginBottom:24}}>
-        {[1,2,3].map((n,i)=>(
-          <>
-            {i>0&&<div key={`line-${n}`} style={{flex:1,height:1.5,background:n<=current?"#6366f1":"rgba(99,102,241,0.18)",maxWidth:36,transition:"background 0.5s"}}/>}
-            <div key={`dot-${n}`} style={{width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:n<current?"#6366f1":n===current?"rgba(99,102,241,0.12)":"transparent",border:n<current?"none":`2px solid ${n===current?"#6366f1":"rgba(99,102,241,0.22)"}`,transition:"all 0.35s",flexShrink:0}}>
-              {n<current
+        {[1,2,3].map((n,i)=>{
+          const done=n<current;
+          // Completed steps can be revisited — a wizard with no way back reads as more
+          // commitment than this really requires. Steps not yet reached stay non-interactive.
+          const Tag=done?"button":"div";
+          return(
+          <Fragment key={`step-${n}`}>
+            {i>0&&<div style={{flex:1,height:1.5,background:n<=current?"#6366f1":"rgba(99,102,241,0.18)",maxWidth:36,transition:"background 0.5s"}}/>}
+            <Tag
+              type={done?"button":undefined}
+              onClick={done?()=>goNextStep(n):undefined}
+              aria-label={done?`Back to step ${n}`:`Step ${n}`}
+              style={{width:28,height:28,padding:0,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",background:done?"#6366f1":n===current?"rgba(99,102,241,0.12)":"transparent",border:done?"none":`2px solid ${n===current?"#6366f1":"rgba(99,102,241,0.22)"}`,transition:"all 0.35s",flexShrink:0,cursor:done?"pointer":"default",font:"inherit"}}>
+              {done
                 ?<svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2.5 6l2.5 2.5L9.5 3.5" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 :<span style={{fontSize:11,fontWeight:700,color:n===current?"#818cf8":"rgba(99,102,241,0.35)"}}>{n}</span>
               }
-            </div>
-          </>
-        ))}
+            </Tag>
+          </Fragment>
+          );
+        })}
         <div style={{marginLeft:10,fontSize:10,color:"var(--text3)",fontWeight:500,flexShrink:0}}>Step {Math.min(current,3)} of 3</div>
       </div>
     );
@@ -3120,8 +3152,8 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
                                 <span style={{fontSize:12,fontWeight:600,color:"var(--text)"}}>{cat}</span>
                                 <span style={{fontSize:12,fontWeight:700,color:"#818cf8"}}>{currSym}{amount.toLocaleString()}<span style={{fontSize:9,color:"var(--text3)",fontWeight:400}}>/wk avg</span></span>
                               </div>
-                              <div style={{height:3,borderRadius:2,background:"rgba(99,102,241,0.1)",overflow:"hidden"}}>
-                                <div style={{width:`${barW}%`,height:"100%",background:"linear-gradient(90deg,#6366f1,#818cf8)",borderRadius:2}}/>
+                              <div style={{height:5,borderRadius:3,background:"rgba(99,102,241,0.14)",overflow:"hidden"}}>
+                                <div style={{width:`${barW}%`,height:"100%",background:"linear-gradient(90deg,#6366f1,#818cf8)",borderRadius:3}}/>
                               </div>
                             </div>
                           </div>

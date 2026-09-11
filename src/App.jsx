@@ -642,6 +642,14 @@ function normaliseRows(rawRows, accountLabel, summaryBalance=null) {
     return [];
   }
 
+  // A credit-card statement's own "Balance" column reports the amount owed as a positive
+  // number (e.g. NatWest CC trailer: "Balance as at ... ,262.73"). Abound's own convention
+  // treats every account's balance the same way a bank balance works — positive = money you
+  // have — so a card's owed amount must be stored as negative (debt) for it to combine
+  // correctly with the main account. Force that sign here regardless of how the source file
+  // expresses it, so downstream code never has to guess.
+  const signBalance = v => v===null||v===undefined ? null : (isMainAccount ? v : -Math.abs(v));
+
   // Strip trailer/balance-summary rows (e.g. NatWest CC "Balance as at DD Mon YYYY"):
   // rows where the amount column(s) are empty/zero but the balance column has a value.
   let trailerBalance = null;
@@ -653,7 +661,7 @@ function normaliseRows(rawRows, accountLabel, summaryBalance=null) {
         : toNum(row[amtKey])===0;
       const balVal = toNum(row[balKey]);
       if (amtZero && balVal!==0 && /\bbalance\b/i.test(narVal)) {
-        trailerBalance = balVal;
+        trailerBalance = signBalance(balVal);
         return false;
       }
       return true;
@@ -663,7 +671,7 @@ function normaliseRows(rawRows, accountLabel, summaryBalance=null) {
   const txnList = rows.map(row=>{
     const date = parseDate(row[dateKey]);
     const narrative = String(row[narKey]||"").replace(/\r\n|\r|\n/g," ").trim();
-    const balance = balKey?(toNum(row[balKey])||null):null;
+    const balance = balKey?signBalance(toNum(row[balKey])||null):null;
 
     let rawAmt;
     if (splitMode) {
@@ -685,8 +693,9 @@ function normaliseRows(rawRows, accountLabel, summaryBalance=null) {
   }).filter(Boolean);
 
   // Inject trailer balance (Case 1) or sheet-summary balance (Case 2) onto the most recent
-  // transaction when no per-row balance was present in the data.
-  const injectBal = trailerBalance !== null ? trailerBalance : summaryBalance;
+  // transaction when no per-row balance was present in the data. trailerBalance is already
+  // signed above; summaryBalance comes straight from the raw sheet and still needs it.
+  const injectBal = trailerBalance !== null ? trailerBalance : signBalance(summaryBalance);
   if (injectBal !== null && !txnList.some(t => t.balance !== null)) {
     const maxDate = txnList.reduce((max, t) => t.date > max ? t.date : max, new Date(0));
     txnList.forEach(t => { if (t.date.getTime() === maxDate.getTime()) t.balance = injectBal; });
@@ -1705,8 +1714,11 @@ function UploadScreen({onDone, onAddAccount=null}) {
     const injected=parsedTxns.map(t=>{
       const entry=missingBalanceAccounts.find(m=>m.label===t.account);
       if(!entry) return t;
-      const val=parseFloat(String(balanceInputs[t.account]||"").replace(/[£,]/g,""));
-      if(isNaN(val)) return t;
+      const raw=parseFloat(String(balanceInputs[t.account]||"").replace(/[£,]/g,""));
+      if(isNaN(raw)) return t;
+      // Non-main accounts are credit cards: whatever's typed (owed amount, positive or
+      // negative) always becomes negative internally so it subtracts from the combined balance.
+      const val=t.account==="Main Account"?raw:-Math.abs(raw);
       // Find the most recent transaction for this account and attach balance there
       const acctTxns=parsedTxns.filter(x=>x.account===t.account);
       const mostRecent=acctTxns.reduce((a,b)=>a.date>b.date?a:b);
@@ -4267,45 +4279,60 @@ function getLastWorkingDay(year, month) {
 
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
-    // Real economic spend across every account — excludes Card Repayment (an internal
-    // transfer to the credit card, already counted via the card's own spend categories)
-    // and Investments (tracked separately). This is the exact same figure the NET MOVEMENT
-    // row shows, so CASH BALANCE always ties out as previous week + this week's net.
-    const netSpendCatsAll=[...new Set(categories.filter(c=>c!=="Income"&&c!=="Investments"&&(singleAccount||c!=="Card Repayment")))];
-    const incomeActual=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0));
-    const spendActual=actualWeeks.map(w=>accounts.reduce((s,acc)=>netSpendCatsAll.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
-    const netActual=actualWeeks.map((_,i)=>incomeActual[i]-spendActual[i]);
-    const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
-    // closingBals[i] = end-of-week combined cash position (main balance minus real spend elsewhere)
-    const closingBals=Array(actualWeeks.length).fill(null);
-    knownBals.forEach((b,i)=>{if(b!==null)closingBals[i]=b;});
-    // Forward: closing[i+1] = closing[i] + net[i+1]
-    for(let i=0;i<actualWeeks.length-1;i++){
-      if(closingBals[i]!==null&&closingBals[i+1]===null)
-        closingBals[i+1]=closingBals[i]+netActual[i+1];
+
+    // Walk one account's own real balance forward/backward from whatever statement balances
+    // are known for it (main account: its bank balance; a credit card: its own statement
+    // balance, now always stored negative — see signBalance in normaliseRows). This mirrors
+    // each account's own true movement, including Card Repayment: a real outflow on the main
+    // account and a real (debt-reducing) inflow on the card. Summing every account's own
+    // walk is what actually combines "main cash minus everything owed on every card" — using
+    // only the main account's balance (the old behaviour) silently dropped card debt entirely.
+    function accountClosing(account){
+      const isMain=account===mainAcc;
+      const incomeCat=isMain?"Income":"Card Repayment";
+      const spendCats=[...new Set(categories.filter(c=>c!=="Income"&&c!=="Investments"&&(isMain||c!=="Card Repayment")))];
+      const netActual=actualWeeks.map(w=>{
+        const inc=Math.abs(weeklyByAccountCat[w.key]?.[account]?.[incomeCat]||0);
+        const sp=spendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[account]?.[c]||0),0);
+        return inc-sp;
+      });
+      const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[account]??null);
+      const closing=Array(actualWeeks.length).fill(null);
+      knownBals.forEach((b,i)=>{if(b!==null)closing[i]=b;});
+      for(let i=0;i<actualWeeks.length-1;i++){
+        if(closing[i]!==null&&closing[i+1]===null)closing[i+1]=closing[i]+netActual[i+1];
+      }
+      for(let i=actualWeeks.length-1;i>0;i--){
+        if(closing[i]!==null&&closing[i-1]===null)closing[i-1]=closing[i]-netActual[i];
+      }
+      const lastActualBal=closing.filter(b=>b!==null).slice(-1)[0]??null;
+      const incomeForecast=isMain
+        ?(incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Income"]?.[i]||0))
+        :forecastWeeks.map((_,i)=>forecastData[account]?.[incomeCat]?.[i]||0);
+      const spendForecast=forecastWeeks.map((_,i)=>spendCats.reduce((s,c)=>s+(forecastData[account]?.[c]?.[i]||0),0));
+      const netForecast=forecastWeeks.map((w,i)=>{
+        const eventSpend=isMain?events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0):0;
+        return (incomeForecast[i]||0)-spendForecast[i]-eventSpend;
+      });
+      const forecastClosing=Array(forecastWeeks.length).fill(null);
+      if(lastActualBal!==null){
+        forecastClosing[0]=lastActualBal+netForecast[0];
+        for(let i=1;i<forecastWeeks.length;i++)forecastClosing[i]=forecastClosing[i-1]+netForecast[i];
+      }
+      return{actual:closing,forecast:forecastClosing};
     }
-    // Backward: closing[i-1] = closing[i] - net[i]
-    for(let i=actualWeeks.length-1;i>0;i--){
-      if(closingBals[i]!==null&&closingBals[i-1]===null)
-        closingBals[i-1]=closingBals[i]-netActual[i];
-    }
-    const actualClosing=closingBals;
-    const lastActualBal=closingBals.filter(b=>b!==null).slice(-1)[0]??null;
-    const incomeForecast=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Income"]?.[i]||0);
-    const spendForecast=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>netSpendCatsAll.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
-    const netForecast=forecastWeeks.map((w,i)=>{
-      const eventSpend=events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0);
-      return incomeForecast[i]-spendForecast[i]-eventSpend;
-    });
-    // closing[i] = closing[i-1] + net[i] — same recurrence as the actual weeks above, so the
-    // transition from the last actual week into week 1 of the forecast ties out too.
-    const forecastClosing=Array(forecastWeeks.length).fill(null);
-    if(lastActualBal!==null){
-      forecastClosing[0]=lastActualBal+netForecast[0];
-      for(let i=1;i<forecastWeeks.length;i++)forecastClosing[i]=forecastClosing[i-1]+netForecast[i];
-    }
+
+    const perAccount=accounts.map(accountClosing);
+    // Sum whichever accounts resolve for a given week, so one card without any balance data
+    // yet (still null throughout) doesn't blank out the whole combined row.
+    const sumWeek=(field,i)=>{
+      const vals=perAccount.map(p=>p[field][i]).filter(v=>v!==null);
+      return vals.length?vals.reduce((a,b)=>a+b,0):null;
+    };
+    const actualClosing=actualWeeks.map((_,i)=>sumWeek("actual",i));
+    const forecastClosing=forecastWeeks.map((_,i)=>sumWeek("forecast",i));
     return{actual:actualClosing,forecast:forecastClosing};
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek,singleAccount]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek]);
 
   const insights=useMemo(()=>{
     const tips=[],totals={},weeklyTotals={};

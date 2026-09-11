@@ -4267,41 +4267,45 @@ function getLastWorkingDay(year, month) {
 
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
-    const mainSpendCats=[...new Set([...categories.filter(c=>c!=="Income"), INTERCOMPANY_CATEGORY])];
-    const ccSpendCats=categories.filter(c=>c!=="Income"&&c!=="Card Repayment");
-    const ccAccounts=accounts.filter(a=>a!==mainAcc);
-    const mainActuals=actualWeeks.map(w=>mainSpendCats.reduce((s,c)=>s+Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.[c]||0),0));
-    const mainIncome=actualWeeks.map(w=>Math.abs(weeklyByAccountCat[w.key]?.[mainAcc]?.["Income"]||0));
-    const mainNet=actualWeeks.map((_,i)=>mainIncome[i]-mainActuals[i]);
-    const ccActuals=actualWeeks.map(w=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
+    // Real economic spend across every account — excludes Card Repayment (an internal
+    // transfer to the credit card, already counted via the card's own spend categories)
+    // and Investments (tracked separately). This is the exact same figure the NET MOVEMENT
+    // row shows, so CASH BALANCE always ties out as previous week + this week's net.
+    const netSpendCatsAll=[...new Set(categories.filter(c=>c!=="Income"&&c!=="Investments"&&(singleAccount||c!=="Card Repayment")))];
+    const incomeActual=actualWeeks.map(w=>accounts.reduce((s,acc)=>s+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0));
+    const spendActual=actualWeeks.map(w=>accounts.reduce((s,acc)=>netSpendCatsAll.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
+    const netActual=actualWeeks.map((_,i)=>incomeActual[i]-spendActual[i]);
     const knownBals=actualWeeks.map(w=>weekBalances[w.key]?.[mainAcc]??null);
-    // closingBals[i] = end-of-week main-account balance (post all transactions)
+    // closingBals[i] = end-of-week combined cash position (main balance minus real spend elsewhere)
     const closingBals=Array(actualWeeks.length).fill(null);
     knownBals.forEach((b,i)=>{if(b!==null)closingBals[i]=b;});
     // Forward: closing[i+1] = closing[i] + net[i+1]
     for(let i=0;i<actualWeeks.length-1;i++){
       if(closingBals[i]!==null&&closingBals[i+1]===null)
-        closingBals[i+1]=closingBals[i]+mainNet[i+1];
+        closingBals[i+1]=closingBals[i]+netActual[i+1];
     }
     // Backward: closing[i-1] = closing[i] - net[i]
     for(let i=actualWeeks.length-1;i>0;i--){
       if(closingBals[i]!==null&&closingBals[i-1]===null)
-        closingBals[i-1]=closingBals[i]-mainNet[i];
+        closingBals[i-1]=closingBals[i]-netActual[i];
     }
-    const actualClosing=closingBals.map((b,i)=>b!==null?b-ccActuals[i]:null);
+    const actualClosing=closingBals;
     const lastActualBal=closingBals.filter(b=>b!==null).slice(-1)[0]??null;
-    const mainFActuals=forecastWeeks.map((_,i)=>mainSpendCats.reduce((s,c)=>s+(forecastData[mainAcc]?.[c]?.[i]||0),0));
-    const mainFIncome=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Income"]?.[i]||0);
-    const mainFNet=forecastWeeks.map((w,i)=>{
+    const incomeForecast=incomeFcstTotalByWeek.length===forecastWeeks.length?incomeFcstTotalByWeek:forecastWeeks.map((_,i)=>forecastData[mainAcc]?.["Income"]?.[i]||0);
+    const spendForecast=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>netSpendCatsAll.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
+    const netForecast=forecastWeeks.map((w,i)=>{
       const eventSpend=events.filter(ev=>ev.weekKey===w.key).reduce((s,ev)=>s+ev.amount,0);
-      return mainFIncome[i]-mainFActuals[i]-eventSpend;
+      return incomeForecast[i]-spendForecast[i]-eventSpend;
     });
-    const ccFActuals=forecastWeeks.map((_,i)=>ccAccounts.reduce((s,acc)=>ccSpendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
-    const forecastBals=Array(forecastWeeks.length).fill(null);
-    if(lastActualBal!==null){forecastBals[0]=lastActualBal;for(let i=1;i<forecastWeeks.length;i++)forecastBals[i]=forecastBals[i-1]+mainFNet[i-1];}
-    const forecastClosing=forecastBals.map((ob,i)=>ob!==null?ob+mainFNet[i]-ccFActuals[i]:null);
+    // closing[i] = closing[i-1] + net[i] — same recurrence as the actual weeks above, so the
+    // transition from the last actual week into week 1 of the forecast ties out too.
+    const forecastClosing=Array(forecastWeeks.length).fill(null);
+    if(lastActualBal!==null){
+      forecastClosing[0]=lastActualBal+netForecast[0];
+      for(let i=1;i<forecastWeeks.length;i++)forecastClosing[i]=forecastClosing[i-1]+netForecast[i];
+    }
     return{actual:actualClosing,forecast:forecastClosing};
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek,singleAccount]);
 
   const insights=useMemo(()=>{
     const tips=[],totals={},weeklyTotals={};
@@ -4725,13 +4729,19 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       const totalForecast=forecastWeeks.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
       return totalActual>=5||totalForecast>=5;
     });
-    const netSpendCats=singleAccount?spendCats:spendCats.filter(c=>c!=="Card Repayment");
+    // Excludes Card Repayment (internal transfer, already counted via the card's own spend
+    // categories) and Investments (tracked separately) — matches combinedClosingBalances so
+    // CASH BALANCE always equals previous week + this NET MOVEMENT figure.
+    const netSpendCats=spendCats.filter(c=>c!=="Investments"&&(singleAccount||c!=="Card Repayment"));
     const accActuals=actualWeeks.map(w=>netSpendCats.reduce((s,cat)=>s+Math.abs(accounts.reduce((s2,acc)=>s2+(weeklyByAccountCat[w.key]?.[acc]?.[cat]||0),0)),0));
     const accForecasts=forecastWeeks.map((_,i)=>netSpendCats.reduce((s,cat)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0));
     const salaryActuals=actualWeeks.map(w=>Math.abs(accounts.reduce((s,acc)=>s+(weeklyByAccountCat[w.key]?.[acc]?.["Income"]||0),0)));
     const salaryForecasts=incomeFcstTotalByWeek;
     const weeklyNetActual=actualWeeks.map((_,i)=>salaryActuals[i]-accActuals[i]);
-    const weeklyNetForecast=forecastWeeks.map((_,i)=>salaryForecasts[i]-accForecasts[i]);
+    const weeklyNetForecast=forecastWeeks.map((_,i)=>{
+      const eventSpend=events.filter(ev=>ev.weekKey===forecastWeeks[i].key).reduce((s,ev)=>s+ev.amount,0);
+      return salaryForecasts[i]-accForecasts[i]-eventSpend;
+    });
     const netFmt=v=>v===0?"-":v>0?`£${Math.round(v).toLocaleString()}`:`(£${Math.round(Math.abs(v)).toLocaleString()})`;
     return(
       <>

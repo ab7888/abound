@@ -1165,6 +1165,8 @@ function clearSession() {
 // ─── Forecast persistence ─────────────────────────────────────────────────────
 const FORECAST_KEY = "abound_last_forecast";
 const FORECAST_ACCURACY_KEY = "abound_prev_accuracy";
+// Last verdict a user was shown — powers the "since last time" line on return.
+const VERDICT_SNAPSHOT_KEY = "abound_verdict_snapshot";
 
 function saveLastForecast(data) {
   try { localStorage.setItem(FORECAST_KEY, JSON.stringify(data)); } catch {}
@@ -3374,21 +3376,36 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
               {isMobile?"Upgrade":`Free · ${runsLeft} AI run${runsLeft!==1?"s":""} left · Upgrade`}
             </button>
           )}
-          <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 16px",height:36,background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:isMobile?11:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.35)",display:"flex",alignItems:"center",gap:4,flexShrink:0}}>
+          {/* Demoted from a solid primary CTA — asking for a review was the loudest thing
+              on screen before the user had received any value from it. */}
+          <button onClick={onFeedback} style={{padding:isMobile?"8px 10px":"6px 14px",height:36,background:"transparent",color:"var(--text3)",border:"1px solid var(--border)",borderRadius:8,fontSize:isMobile?11:12,fontWeight:600,cursor:"pointer",display:"flex",alignItems:"center",gap:4,flexShrink:0,transition:"all 0.15s"}}
+            onMouseEnter={e=>{e.currentTarget.style.color="#a5b4fc";e.currentTarget.style.borderColor="rgba(99,102,241,0.4)";}}
+            onMouseLeave={e=>{e.currentTarget.style.color="var(--text3)";e.currentTarget.style.borderColor="var(--border)";}}>
             {isMobile?"Review":"Leave a review"}
           </button>
           {!isMobile&&<button onClick={onStartOver} style={{fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",opacity:0.5}}>← Start over</button>}
         </div>
         {showInlineUpgrade&&<UpgradeModal runsUsed={runsUsed} onUpgrade={redirectToCheckout} onDismiss={()=>setShowInlineUpgrade(false)}/>}
       </div>
-      {showWizardCard&&(
+      {showWizardCard&&(()=>{
+        // One next action, not two competing ones. Accuracy first: if transactions are
+        // still uncategorised the forecast is wrong, so nothing else is worth doing yet.
+        const uncategorised=transactions.filter(t=>t.category==="Other Payments").length;
+        const needsReview=uncategorised>0;
+        return(
         <div style={{background:"var(--nav-bg)",borderBottom:"2px solid #6366f1",padding:"12px 24px",display:"flex",alignItems:"center",gap:12,flexShrink:0,flexWrap:"wrap",animation:"slideInUp 0.3s ease both"}}>
-          <span style={{fontSize:12,fontWeight:700,color:"#a5b4fc",flexShrink:0}}>What would you like to do next?</span>
-          <button onClick={()=>{setShowWizardCard(false);goToReview();}} style={{padding:"6px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>Review Transactions →</button>
-          <button onClick={()=>{setShowWizardCard(false);goToInsights();}} style={{padding:"6px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>AI Insights →</button>
+          <span style={{fontSize:12,fontWeight:700,color:"#a5b4fc",flexShrink:0}}>
+            {needsReview
+              ?`${uncategorised} transaction${uncategorised!==1?"s":""} still uncategorised — your forecast is only as good as these`
+              :"Your forecast is ready"}
+          </span>
+          <button onClick={()=>{setShowWizardCard(false);needsReview?goToReview():goToInsights();}} style={{padding:"6px 14px",background:"rgba(99,102,241,0.18)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            {needsReview?"Sharpen it →":"See why →"}
+          </button>
           <button onClick={()=>{setShowWizardCard(false);try{localStorage.setItem("abound_wizard_dismissed","1");}catch{}}} style={{marginLeft:"auto",fontSize:11,color:"#4b5563",background:"none",border:"none",cursor:"pointer"}}>Skip</button>
         </div>
-      )}
+        );
+      })()}
       {activeTab==="cashflow"&&showReviewPrompt&&!isMobile&&(()=>{
         const otherCount=transactions.filter(t=>t.category==="Other Payments").length;
         return(
@@ -4366,6 +4383,79 @@ function getLastWorkingDay(year, month) {
     return{actual:actualClosing,forecast:forecastClosing};
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek]);
 
+  // ─── The verdict ────────────────────────────────────────────────────────────
+  // One answer to the only question this app exists to answer: am I going to be
+  // OK, and if not, when. Everything in the grid below is the evidence for it.
+  const verdict = useMemo(()=>{
+    const horizon=Math.max(visibleForecastWeeks.length,1);
+    const fcst=combinedClosingBalances.forecast.slice(0,horizon);
+    const actualVals=combinedClosingBalances.actual.filter(v=>v!==null&&v!==undefined);
+    const valid=fcst.filter(v=>v!==null&&v!==undefined);
+    if(!actualVals.length||!valid.length) return null;
+    const cashToday=actualVals[actualVals.length-1];
+    const endBal=valid[valid.length-1];
+    const negIdx=fcst.findIndex(v=>v!==null&&v<0);
+    const lowVal=Math.min(...valid);
+    const lowIdx=fcst.indexOf(lowVal);
+    // What's actually eating the money over the forecast horizon, biggest first.
+    const allDrivers=spendCats.map(cat=>{
+      const total=fcst.reduce((s,_,i)=>s+accounts.reduce((s2,acc)=>s2+(forecastData[acc]?.[cat]?.[i]||0),0),0);
+      return{cat,total,perWeek:Math.round(total/horizon)};
+    }).filter(d=>d.total>0).sort((a,b)=>b.total-a.total);
+    const drivers=allDrivers.slice(0,2);
+    // A balance that never crosses zero can still be bad news. If the low point leaves less
+    // than a week of outgoings in the account, saying "you stay positive" is false comfort —
+    // especially sitting above a chart that's visibly falling.
+    const weeklyOutgoings=allDrivers.reduce((s,d)=>s+d.total,0)/horizon;
+    const goesNegative=negIdx!==-1;
+    const tight=!goesNegative&&weeklyOutgoings>0&&lowVal<weeklyOutgoings;
+    return{
+      horizon,cashToday,endBal,delta:endBal-cashToday,
+      status:goesNegative?"negative":tight?"tight":"healthy",
+      goesNegative,
+      negWeek:goesNegative?forecastWeeks[negIdx]:null,
+      negAmount:goesNegative?fcst[negIdx]:null,
+      lowVal,lowWeek:forecastWeeks[lowIdx]||null,
+      lowIsEnd:lowIdx===fcst.length-1,
+      weeklyOutgoings:Math.round(weeklyOutgoings),
+      drivers,
+    };
+  },[combinedClosingBalances,visibleForecastWeeks,forecastWeeks,forecastData,accounts,spendCats]);
+
+  // Snapshot read once on mount (before the effect below overwrites it), so a returning
+  // user can be told what actually moved since they last looked.
+  const [prevVerdict]=useState(()=>{try{return JSON.parse(localStorage.getItem(VERDICT_SNAPSHOT_KEY)||"null");}catch{return null;}});
+  useEffect(()=>{
+    if(!verdict) return;
+    try{
+      localStorage.setItem(VERDICT_SNAPSHOT_KEY,JSON.stringify({
+        savedAt:new Date().toISOString(),
+        cashToday:verdict.cashToday,
+        endBal:verdict.endBal,
+        negWeekKey:verdict.negWeek?.key||null,
+        // The key alone isn't enough to render later: forecastWeeks rolls forward with
+        // time, so a week that mattered last visit may be outside the current window.
+        negWeekDate:verdict.negWeek?verdict.negWeek.date.toISOString():null,
+      }));
+    }catch{}
+  },[verdict]);
+
+  const sinceLast=useMemo(()=>{
+    if(!verdict||!prevVerdict?.savedAt) return null;
+    // Same-day reloads aren't news — only surface a genuine gap between visits.
+    if(String(prevVerdict.savedAt).slice(0,10)===new Date().toISOString().slice(0,10)) return null;
+    const prevNegKey=prevVerdict.negWeekKey||null;
+    const nowNegKey=verdict.negWeek?.key||null;
+    const prevNegDate=prevVerdict.negWeekDate?new Date(prevVerdict.negWeekDate):null;
+    return{
+      date:new Date(prevVerdict.savedAt),
+      cashDelta:typeof prevVerdict.cashToday==="number"?verdict.cashToday-prevVerdict.cashToday:null,
+      negChanged:prevNegKey!==nowNegKey,
+      prevNegKey,
+      prevNegDate:prevNegDate&&!isNaN(prevNegDate)?prevNegDate:null,
+    };
+  },[verdict,prevVerdict]);
+
   const insights=useMemo(()=>{
     const tips=[],totals={},weeklyTotals={};
     categories.forEach(cat=>{
@@ -5257,60 +5347,105 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           const totalSpent=Math.round(totalActualByWeek.reduce((a,b)=>a+b,0));
           const totalForecastSpend=Math.round(totalForecastByWeek.reduce((a,b)=>a+b,0));
           const weeklyAvg=Math.round(totalSpent/Math.max(actualWeeks.length,1));
-          const lastActualBal=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
-          const forecastEndBal=combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
-          const balDiff=forecastEndBal!==null&&forecastEndBal!==undefined&&lastActualBal!==null&&lastActualBal!==undefined?forecastEndBal-lastActualBal:null;
-          const cards=[
-            {
-              label:"Cash today",
-              value:lastActualBal!=null?`£${Math.round(lastActualBal).toLocaleString()}`:"—",
-              sub:"current balance",
-              color:"#f8fafc",
-              accent:"#6b7280",
-              valColor:isDark?"#e0e7ff":"#1e1b4b",
-              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="2" y="5" width="16" height="11" rx="2" stroke="#9ca3af" strokeWidth="1.5"/><path d="M2 9h16" stroke="#9ca3af" strokeWidth="1.5"/><circle cx="6" cy="13" r="1" fill="#9ca3af"/></svg>
-            },
-            {
-              label:"In 6 weeks",
-              value:forecastEndBal!=null?`£${Math.round(forecastEndBal).toLocaleString()}`:"—",
-              sub:balDiff!=null?(balDiff>=0?`+£${Math.round(balDiff).toLocaleString()} projected`:`−£${Math.round(Math.abs(balDiff)).toLocaleString()} projected`):"forecast balance",
-              color:"#f8fafc",
-              accent:balDiff!=null&&balDiff>=0?"#10b981":"#ef4444",
-              valColor:balDiff!=null&&balDiff>=0?"#059669":"#ef4444",
-              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 15l4-6 4 3 4-8" stroke={balDiff!=null&&balDiff>=0?"#10b981":"#ef4444"} strokeWidth="1.5" strokeLinecap="round"/></svg>
-            },
-            {
-              label:"Avg weekly spend",
-              value:`£${weeklyAvg.toLocaleString()}`,
-              sub:`over ${actualWeeks.length} weeks`,
-              color:"#f8fafc",
-              accent:PURPLE,
-              valColor:"#6366f1",
-              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><rect x="3" y="10" width="3" height="7" rx="1" fill="#6366f1" opacity="0.5"/><rect x="8" y="6" width="3" height="11" rx="1" fill="#6366f1" opacity="0.7"/><rect x="13" y="3" width="3" height="14" rx="1" fill="#6366f1"/></svg>
-            },
-            {
-              label:"Forecast spend",
-              value:`£${totalForecastSpend.toLocaleString()}`,
-              sub:"next 6 weeks",
-              color:"#f8fafc",
-              accent:totalForecastSpend>totalSpent?"#f59e0b":"#10b981",
-              valColor:totalForecastSpend>totalSpent?"#d97706":"#059669",
-              icon:<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M3 10h14M13 6l4 4-4 4" stroke={totalForecastSpend>totalSpent?"#f59e0b":"#10b981"} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            },
-          ];
           // Mobile: skip summary strip entirely — grid fills the screen
           if(isMobile){ return null; }
+          const money=v=>`${currency}${Math.abs(Math.round(v)).toLocaleString()}`;
+          const signed=v=>`${v>=0?"+":"−"}${money(v)}`;
+          const wkLabel=w=>w?w.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"}):"";
+          const status=verdict?.status||"healthy";
+          const bad=status==="negative";
+          const tight=status==="tight";
+          const alarm=bad||tight; // anything that isn't good news
+          const accent=bad?"#ef4444":tight?"#f59e0b":"#22c55e";
+          const headColor=bad?"#f87171":tight?"#fbbf24":(isDark?"#e0e7ff":"#1e1b4b");
+          const horizonLabel=`${verdict?.horizon||6} weeks`;
           return(
-            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"flex-start"}}>
-              {cards.map((c,i)=>(
-                <div key={i} style={{flex:1,background:T.card,borderRadius:10,padding:"12px 14px",border:`1px solid ${T.border}`,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",transition:"border-color 0.15s"}}
-                  onMouseEnter={e=>e.currentTarget.style.borderColor=T.border2}
-                  onMouseLeave={e=>e.currentTarget.style.borderColor=T.border}>
-                  <div style={{fontSize:10,fontWeight:600,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase",marginBottom:6}}>{c.label}</div>
-                  <div style={{fontSize:21,fontWeight:700,color:c.valColor,fontVariantNumeric:"tabular-nums",letterSpacing:"-0.025em",marginBottom:2,fontFamily:"'Inter',system-ui,sans-serif"}}>{c.value}</div>
-                  <div style={{fontSize:10,color:c.sub.startsWith("+")||c.sub.startsWith("−")?c.valColor:"#6b7280",fontWeight:500}}>{c.sub}</div>
-                </div>
-              ))}
+            <div style={{display:"flex",gap:8,marginBottom:20,alignItems:"stretch"}}>
+              {/* The verdict — the one answer this screen exists to give. Everything
+                  below it in the grid is the evidence. */}
+              <div style={{flex:1,background:T.card,borderRadius:12,padding:"16px 18px",border:`1px solid ${bad?"rgba(239,68,68,0.3)":tight?"rgba(245,158,11,0.3)":T.border}`,boxShadow:"0 4px 20px rgba(0,0,0,0.15)",position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",left:0,top:0,bottom:0,width:3,background:accent}}/>
+                {verdict?(
+                  <>
+                    {sinceLast&&(
+                      <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:9,fontSize:11,color:T.dimText,fontWeight:500}}>
+                        <span style={{padding:"2px 7px",borderRadius:20,background:"rgba(99,102,241,0.12)",border:"1px solid rgba(99,102,241,0.25)",color:"#a5b4fc",fontWeight:700,fontSize:10,letterSpacing:"0.03em"}}>
+                          SINCE {sinceLast.date.toLocaleDateString("en-GB",{day:"numeric",month:"short"}).toUpperCase()}
+                        </span>
+                        {sinceLast.cashDelta!=null&&(
+                          <span style={{color:sinceLast.cashDelta>=0?"#22c55e":"#ef4444",fontWeight:600}}>
+                            {signed(sinceLast.cashDelta)} cash
+                          </span>
+                        )}
+                        {sinceLast.negChanged&&(
+                          <span>
+                            {sinceLast.prevNegDate&&verdict.negWeek
+                              ?`· runs-out date moved ${sinceLast.prevNegDate.toLocaleDateString("en-GB",{day:"numeric",month:"short"})} → ${wkLabel(verdict.negWeek)}`
+                              :verdict.negWeek
+                                ?`· now runs out w/c ${wkLabel(verdict.negWeek)}`
+                                :"· you no longer run out"}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <div style={{display:"flex",alignItems:"flex-start",gap:11}}>
+                      <div style={{width:26,height:26,borderRadius:8,flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",background:`${accent}1f`,border:`1px solid ${accent}4d`}}>
+                        {alarm
+                          ?<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M10 3L2 17h16L10 3z" stroke={accent} strokeWidth="1.6" strokeLinejoin="round"/><path d="M10 8v4M10 13.6v.4" stroke={accent} strokeWidth="1.6" strokeLinecap="round"/></svg>
+                          :<svg width="14" height="14" viewBox="0 0 20 20" fill="none"><path d="M4 10.5l4 4 8-9" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:19,fontWeight:800,color:headColor,letterSpacing:"-0.02em",lineHeight:1.25,marginBottom:5}}>
+                          {bad
+                            ?`You run out of cash the week of ${wkLabel(verdict.negWeek)}`
+                            :tight
+                              ?`Your cash gets tight by ${wkLabel(verdict.lowWeek)}`
+                              :`You stay positive for the next ${horizonLabel}`}
+                        </div>
+                        <div style={{fontSize:13,color:T.dimText,fontWeight:500,fontVariantNumeric:"tabular-nums",marginBottom:6}}>
+                          <span style={{color:isDark?"#e0e7ff":"#1e1b4b",fontWeight:700}}>{money(verdict.cashToday)}</span> today
+                          <span style={{margin:"0 6px",opacity:0.5}}>→</span>
+                          <span style={{color:verdict.endBal>=0?"#22c55e":"#ef4444",fontWeight:700}}>
+                            {verdict.endBal<0?`−${money(verdict.endBal)}`:money(verdict.endBal)}
+                          </span> in {horizonLabel}
+                          <span style={{marginLeft:7,fontSize:12,color:verdict.delta>=0?"#22c55e":"#ef4444",fontWeight:600}}>({signed(verdict.delta)})</span>
+                        </div>
+                        <div style={{fontSize:11.5,color:T.dimText,lineHeight:1.6}}>
+                          {bad
+                            ?<>Dips to <strong style={{color:"#f87171"}}>−{money(verdict.negAmount)}</strong> w/c {wkLabel(verdict.negWeek)}</>
+                            :tight
+                              ?<>Down to <strong style={{color:"#fbbf24"}}>{money(verdict.lowVal)}</strong> w/c {wkLabel(verdict.lowWeek)} — under a week of spending ({money(verdict.weeklyOutgoings)}/wk)</>
+                              :verdict.lowIsEnd
+                                ?<>Lowest at the end of the window</>
+                                :<>Tightest week: <strong style={{color:isDark?"#c7d2fe":"#4338ca"}}>{money(verdict.lowVal)}</strong> w/c {wkLabel(verdict.lowWeek)}</>}
+                          {verdict.drivers.length>0&&(
+                            <> <span style={{opacity:0.45}}>·</span> Biggest drivers: {verdict.drivers.map((d,i)=>(
+                              <span key={d.cat}>{i>0&&", "}<strong style={{color:isDark?"#c7d2fe":"#4338ca"}}>{d.cat}</strong> {money(d.perWeek)}/wk</span>
+                            ))}</>
+                          )}
+                        </div>
+                      </div>
+                      <div style={{display:"flex",flexDirection:"column",gap:7,flexShrink:0,alignItems:"stretch"}}>
+                        <button onClick={alarm?onGoToInsights:openPurchasePlanner}
+                          style={{padding:"9px 18px",background:bad?"linear-gradient(135deg,#ef4444,#dc2626)":tight?"linear-gradient(135deg,#f59e0b,#d97706)":"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:9,fontSize:12.5,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap",boxShadow:`0 2px 14px ${accent}52`}}>
+                          {alarm?"Fix this →":"Plan a purchase →"}
+                        </button>
+                        <button onClick={alarm?openPurchasePlanner:onGoToInsights}
+                          style={{padding:"8px 18px",background:"transparent",color:T.dimText,border:`1px solid ${T.border2}`,borderRadius:9,fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>
+                          {alarm?"Plan a purchase":"See why →"}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Supporting numbers — demoted from headline to footnote. */}
+                    <div style={{display:"flex",gap:18,marginTop:12,paddingTop:10,borderTop:`1px solid ${T.dimBorderMid||T.border}`,fontSize:11,color:"#6b7280",fontWeight:500,fontVariantNumeric:"tabular-nums"}}>
+                      <span>Avg weekly spend <strong style={{color:"#818cf8",fontWeight:700}}>{currency}{weeklyAvg.toLocaleString()}</strong> over {actualWeeks.length} wks</span>
+                      <span>Forecast spend <strong style={{color:totalForecastSpend>totalSpent?"#d97706":"#059669",fontWeight:700}}>{currency}{totalForecastSpend.toLocaleString()}</strong> next {horizonLabel}</span>
+                    </div>
+                  </>
+                ):(
+                  <div style={{fontSize:13,color:T.dimText,padding:"6px 0"}}>Add a balance to see your forecast verdict.</div>
+                )}
+              </div>
               {/* Currency picker */}
               <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                 <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase"}}>Currency</div>
@@ -5694,46 +5829,23 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           </table>
         </div>
 
-        {/* "So what" summary bar — desktop only */}
+        {/* Net worth chip — desktop only. The old "so what" strip that used to live here
+            restated the verdict bar's forecast (and mislabelled the 12-week endpoint as
+            "in 6 weeks", so the two numbers disagreed on screen). The verdict bar owns that
+            message now; this keeps only the part it doesn't cover. */}
         {!isMobile&&(()=>{
           const lastActual = combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
-          const forecastEnd = combinedClosingBalances.forecast[combinedClosingBalances.forecast.length-1];
-          const topSpendCat = categories
-            .filter(c=>c!=="Income"&&(singleAccount||c!=="Card Repayment"))
-            .map(c=>({c, total:actualWeeks.reduce((s,w)=>s+accounts.reduce((s2,acc)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),0),0)}))
-            .sort((a,b)=>b.total-a.total)[0];
-          const weeklyTopSpend = topSpendCat ? Math.round(topSpendCat.total / Math.max(actualWeeks.length,1)) : 0;
-          if(forecastEnd===null||forecastEnd===undefined||lastActual===null||lastActual===undefined) return null;
-          const diff = forecastEnd - lastActual;
-          const isUp = diff >= 0;
-          const portfolioValue = stocks.reduce((s,st)=>{
-            const sd=stockData[st.ticker];
-            const cv=st.currentValue||0;
-            if(!sd?.currentPrice||!cv) return s+cv;
-            return s+cv;
-          },0);
+          if(lastActual===null||lastActual===undefined) return null;
+          const portfolioValue = stocks.reduce((s,st)=>s+(st.currentValue||0),0);
+          if(!(portfolioValue>0)) return null;
           const netWorth = lastActual + portfolioValue;
           return(
-            <div style={{margin:"14px 0 0",background:isUp?"rgba(16,185,129,0.05)":"rgba(239,68,68,0.05)",border:`1px solid ${isUp?"rgba(16,185,129,0.15)":"rgba(239,68,68,0.15)"}`,borderRadius:12,padding:"14px 18px",display:"flex",alignItems:"center",gap:16,flexWrap:"wrap"}}>
-              <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:isUp?"#10b981":"#ef4444",boxShadow:`0 0 8px ${isUp?"#10b981":"#ef4444"}`}}/>
-                <span style={{fontSize:13,fontWeight:800,color:isUp?"#059669":"#ef4444",fontVariantNumeric:"tabular-nums"}}>
-                  {isUp?"+":"-"}£{Math.round(Math.abs(diff)).toLocaleString()} in 6 weeks
-                </span>
+            <div style={{margin:"14px 0 0",background:"rgba(99,102,241,0.05)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:12,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:16}}>
+              <div style={{display:"flex",alignItems:"baseline",gap:8}}>
+                <span style={{fontSize:9,fontWeight:700,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase"}}>Net Worth</span>
+                <span style={{fontSize:14,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>{currency}{Math.round(netWorth).toLocaleString()}</span>
+                <span style={{fontSize:9,color:"#4b5563"}}>cash + {currency}{Math.round(portfolioValue).toLocaleString()} portfolio</span>
               </div>
-              <span style={{fontSize:12,color:"#6b7280",flex:1}}>
-                {isUp
-                  ? `You're on track to have £${Math.round(forecastEnd).toLocaleString()} in 6 weeks.${topSpendCat?` Your biggest controllable cost is ${topSpendCat.c} at £${weeklyTopSpend.toLocaleString()}/wk.`:""}`
-                  : `Your balance is forecast to drop by £${Math.round(Math.abs(diff)).toLocaleString()} over 6 weeks.${topSpendCat?` Reducing ${topSpendCat.c} (£${weeklyTopSpend.toLocaleString()}/wk) would have the biggest impact.`:""}`
-                }
-              </span>
-              {portfolioValue>0&&(
-                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",flexShrink:0,paddingLeft:16,borderLeft:"1px solid rgba(99,102,241,0.2)"}}>
-                  <span style={{fontSize:9,fontWeight:700,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase"}}>Net Worth</span>
-                  <span style={{fontSize:14,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>£{Math.round(netWorth).toLocaleString()}</span>
-                  <span style={{fontSize:9,color:"#4b5563"}}>cash + £{Math.round(portfolioValue).toLocaleString()} portfolio</span>
-                </div>
-              )}
             </div>
           );
         })()}

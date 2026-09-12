@@ -1,5 +1,23 @@
+import { checkSession, checkIP } from "./_ratelimit.js";
+
+// Unlike categorise.js this endpoint had no rate limiting at all — an anonymous caller could
+// POST arbitrary images in an unbounded loop and run up Abound's own Anthropic bill. Same
+// limits as categorise.js.
+const SESSION_LIMIT = 50;
+const IP_LIMIT       = 200;
+const IP_WINDOW_MS   = 60 * 60 * 1000;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
+
+  const sessionId = req.headers["x-session-id"] || "";
+  const ip        = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "";
+  if (checkSession(sessionId, SESSION_LIMIT)) {
+    return res.status(429).json({ error: "limit_reached", message: "Limit reached for this session." });
+  }
+  if (checkIP(ip, IP_LIMIT, IP_WINDOW_MS)) {
+    return res.status(429).json({ error: "limit_reached", message: "Too many requests from this location. Please try again in an hour." });
+  }
 
   const apiKey = process.env.ANTHROPIC_KEY || process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return res.status(500).json({ error: "ANTHROPIC_KEY not set" });

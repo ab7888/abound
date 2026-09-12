@@ -7,7 +7,16 @@ export default async function handler(req, res) {
   if (!secretKey) return res.status(500).json({ error: 'STRIPE_SECRET_KEY not set' });
 
   const stripe = new Stripe(secretKey);
-  const origin = req.headers.origin || req.headers.referer || 'https://abound-umber.vercel.app';
+  // origin/referer are attacker-controlled headers. Used unvalidated, a crafted request could
+  // point Stripe's post-payment redirect at an arbitrary domain — an open redirect off a real
+  // payment flow. Only ever redirect back to a domain Abound actually serves from.
+  const ALLOWED_ORIGINS = [
+    'https://tryabound.app',
+    'https://abound-umber.vercel.app',
+    'http://localhost:5173',
+  ];
+  const requested = req.headers.origin || req.headers.referer || '';
+  const origin = ALLOWED_ORIGINS.find(o => requested.startsWith(o)) || 'https://tryabound.app';
 
   try {
     const session = await stripe.checkout.sessions.create({

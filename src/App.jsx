@@ -6131,7 +6131,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
     setScreenshotLoading(true); setError('');
     try {
       const base64 = await new Promise((res,rej)=>{const r=new FileReader();r.onload=()=>res(r.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-      const extracted = await fetch('/api/extract-stocks',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:base64,mediaType:file.type})}).then(r=>r.json());
+      const extracted = await fetch('/api/extract-stocks',{method:'POST',headers:{'Content-Type':'application/json','x-session-id':SESSION_ID},body:JSON.stringify({imageBase64:base64,mediaType:file.type})}).then(r=>r.json());
       if(!extracted.length){setError('No stocks detected — try the manual entry instead.');setScreenshotLoading(false);return;}
       const results = await Promise.allSettled(extracted.map(s=>fetchStockData(s.ticker)));
       const newStocks = [];

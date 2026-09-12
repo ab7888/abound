@@ -1,35 +1,15 @@
-// In-memory rate limiting — survives within a warm Vercel instance, resets on cold start.
-// Good enough for abuse prevention on a personal-finance app.
-// To upgrade to persistent limits: install @vercel/kv, swap in kv.incr / kv.expire below.
 import { verifyToken } from "./_token.js";
-
-const sessionCounts = new Map(); // sessionId → count
-const ipWindows    = new Map(); // ip → { count, windowStart }
+import { checkSession, checkIP } from "./_ratelimit.js";
 
 const SESSION_LIMIT  = 50;
 const IP_LIMIT       = 200;
 const IP_WINDOW_MS   = 60 * 60 * 1000;
-const UUID_RE        = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-function checkSession(id) {
-  if (!id || !UUID_RE.test(id)) return false; // malformed → don't count, don't block
-  const current = sessionCounts.get(id) || 0;
-  if (current >= SESSION_LIMIT) return true;  // already over limit
-  sessionCounts.set(id, current + 1);
-  return false;
-}
-
-function checkIP(raw) {
-  if (!raw) return false;
-  const ip = String(raw).split(",")[0].trim();
-  const now = Date.now();
-  const entry = ipWindows.get(ip) || { count: 0, windowStart: now };
-  if (now - entry.windowStart > IP_WINDOW_MS) { entry.count = 0; entry.windowStart = now; }
-  if (entry.count >= IP_LIMIT) return true;
-  entry.count++;
-  ipWindows.set(ip, entry);
-  return false;
-}
+// The client only ever sends one model and a small max_tokens, but nothing stopped a direct
+// API call from requesting a pricier model or a huge completion on Abound's own Anthropic key.
+// Allowlist the model and hard-cap tokens server-side regardless of what's asked for.
+const ALLOWED_MODELS = new Set(["claude-haiku-4-5-20251001"]);
+const MAX_TOKENS_CAP = 1024;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") return res.status(405).end();
@@ -42,10 +22,10 @@ export default async function handler(req, res) {
   // verifyToken checks the HMAC signature and expiry — client cannot forge this.
   const isPremiumUser = !!verifyToken(premiumToken);
 
-  if (!isPremiumUser && checkSession(sessionId)) {
+  if (!isPremiumUser && checkSession(sessionId, SESSION_LIMIT)) {
     return res.status(429).json({ error: "limit_reached", message: "Categorisation limit reached for this session." });
   }
-  if (!isPremiumUser && checkIP(ip)) {
+  if (!isPremiumUser && checkIP(ip, IP_LIMIT, IP_WINDOW_MS)) {
     return res.status(429).json({ error: "limit_reached", message: "Too many requests from this location. Please try again in an hour." });
   }
 
@@ -54,6 +34,8 @@ export default async function handler(req, res) {
 
   const { messages, max_tokens, model } = req.body;
   if (!messages || !model) return res.status(400).json({ error: "messages and model are required" });
+  if (!ALLOWED_MODELS.has(model)) return res.status(400).json({ error: "Unsupported model" });
+  const safeMaxTokens = Math.min(Number(max_tokens) || 0, MAX_TOKENS_CAP) || MAX_TOKENS_CAP;
 
   try {
     const response = await fetch("https://api.anthropic.com/v1/messages", {
@@ -63,7 +45,7 @@ export default async function handler(req, res) {
         "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
-      body: JSON.stringify({ model, max_tokens, messages }),
+      body: JSON.stringify({ model, max_tokens: safeMaxTokens, messages }),
     });
 
     const data = await response.json();

@@ -35,14 +35,22 @@ r.p(1,14,'i'); r.p(2,14,'@'); r.p(5,14,'r')
 for x in(23,24,25): r.p(x,13,'o')
 r.p(24,12,'o')
 rooms.append(r.out())
-# 2 Launch towers: both bases power up on the same flip, both fire at once
+# 2 Launch towers: moles patrol the strip above the room. Each tower rests on two switch blocks;
+#   hit one from below in the corridor and the tower jumps up its shaft. Time it as a mole crosses
+#   the shaft cap to knock it off; the last mole drops the key down the chute beside the tower.
 r=R("day","Launch towers","key")
-r.rect(1,15,28,16,'#'); r.rect(1,12,5,14,'#'); r.rect(24,12,28,14,'#'); r.rect(10,9,19,14,'#')
-r.p(7,12,'T');r.p(8,12,'T');r.p(21,12,'T');r.p(22,12,'T')
-r.p(7,6,'y');r.p(21,6,'y');r.p(7,5,'z');r.p(21,5,'z')
-r.p(14,6,'S');r.p(1,11,'i');r.p(2,11,'@');r.p(26,11,'L');r.p(4,11,'r');r.p(7,13,'u');r.p(21,13,'u')
-for x in(12,13,14,15,16): r.p(x,2,'o')
-r.p(14,8,'o')
+r.rect(1,1,28,15,'#')
+r.rect(1,1,28,3,' ')          # top strip the moles walk along
+r.rect(1,12,28,13,' ')        # bottom corridor
+r.rect(1,10,3,11,' '); r.rect(26,10,28,11,' ')   # door alcoves
+for sx in(7,17):
+    r.rect(sx,4,sx+2,11,' '); r.rect(sx,4,sx+2,4,'-')   # shaft (col sx is the chute) with snow-puff cap
+    r.p(sx+1,5,'y'); r.p(sx+1,11,'S'); r.p(sx+2,11,'S'); r.p(sx+1,13,'u')
+r.rect(12,6,16,11,' ')        # centre chamber
+for x in range(12,17): r.p(x,6,'o')
+r.p(14,8,'o'); r.p(13,9,'o'); r.p(15,9,'o')
+r.p(5,3,'z'); r.p(23,3,'z')
+r.p(2,11,'i'); r.p(2,13,'@'); r.p(4,13,'r'); r.p(27,13,'L')
 rooms.append(r.out())
 # 3 Key drop: small door chamber on the left; the shaft on the right holds a hovering critter
 #   carrying the key. Flip the switch to power the cannon, which knocks the key loose; it rides

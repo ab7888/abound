@@ -15,7 +15,8 @@ a checkpoint and a secret burrow room.
 - `build.py` – runs levels.py and assembles `dist/index.html` (single self-contained file).
 - `dist/index.html` – the current playable build. Open it in a browser.
 - `test/smoke.cjs` – headless Playwright check: loads every room, exercises the tower, key-drop,
-  cannon-alley and frost-flower mechanics, and fails on any JS error.
+  cannon-alley and frost-flower mechanics, and fails on any JS error. `test/room2.cjs` plays
+  through the launch-tower room.
 
 ## Build
     python3 build.py
@@ -23,8 +24,9 @@ a checkpoint and a secret burrow room.
 
 ## Level 1 rooms
 1. Ring in the year – hit the switch under the year, door on the centre pedestal.
-2. Launch towers – one flip powers both tower bases; both fire and knock off the critters; the
-   last critter drops the key.
+2. Launch towers – moles patrol the strip above the room. Each tower rests on two switch blocks;
+   bump one from the corridor and the tower jumps up its shaft. Time it as a mole crosses the shaft
+   cap to knock it off; the last mole drops the key down the chute beside the tower.
 3. Key drop – the switch powers the cannon in the shaft; its shot knocks the key off the hovering
    critter and the key rides the belt back into the door chamber.
 4. Conveyor run – ride the belt right, hit the switch at the far end, return along the snow-puff
@@ -48,8 +50,9 @@ switch state is 0/1) · `S` switch block (hit from below) · `<` `>` conveyors �
 `D` exit door · `L` locked door (needs key) · `G` goal flag · `M` checkpoint · `X` exit ladder ·
 `c`/`C` snowball cannon right/left · `K` switch-powered cannon (left, fires only after the flip
 while a critter is alive) · `I` hanging icicle in that column · `F` frost flower · `Z` snowman boss ·
-`y` launch tower · `z` tower critter (hovers with wings if nothing is under it; carries the key
-when it is the only critter in a key room) · `v`/`m` vertical/horizontal lift · `r`/`u`/`d` arrow signs.
+`y` launch tower (rests on the two `S` blocks six rows below it; bumping either launches it) ·
+`z` mole (walks like a blob; hovers with wings if nothing is under it; shows the key when it is the
+only critter in a key room) · `v`/`m` vertical/horizontal lift · `r`/`u`/`d` arrow signs.
 
 Room fields: `theme` (day/night/grass/cave), `door` (switch/key/gems/goal/cave, the exit rule),
 `auto` (flip the switch automatically 1 s after entering: message rooms), `level`, and

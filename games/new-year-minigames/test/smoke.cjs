@@ -23,13 +23,7 @@ const path = require('path');
     console.log(i + 1, JSON.stringify(info));
     await page.screenshot({ path: out + `/room${String(i + 1).padStart(2, '0')}.png` });
   }
-  // Room 2: towers — flip once, both should fire and key should drop
-  await page.evaluate(() => { G.room = 1; loadRoom(1); });
-  await run(30);
-  await page.evaluate(() => flipSwitch(null, null));
-  await run(400);
-  console.log('towers', JSON.stringify(await page.evaluate(() => ({ crit: R.ents.filter(e => e.k === 'critter').map(c => c.alive), key: R.ents.some(e => e.k === 'key') }))));
-  await page.screenshot({ path: out + '/towers-after.png' });
+  // Room 2 gameplay is covered by test/room2.cjs
   // Room 3: key drop — flip, cannon hits critter, key rides belt into chamber
   await page.evaluate(() => { G.room = 2; loadRoom(2); });
   await run(30);

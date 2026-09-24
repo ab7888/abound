@@ -80,8 +80,8 @@ function loadRoom(i,spawnCh){
     switch(ch){
       case '@':case 'x':spawns[ch]=[px+2,py+2];ch=' ';break;
       case 'b':case 'q':if(G.collected.has(ck))ch='u';break;
-      case 'y':R.ents.push({k:'tower',x:px,y:py,w:32,h:96,tx:x,ty:y,cd:0,flash:0,on:null});ch=' ';break;
-      case 'z':R.ents.push({k:'critter',x:px+1,y:py+2,w:14,h:14,alive:true,a:0,fly:(src.map[y+1]||'')[x]===' '});ch=' ';break;
+      case 'y':R.ents.push({k:'tower',x:px,y:py,y0:py,w:32,h:96,tx:x,ty:y,vy:0,fly:false,anim:0});ch=' ';break;
+      case 'z':{const fly=(src.map[y+1]||'')[x]===' ';R.ents.push({k:'critter',x:px+1,y:py+2,w:14,h:14,alive:true,a:0,fly,vx:fly?0:-0.5,vy:0});ch=' ';break;}
       case 'v':case 'm':R.ents.push({k:'lift',x:px,y:py,x0:px,y0:py,w:32,h:8,ax:ch==='m'?48:0,ay:ch==='v'?40:0,t:0,dx:0,dy:0});ch=' ';break;
       case 'O':if(!G.collected.has(ck))R.ents.push({k:'medal',x:px,y:py,w:16,h:16,ck});ch=' ';break;
       case 'M':R.ents.push({k:'check',x:px,y:py-32,w:16,h:48,up:!!(G.checkpoint&&G.checkpoint.room===i&&G.checkpoint.x===px)});ch=' ';break;
@@ -205,7 +205,7 @@ function updatePlayer(){
   if(r.l||r.r){if(P.boost>0){P.boost=0;}P.vx=0;}
   if(r.up){P.vy=0.5;SFX.bump();
     let best=null,bd=99;for(const[tx,ty]of r.headTiles){const d=Math.abs(tx*TS+8-(P.x+6));if(d<bd){bd=d;best=[tx,ty];}}
-    if(best&&tileAt(best[0],best[1])==='S')flipSwitch(best[0],best[1]);
+    if(best&&tileAt(best[0],best[1])==='S'){flipSwitch(best[0],best[1]);launchTowers(best[0],best[1]);}
     else if(best&&(tileAt(best[0],best[1])==='b'||tileAt(best[0],best[1])==='q'))popCrate(best[0],best[1]);
     else if(best){R.bumps=R.bumps||[];R.bumps.push({x:best[0],y:best[1],t:6,soft:true});}}
   const was=P.onG;P.onG=r.down;
@@ -221,6 +221,15 @@ function updatePlayer(){
   if(P.onG&&hit('down')&&R.sub!=null){const t=tileAt(Math.floor((P.x+6)/TS),Math.floor((P.y+P.h+2)/TS));
     if(t==='H'){SFX.door();P.win=1;startIris(-1,()=>{G.room=R.sub;loadRoom(G.room);startIris(1);});}}
 }
+/* a tower rests on two switch blocks; bumping either one launches it up its shaft */
+function launchTowers(bx,by){for(const e of R.ents)if(e.k==='tower'&&!e.fly&&by===e.ty+6&&(bx===e.tx||bx===e.tx+1)){e.fly=true;e.vy=-5.2;SFX.spring();puff(e.x+16,e.y+96,10,'#d4f4fc');}}
+/* shared ground walker for blobs and moles: gravity, slopes, turn at walls and ledges */
+function walkEnt(e){
+  e.vy=Math.min(e.vy+0.3,4);
+  const r=moveBody(e,e.vx,e.vy,true,true);if(r.down)e.vy=0;if(e.vy>=0&&slopeSnap(e,r.down||e.gnd)){r.down=true;e.vy=0;}e.gnd=r.down;
+  if(r.l||r.r)e.vx*=-1;
+  else if(r.down){const ax=e.vx>0?e.x+e.w+1:e.x-1;const ch=tileAt(Math.floor(ax/TS),Math.floor((e.y+e.h+2)/TS)),ch2=tileAt(Math.floor(ax/TS),Math.floor((e.y+e.h-2)/TS));if(!(solidCh(ch)||ch==='-'||ch==='/'||ch==='\\'||ch2==='/'||ch2==='\\'))e.vx*=-1;}
+  return r;}
 function popCrate(tx,ty){const wasQ=R.t[ty][tx]==='q';R.t[ty][tx]='u';if(!wasQ)G.collected.add(R.i+':'+tx+':'+ty);R.bumps=R.bumps||[];R.bumps.push({x:tx,y:ty,t:8});
   if(wasQ){R.ents.push({k:'suit',x:tx*TS+2,y:ty*TS-2,w:12,h:12,vy:-1.6,t:0});SFX.key();return;}
   G.gems++;G.score+=200;SFX.gem();parts.push({x:tx*TS+3,y:ty*TS-12,vx:0,vy:-1.2,life:26,c:'gem',g:0.06});
@@ -232,11 +241,8 @@ function updateEnts(){
   for(const e of R.ents){
     switch(e.k){
     case 'blob':{if(!e.alive){e.dt=(e.dt||0)+1;break;}
-      e.vy=Math.min(e.vy+0.3,4);
-      const r=moveBody(e,e.vx,e.vy,true,true);if(r.down)e.vy=0;if(e.vy>=0&&slopeSnap(e,r.down||e.gnd)){r.down=true;e.vy=0;}e.gnd=r.down;
+      walkEnt(e);
       if(e.y>VH+30){e.gone=true;break;}
-      if(r.l||r.r)e.vx*=-1;
-      else if(r.down){const ax=e.vx>0?e.x+e.w+1:e.x-1;const ch=tileAt(Math.floor(ax/TS),Math.floor((e.y+e.h+2)/TS)),ch2=tileAt(Math.floor(ax/TS),Math.floor((e.y+e.h-2)/TS));if(!(solidCh(ch)||ch==='-'||ch==='/'||ch==='\\'||ch2==='/'||ch2==='\\'))e.vx*=-1;}
       e.a=(e.a||0)+0.1;
       if(!P.dead&&overlap(pBox,e)){
         if((P.fallV>0&&P.prevB<=e.y+6)||P.drill){e.alive=false;P.vy=keys.jump?-4.6:-3;G.score+=100;SFX.stomp();puff(e.x+7,e.y+8,10);}
@@ -271,20 +277,22 @@ function updateEnts(){
       if(e.t>10&&overlap(pBox,e)){e.gone=true;P.suit=true;G.suit=true;P.inv=20;G.score+=1000;SFX.fanfare();burst(e.x+6,e.y+6,20,[C.rose,'#fff',C.gold]);}break;
     case 'lift':{e.t+=0.02;const nx=e.x0+Math.sin(e.t)*e.ax,ny=e.y0+Math.sin(e.t)*e.ay;e.dx=nx-e.x;e.dy=ny-e.y;e.x=nx;e.y=ny;
       if(!P.dead&&P.fallV>=0&&P.x+P.w>e.x+1&&P.x<e.x+e.w-1&&P.prevB<=e.y+6+Math.max(0,-e.dy)&&P.y+P.h>=e.y-1){P.y=e.y-P.h;P.x+=e.dx;P.onG=true;P.vy=0;P.charge=true;P.drill=false;}break;}
-    case 'tower':{const on=solidCh(tileAt(e.tx,e.ty+6));const rose=on&&e.on===false;e.on=on;if(e.flash>0)e.flash--;if(rose)e.cd=45;
-      if(on&&rose===false&&e.cd>0&&e.cd<=45){if(--e.cd<=0){e.cd=0;e.flash=12;R.ents.push({k:'shot',x:e.x+11,y:e.y-6,w:10,h:14,vy:-3.2});SFX.shoot();puff(e.x+16,e.y-4,6,'#d4f4fc');}}break;}
-    case 'critter':if(!e.alive)break;e.a+=0.1;
+    case 'tower':{if(!e.fly)break;e.anim++;e.vy+=0.22;e.y+=e.vy;
+      if(e.y>=e.y0){e.y=e.y0;e.vy=0;e.fly=false;R.shake=5;SFX.stomp();puff(e.x+4,e.y+96,6,'#d4f4fc');puff(e.x+28,e.y+96,6,'#d4f4fc');break;}
+      // the rising tower knocks any mole crossing the shaft cap off the strip
+      const top={x:e.x-2,y:e.y-8,w:36,h:20};
+      for(const c of R.ents)if(c.k==='critter'&&c.alive&&overlap(top,c)){c.dropAt={x:(e.tx-1)*TS+2,y:(e.ty-1)*TS};killCritter(c);G.score+=200;c.vy=-3;}
+      break;}
+    case 'critter':if(!e.alive){if(e.dt==null){e.dt=0;}e.dt++;e.vy+=0.25;e.y+=e.vy;break;}e.a+=0.1;
+      if(!e.fly)walkEnt(e);
       if(!P.dead&&overlap(pBox,e)){if(P.fallV>0&&P.prevB<=e.y+6){killCritter(e);P.vy=-4;}else killPlayer();}break;
-    case 'shot':{e.y+=e.vy;if(e.y<-30){e.gone=true;break;}
-      for(const c of R.ents)if(c.k==='critter'&&c.alive&&overlap(e,c)){killCritter(c);e.gone=true;G.score+=200;}
-      if(!P.dead&&overlap({x:P.x+2,y:P.y+2,w:8,h:10},e))killPlayer();break;}
     case 'medal':e.t=(e.t||0)+1;if(overlap(pBox,e)){e.gone=true;G.collected.add(e.ck);G.medals++;G.score+=2000;SFX.key();burst(e.x+8,e.y+8,30,[C.gold,'#fff',C.rose]);}break;
     case 'check':if(!e.up&&overlap(pBox,e)){e.up=true;G.checkpoint={room:R.i,x:e.x,y:e.y+32};SFX.flip();burst(e.x+8,e.y,16,[C.teal,'#fff']);}break;
     case 'ladder':if(!P.dead&&P.onG&&keys.up&&overlap(pBox,e)&&!P.win){P.win=1;SFX.door();startIris(-1,()=>{G.room=R.parent;loadRoom(G.room,'x');startIris(1);});}break;
     }
   }
   const crit=R.ents.filter(e=>e.k==='critter');if(crit.length&&!R.keyDropped&&R.door==='key'&&!R.keyItem&&crit.every(c=>!c.alive)){R.keyDropped=true;SFX.fanfare();const at=R.lastCrit||{x:14*TS+10,y:1*TS};R.ents.push({k:'key',x:at.x,y:at.y,w:12,h:10,vy:0,free:true});burst(at.x+6,at.y+5,24,[C.gold,'#fff']);}
-  R.ents=R.ents.filter(e=>!e.gone&&!(e.k==='blob'&&!e.alive&&e.dt>20));
+  R.ents=R.ents.filter(e=>!e.gone&&!(e.k==='blob'&&!e.alive&&e.dt>20)&&!(e.k==='critter'&&!e.alive&&e.dt>70));
   // door
   const d=R.doorEnt;if(d&&!P.dead&&P.onG&&hit('up')){
     if(overlap(pBox,{x:d.x+2,y:d.y,w:12,h:32})){
@@ -293,7 +301,7 @@ function updateEnts(){
         startIris(-1,()=>{G.room++;loadRoom(G.room);startIris(1);},P.x+6,P.y+7);}
       else{SFX.bump();R.shake=6;}}}
 }
-function killCritter(c){c.alive=false;R.lastCrit={x:c.x+1,y:c.y+2};G.score+=100;SFX.stomp();burst(c.x+7,c.y+7,16,['#fff','#cfd8ea']);}
+function killCritter(c){c.alive=false;c.vy=0;R.lastCrit=c.dropAt||{x:c.x+1,y:c.y+2};G.score+=100;SFX.stomp();burst(c.x+7,c.y+7,16,['#fff','#cfd8ea']);}
 function hurtPlant(t){t.hp--;t.inv=40;SFX.hurt();G.score+=300;R.shake=8;t.phase=3;
   if(t.hp<=0){t.alive=false;SFX.boom();burst(t.x,t.y,40);G.score+=2000;R.ents.push({k:'key',x:t.x-6,y:t.y-30,w:12,h:10,vy:-3,free:true});}}
 function doorOpen(){const d=R.door;if(d==='goal'||d==='cave')return true;if(d==='key')return R.hasKey;if(d==='switch')return R.flipped;if(d==='gems')return R.gemsLeft===0;return true;}
@@ -485,15 +493,15 @@ function drawEnts(){
     case 'cannon':{const x=e.x,y=e.y;ctx.fillStyle='#343a5a';ctx.fillRect(x,y,16,16);ctx.fillStyle='#4b5380';ctx.fillRect(x+1,y+1,14,14);
       ctx.fillStyle='#1d2433';ctx.beginPath();ctx.arc(x+(e.dir>0?14:2),y+8,5,0,7);ctx.fill();ctx.fillStyle='#e7eff9';ctx.fillRect(x+4,y+2,8,2);break;}
     case 'ball':ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(e.x+5,e.y+5,5,0,7);ctx.fill();ctx.fillStyle='#a9bfe0';ctx.beginPath();ctx.arc(e.x+6,e.y+6.5,3,0,Math.PI);ctx.fill();break;
-    case 'tower':{const x=e.x,y=e.y;ctx.fillStyle='#232842';ctx.fillRect(x,y,32,96);ctx.fillStyle='#343a5a';ctx.fillRect(x+2,y+2,28,92);
-      ctx.fillStyle=e.on?C.gold:'#6a73a6';for(let i=0;i<5;i++){const yy=y+18+i*15+((G.frame*(e.on?0.6:0))%15);if(yy>y+8&&yy<y+90){ctx.beginPath();ctx.moveTo(x+6,yy+6);ctx.lineTo(x+16,yy);ctx.lineTo(x+26,yy+6);ctx.lineTo(x+26,yy+9);ctx.lineTo(x+16,yy+3);ctx.lineTo(x+6,yy+9);ctx.fill();}}
-      ctx.fillStyle='#1d2433';ctx.fillRect(x+4,y-4,24,10);ctx.fillStyle=e.flash>0?'#fff':(e.on?'#8ee3d8':'#454d78');ctx.fillRect(x+9,y-2,14,6);
-      ctx.fillStyle=e.on?C.amberHi:'#454d78';ctx.fillRect(x+3,y+94,26,2);break;}
-    case 'critter':if(e.alive){const bob=Math.abs(Math.sin(e.a*2))*2;
+    case 'tower':{const x=e.x,y=Math.round(e.y);ctx.fillStyle='#232842';ctx.fillRect(x,y,32,96);ctx.fillStyle='#343a5a';ctx.fillRect(x+2,y+2,28,92);
+      ctx.fillStyle=e.fly?C.gold:'#8a93c4';for(let i=0;i<5;i++){const yy=y+18+i*15-((e.fly?e.anim*1.5:0)%15);if(yy>y+8&&yy<y+90){ctx.beginPath();ctx.moveTo(x+6,yy+6);ctx.lineTo(x+16,yy);ctx.lineTo(x+26,yy+6);ctx.lineTo(x+26,yy+9);ctx.lineTo(x+16,yy+3);ctx.lineTo(x+6,yy+9);ctx.fill();}}
+      ctx.fillStyle='#1d2433';ctx.fillRect(x+2,y-6,28,10);ctx.fillStyle=e.fly?'#fff':'#8ee3d8';ctx.fillRect(x+6,y-4,20,4);ctx.fillStyle='#e7eff9';ctx.fillRect(x+4,y-8,24,3);
+      ctx.fillStyle=e.fly?C.amberHi:C.amber;ctx.fillRect(x+3,y+92,26,3);break;}
+    case 'critter':if(!e.alive){ctx.save();ctx.translate(e.x+7,e.y+7);ctx.rotate(e.dt*0.25);ctx.globalAlpha=Math.max(0,1-e.dt/70);spr('blob',-8,-8,false);ctx.restore();break;}
+      {const bob=Math.abs(Math.sin(e.a*2))*2;
       if(e.fly){ctx.fillStyle='#e7eff9';const f=Math.sin(e.a*6)*3;ctx.beginPath();ctx.moveTo(e.x-1,e.y+4-bob);ctx.lineTo(e.x-9,e.y-2-f-bob);ctx.lineTo(e.x-2,e.y+9-bob);ctx.moveTo(e.x+15,e.y+4-bob);ctx.lineTo(e.x+23,e.y-2-f-bob);ctx.lineTo(e.x+16,e.y+9-bob);ctx.fill();}
       spr('blob',e.x-1,e.y-2-bob,Math.sin(e.a*0.5)>0);
       if(R.door==='key'&&!R.keyItem&&R.ents.filter(c=>c.k==='critter').length===1)drawKey(e.x+1,e.y+14-bob);}break;
-    case 'shot':ctx.fillStyle='#d4f4fc';ctx.beginPath();ctx.moveTo(e.x+5,e.y);ctx.lineTo(e.x+10,e.y+9);ctx.lineTo(e.x+5,e.y+14);ctx.lineTo(e.x,e.y+9);ctx.fill();ctx.fillStyle='#fff';ctx.fillRect(e.x+4,e.y+4,2,4);break;
     case 'suit':drawCap(e.x+6,e.y+8,G.frame*0.5,1.2);break;
     case 'lift':{ctx.fillStyle='#8a5a2b';ctx.fillRect(e.x,e.y,32,8);ctx.fillStyle='#d69a55';ctx.fillRect(e.x,e.y,32,5);ctx.fillStyle='#f0bd7c';ctx.fillRect(e.x,e.y,32,1);ctx.fillStyle='#6b4520';ctx.fillRect(e.x,e.y,2,8);ctx.fillRect(e.x+30,e.y,2,8);ctx.fillRect(e.x+15,e.y+1,2,5);
       ctx.strokeStyle='rgba(107,69,32,.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(e.x+4,e.y);ctx.lineTo(e.x0+4,-20);ctx.moveTo(e.x+28,e.y);ctx.lineTo(e.x0+28,-20);ctx.stroke();break;}

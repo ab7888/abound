@@ -118,7 +118,7 @@ function loadRoom(i,spawnCh){
 }
 function clampCam(x){return Math.max(0,Math.min(W*TS-VW,x));}
 function newPlayer(x,y){return{x,y,w:12,h:14,vx:0,vy:0,face:1,onG:false,coyote:0,buf:0,gH:0.125,gF:0.4375,
-  anim:0,dead:0,boost:0,bdx:0,bdy:0,inv:0,surf:null,win:0,suit:!!G.suit,fly:0,charge:true,drill:false,spin:0,cart:null};}
+  anim:0,dead:0,boost:0,bdx:0,bdy:0,inv:0,surf:null,win:0,suit:!!G.suit,fly:0,charge:true,drill:false,spin:0,cart:null,combo:0};}
 
 /* ---------- tiles ---------- */
 function tileAt(tx,ty){if(ty>=H)return ' ';if(tx<0||ty<0||tx>=W)return '#';return R.t[ty][tx];}
@@ -216,8 +216,11 @@ function updatePlayer(){
     else if(best&&(tileAt(best[0],best[1])==='b'||tileAt(best[0],best[1])==='q'))popCrate(best[0],best[1]);
     else if(best){R.bumps=R.bumps||[];R.bumps.push({x:best[0],y:best[1],t:6,soft:true});}}
   const was=P.onG;P.onG=r.down;
+  // skid dust while reversing at speed, landing puff after a hard fall
+  if(P.onG&&dir&&P.vx*dir<0&&Math.abs(P.vx)>1.2&&G.frame%3===0)parts.push({x:P.x+6-dir*4,y:P.y+13,vx:-dir*0.6,vy:-0.5-Math.random()*0.4,life:14,c:'#e7eff9',g:0.03});
+  if(!was&&r.down&&P.fallV>3){puff(P.x+2,P.y+13,3,'#e7eff9');puff(P.x+10,P.y+13,3,'#e7eff9');}
   if(P.vy>=0&&slopeSnap(P,was)){P.onG=true;}
-  if(P.onG){P.vy=0;P.charge=true;P.drill=false;}
+  if(P.onG){P.vy=0;P.charge=true;P.drill=false;P.combo=0;}
   if(was&&!P.onG&&P.vy>=0)P.coyote=5;else if(P.coyote>0)P.coyote--;
   P.anim+=Math.abs(P.vx)*0.12;
   // hazards
@@ -252,8 +255,8 @@ function updateEnts(){
       if(e.y>VH+30){e.gone=true;break;}
       e.a=(e.a||0)+0.1;
       if(!P.dead&&overlap(pBox,e)){
-        if((P.fallV>0&&P.prevB<=e.y+6)||P.drill){e.alive=false;P.vy=keys.jump?-4.6:-3;G.score+=100;SFX.stomp();puff(e.x+7,e.y+8,10);}
-        else if(P.boost>0){e.alive=false;SFX.stomp();puff(e.x+7,e.y+8,10);}
+        if((P.fallV>0&&P.prevB<=e.y+6)||P.drill){e.alive=false;P.vy=keys.jump?-4.6:-3;stompScore(e.x+7,e.y);SFX.stomp();puff(e.x+7,e.y+8,10);}
+        else if(P.boost>0){e.alive=false;stompScore(e.x+7,e.y);SFX.stomp();puff(e.x+7,e.y+8,10);}
         else killPlayer();}
       break;}
     case 'gem':if(e.hidden&&!R.flipped)break;if(!e.got&&overlap(pBox,e)){e.got=true;G.collected.add(e.ck);R.gemsLeft--;G.gems++;G.score+=200;SFX.gem();burst(e.x+5,e.y+5,8,['#8ee3d8','#fff'],1.2);
@@ -299,7 +302,7 @@ function updateEnts(){
       break;}
     case 'critter':if(!e.alive){if(e.dt==null){e.dt=0;}e.dt++;e.vy+=0.25;e.y+=e.vy;break;}e.a+=0.1;
       if(!e.fly)walkEnt(e);
-      if(!P.dead&&overlap(pBox,e)){if(P.fallV>0&&P.prevB<=e.y+6){killCritter(e);P.vy=-4;}else killPlayer();}break;
+      if(!P.dead&&overlap(pBox,e)){if(P.fallV>0&&P.prevB<=e.y+6){killCritter(e,false);stompScore(e.x+7,e.y);P.vy=keys.jump?-4.6:-3;}else killPlayer();}break;
     case 'medal':e.t=(e.t||0)+1;if(overlap(pBox,e)){e.gone=true;G.collected.add(e.ck);G.medals++;G.score+=2000;SFX.key();burst(e.x+8,e.y+8,30,[C.gold,'#fff',C.rose]);}break;
     case 'check':if(!e.up&&overlap(pBox,e)){e.up=true;G.checkpoint={room:R.i,x:e.x,y:e.y+32};SFX.flip();burst(e.x+8,e.y,16,[C.teal,'#fff']);}break;
     case 'ladder':if(!P.dead&&P.onG&&keys.up&&overlap(pBox,e)&&!P.win){P.win=1;SFX.door();startIris(-1,()=>{G.room=R.parent;loadRoom(G.room,'x');startIris(1);});}break;
@@ -315,7 +318,11 @@ function updateEnts(){
         startIris(-1,()=>{G.room++;loadRoom(G.room);startIris(1);},P.x+6,P.y+7);}
       else{SFX.bump();R.shake=6;}}}
 }
-function killCritter(c){c.alive=false;c.vy=0;R.lastCrit=c.dropAt||{x:c.x+1,y:c.y+2};G.score+=100;SFX.stomp();burst(c.x+7,c.y+7,16,['#fff','#cfd8ea']);}
+function killCritter(c,score=true){c.alive=false;c.vy=0;R.lastCrit=c.dropAt||{x:c.x+1,y:c.y+2};if(score)G.score+=100;SFX.stomp();burst(c.x+7,c.y+7,16,['#fff','#cfd8ea']);}
+/* consecutive stomps without touching down climb the classic combo ladder */
+const COMBO_VALS=[100,200,400,500,800,1000,2000,4000,5000,8000];
+function stompScore(x,y){const v=COMBO_VALS[Math.min(P.combo,COMBO_VALS.length-1)];P.combo++;G.score+=v;scoreNote(x,y,v);}
+function scoreNote(x,y,v){parts.push({x,y:y-4,vx:0,vy:-0.5,life:45,c:'note',g:0,txt:String(v)});}
 function hurtPlant(t){t.hp--;t.inv=40;SFX.hurt();G.score+=300;R.shake=8;t.phase=3;
   if(t.hp<=0){t.alive=false;SFX.boom();burst(t.x,t.y,40);G.score+=2000;R.ents.push({k:'key',x:t.x-6,y:t.y-30,w:12,h:10,vy:-3,free:true});}}
 /* ---------- bone cart on a rail ---------- */
@@ -669,7 +676,9 @@ function drawCap(cx,cy,spin,sc=1){ctx.save();ctx.translate(cx,cy);ctx.scale(sc,s
   ctx.fillStyle=C.rose;ctx.beginPath();ctx.arc(0,0,5,Math.PI,0);ctx.fill();ctx.fillStyle='#a8345a';ctx.fillRect(-5,-0.5,10,1.5);ctx.fillStyle=C.gold;ctx.fillRect(-0.5,-7,1,3);
   const w=Math.abs(Math.cos(spin))*6+1;ctx.fillStyle='#e7eff9';ctx.fillRect(-w,-8,w*2,1.5);ctx.restore();}
 function drawParts(){for(const p of parts){p.vx*=0.98;p.vy+=p.g;p.x+=p.vx;p.y+=p.vy;p.life--;
-  ctx.globalAlpha=Math.min(1,p.life/15);if(p.c==='gem'){drawGem(p.x,p.y,G.frame*0.3);}else{ctx.fillStyle=p.c;ctx.fillRect(p.x|0,p.y|0,2,2);}}ctx.globalAlpha=1;parts=parts.filter(p=>p.life>0);}
+  ctx.globalAlpha=Math.min(1,p.life/15);if(p.c==='gem'){drawGem(p.x,p.y,G.frame*0.3);}
+  else if(p.c==='note'){ctx.font=`bold 8px ${FONT}`;ctx.textAlign='center';ctx.fillStyle='#1d2433';ctx.fillText(p.txt,p.x+1,p.y+1);ctx.fillStyle='#fff';ctx.fillText(p.txt,p.x,p.y);}
+  else{ctx.fillStyle=p.c;ctx.fillRect(p.x|0,p.y|0,2,2);}}ctx.globalAlpha=1;parts=parts.filter(p=>p.life>0);}
 function drawHUD(){
   ctx.fillStyle='rgba(16,24,48,.55)';ctx.fillRect(0,0,VW,14);
   ctx.font=`10px ${FONT}`;ctx.textBaseline='middle';ctx.textAlign='left';

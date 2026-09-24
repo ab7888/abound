@@ -76,6 +76,15 @@ Room fields: `theme` (day/night/grass/cave/lava), `door` (switch/key/gems/goal/c
 Free keys ride conveyors. Cannon balls kill critters and damage the frost flower while it is up.
 Icicles crush critters. Rooms with `door: key` and critters drop the key where the last critter died.
 
+## Reference notes
+The physics were cross-checked against the open-source SMB Remastered project (GPL-3, Godot): its
+fall/jump gravity of 25/8 per frame at 60 fps is 0.42/0.13 px per frame squared against our
+0.4375/0.125, and its enemy walk speed of 32 px/s matches our 0.5 px per frame. Nothing was copied
+from it: its art and sound are Nintendo's, and its code is GPL and Godot-specific. Two behaviours
+were re-implemented here after reading it: the stomp combo ladder (100, 200, 400, 500, 800, 1000,
+2000, 4000, 5000, 8000 for consecutive stomps without landing, with floating score notes) and skid
+and landing dust.
+
 ## Physics (engine.js, px per frame at 60 fps, 16 px tiles)
 Walk max 1.56, run max 2.56. Jump vy -4 (or -5 at full run); gravity 0.125 while holding jump
 and rising, about 0.44 otherwise. Spring -7.3. Cap: mid-air jump gives vy -6.3, glide fall cap

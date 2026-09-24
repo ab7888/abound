@@ -1856,7 +1856,7 @@ function UploadScreen({onDone, onAddAccount=null}) {
               <div style={{fontSize:12,fontWeight:700,color:"#a5b4fc",marginBottom:3}}>Save Abound to your Home Screen</div>
               <div style={{fontSize:11,color:"#6b7280",lineHeight:1.5}}>iOS: tap the Share button in Safari, then "Add to Home Screen". Android: tap the menu and "Add to Home Screen".</div>
             </div>
-            <button onClick={()=>{localStorage.setItem("homeScreenTipDismissed","1");setShowHomeScreenTip(false);}}
+            <button onClick={()=>{localStorage.setItem("homeScreenTipDismissed","1");setShowHomeScreenTip(false);}} aria-label="Dismiss"
               style={{background:"none",border:"none",color:"#4b5563",fontSize:16,cursor:"pointer",padding:0,lineHeight:1,flexShrink:0}}>×</button>
           </div>
         )}
@@ -1906,7 +1906,7 @@ function UploadScreen({onDone, onAddAccount=null}) {
             <div style={{position:"fixed",top:"50%",left:"50%",transform:"translate(-50%,-50%)",zIndex:201,background:"#0d0c1e",border:"1px solid #2d2a6e",borderRadius:16,padding:"24px",width:"min(460px,92vw)",maxHeight:"80vh",overflow:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.6)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
                 <div style={{fontSize:15,fontWeight:800,color:"#e0e7ff"}}>How to export your bank statement</div>
-                <button onClick={()=>setShowGuide(false)} style={{fontSize:20,color:"#4b5563",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
+                <button onClick={()=>setShowGuide(false)} aria-label="Close guide" style={{fontSize:20,color:"#4b5563",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>
               </div>
               {/iPhone|iPod/.test(navigator.userAgent)&&/Safari/.test(navigator.userAgent)&&!/CriOS|FxiOS/.test(navigator.userAgent)&&(
                 <div style={{background:"rgba(251,191,36,0.08)",border:"1px solid rgba(251,191,36,0.3)",borderRadius:10,padding:"11px 13px",marginBottom:16,display:"flex",gap:10,alignItems:"flex-start"}}>
@@ -1943,14 +1943,14 @@ function UploadScreen({onDone, onAddAccount=null}) {
             <h2 style={{fontSize:21,fontWeight:800,color:"#fff",marginBottom:6,letterSpacing:"-0.02em"}}>Upload your statements</h2>
             <p style={{fontSize:13,color:"#52525b",margin:0}}>Drop in your bank exports. We'll handle the rest.</p>
           </div>
-          <button onClick={()=>setShowGuide(true)} title="How to get your bank statement"
+          <button onClick={()=>setShowGuide(true)} title="How to get your bank statement" aria-label="How to get your bank statement"
             style={{width:30,height:30,borderRadius:"50%",border:"1px solid #2d2a6e",background:"rgba(99,102,241,0.1)",color:"#818cf8",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:4}}>
             ?
           </button>
         </div>
         {accounts.map((acc,i)=>(
           <div key={acc.id} style={{position:"relative"}}>
-            {i>0&&<button onClick={()=>removeAccount(acc.id)} style={{position:"absolute",top:12,right:12,zIndex:10,fontSize:14,color:"#52525b",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
+            {i>0&&<button onClick={()=>removeAccount(acc.id)} aria-label="Remove account" style={{position:"absolute",top:12,right:12,zIndex:10,fontSize:14,color:"#52525b",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
             <DropZone account={acc} index={i}/>
           </div>
         ))}
@@ -2366,7 +2366,7 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
               <div style={{display:"flex",gap:6}}>
                 <input autoFocus value={newCat} onChange={e=>setNewCat(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")addCategory();if(e.key==="Escape")setShowAddCat(false);}} placeholder="Category name..." style={{padding:"5px 10px",background:"#1e1b38",border:"1px solid #4338ca",borderRadius:7,color:"#fff",fontSize:12,width:160}}/>
                 <button onClick={addCategory} style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:7,fontSize:12,fontWeight:700,cursor:"pointer"}}>Add</button>
-                <button onClick={()=>setShowAddCat(false)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
+                <button onClick={()=>setShowAddCat(false)} aria-label="Cancel" style={{padding:"5px 8px",background:"none",border:"1px solid #374151",borderRadius:7,color:"#6b7280",fontSize:12,cursor:"pointer"}}>×</button>
               </div>
             ):(
               <button onClick={()=>setShowAddCat(true)} style={{padding:"5px 14px",background:"rgba(99,102,241,0.12)",border:"1px dashed #4338ca",borderRadius:7,color:"#818cf8",fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add category</button>
@@ -2459,7 +2459,7 @@ function SortScreen({transactions, categories: initialCategories, onDone, contin
                     }}
                   >
                     {keyLabel&&<div style={{position:"absolute",top:6,left:8,fontSize:9,fontWeight:700,color:isHovered?"#fff":`${color}bb`,background:isHovered?`${color}33`:"rgba(255,255,255,0.06)",borderRadius:4,padding:"1px 5px",lineHeight:"14px"}}>{keyLabel}</div>}
-                    {!isDefault&&<button onClick={e=>{e.stopPropagation();removeCategory(cat);}} style={{position:"absolute",top:5,right:7,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
+                    {!isDefault&&<button onClick={e=>{e.stopPropagation();removeCategory(cat);}} aria-label={`Remove category ${cat}`} style={{position:"absolute",top:5,right:7,fontSize:12,color:"#374151",border:"none",background:"none",cursor:"pointer",lineHeight:1}}>×</button>}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"center",width:28,height:28}}>
                       {cat==="Skip"
                         ?<svg viewBox="0 0 20 20" width="22" height="22" fill="none"><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M6 8c0-2.2 1.8-4 4-4s4 1.8 4 4c0 1.5-.8 2.8-2 3.5V13H8v-1.5C6.8 10.8 6 8.5 6 8z"/><path stroke={isHovered?"#9ca3af":"#6b7280"} strokeWidth="1.5" strokeLinecap="round" d="M8 16h4"/></svg>
@@ -2570,7 +2570,7 @@ const MobileSort=()=>{
                       placeholder="e.g. Healthcare..."
                       style={{flex:1,padding:"10px 12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#fff",fontSize:16,outline:"none"}}/>
                     <button onClick={doAdd} style={{padding:"10px 16px",background:"#6366f1",color:"#fff",border:"none",borderRadius:8,fontSize:14,fontWeight:700,cursor:"pointer",touchAction:"manipulation"}}>Add</button>
-                    <button onClick={()=>{setMobileAddingCat(false);setMobileCatInput("");}} style={{padding:"10px 12px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#6b7280",fontSize:14,cursor:"pointer",touchAction:"manipulation"}}>×</button>
+                    <button onClick={()=>{setMobileAddingCat(false);setMobileCatInput("");}} aria-label="Cancel" style={{padding:"10px 12px",background:"none",border:"1px solid #2d2a6e",borderRadius:8,color:"#6b7280",fontSize:14,cursor:"pointer",touchAction:"manipulation"}}>×</button>
                   </div>
                 </div>
               ):(
@@ -2669,7 +2669,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
             <div style={{color:"#818cf8",fontSize:12}}>Head back to Cash Flow for your personalised financial analysis.</div>
           </div>
           <button onClick={onGoToCashFlow} style={{padding:"8px 18px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",boxShadow:"0 2px 8px rgba(99,102,241,0.4)",flexShrink:0}}>View my analysis →</button>
-          <button onClick={()=>setShowUpdatedBanner(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
+          <button onClick={()=>setShowUpdatedBanner(false)} aria-label="Dismiss" style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
       )}
       <div style={{padding:isMobile?"12px 16px":"20px 24px"}}>
@@ -2723,7 +2723,7 @@ function ReviewScreen({transactions, categories, onUpdate, onGoToCashFlow, onRev
               <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:3}}>Tap the coloured pill to fix a category</div>
               <div style={{fontSize:12,color:"#818cf8",lineHeight:1.5}}>The AI makes mistakes — spending 2 minutes here makes your forecast much more accurate.</div>
             </div>
-            <button onClick={()=>{sessionStorage.setItem("reviewMobileTipSeen","1");setShowMobileTip(false);}} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0,lineHeight:1,padding:0}}>×</button>
+            <button onClick={()=>{sessionStorage.setItem("reviewMobileTipSeen","1");setShowMobileTip(false);}} aria-label="Dismiss" style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0,lineHeight:1,padding:0}}>×</button>
           </div>
         )}
         {/* Table */}
@@ -3416,7 +3416,7 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
             <div style={{color:"#818cf8",fontSize:12}}>{otherCount>0?"These are in 'Other Payments' — sorting them improves your forecast.":"A quick review makes your forecast dramatically more accurate."}</div>
           </div>
           <button onClick={goToReview} style={{padding:"7px 16px",background:"rgba(99,102,241,0.25)",color:"#a5b4fc",border:"1px solid rgba(99,102,241,0.4)",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer",flexShrink:0}}>Review now →</button>
-          <button onClick={()=>setShowReviewPrompt(false)} style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
+          <button onClick={()=>setShowReviewPrompt(false)} aria-label="Dismiss" style={{fontSize:18,color:"#4b5563",background:"none",border:"none",cursor:"pointer",flexShrink:0}}>×</button>
         </div>
         );
       })()}
@@ -4795,7 +4795,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   {total>0?(
                     <span title={wkEvents.map(e=>`${e.label}: £${e.amount}`).join("\n")} style={{cursor:"help"}}>
                       {fmtMoney(total)}
-                      <button onClick={()=>setEvents(ev=>ev.filter(e=>e.weekKey!==w.key))} style={{marginLeft:4,fontSize:8,color:"#ef4444",border:"none",background:"none",cursor:"pointer",verticalAlign:"middle"}}>×</button>
+                      <button onClick={()=>setEvents(ev=>ev.filter(e=>e.weekKey!==w.key))} aria-label="Remove planned expense" style={{marginLeft:4,padding:"6px 4px",fontSize:8,color:"#ef4444",border:"none",background:"none",cursor:"pointer",verticalAlign:"middle"}}>×</button>
                     </span>
                   ):"—"}
                 </td>
@@ -4910,7 +4910,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   {total>0?(
                     <span title={wkEvents.map(e=>`${e.label}: £${e.amount}`).join("\n")} style={{cursor:"help"}}>
                       {fmtMoney(total)}
-                      <button onClick={()=>setEvents(ev=>ev.filter(e=>e.weekKey!==w.key))} style={{marginLeft:4,fontSize:8,color:"#ef4444",border:"none",background:"none",cursor:"pointer",verticalAlign:"middle"}}>×</button>
+                      <button onClick={()=>setEvents(ev=>ev.filter(e=>e.weekKey!==w.key))} aria-label="Remove planned expense" style={{marginLeft:4,padding:"6px 4px",fontSize:8,color:"#ef4444",border:"none",background:"none",cursor:"pointer",verticalAlign:"middle"}}>×</button>
                     </span>
                   ):"—"}
                 </td>
@@ -5142,7 +5142,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
             <div style={{display:"flex",gap:5}}>
               <button onClick={saveIncomeForm} style={{flex:1,padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
               {incomeFormState.editId&&<button onClick={deleteIncomeEvent} style={{padding:"5px 10px",background:"rgba(239,68,68,0.15)",color:"#ef4444",border:"1px solid rgba(239,68,68,0.3)",borderRadius:6,fontSize:11,cursor:"pointer"}}>Delete</button>}
-              <button onClick={()=>closeIncomeForm(true)} style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
+              <button onClick={()=>closeIncomeForm(true)} aria-label="Cancel" style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
             </div>
           </div>
         </>
@@ -5164,7 +5164,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 style={{flex:1,padding:"5px 8px",background:T.budgetInputBg,border:`1px solid ${T.dimBorder}`,borderRadius:6,color:T.text,fontSize:12,outline:"none"}}/>
               <button onClick={()=>{const amt=parseFloat(editingEvent.amount);if(!isNaN(amt)&&amt>0&&editingEvent.label){setEvents(ev=>[...ev,{id:Date.now(),weekKey:editingEvent.weekKey,label:editingEvent.label,amount:amt}]);}setEditingEvent(null);}}
                 style={{padding:"5px 12px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Add</button>
-              <button onClick={()=>setEditingEvent(null)}
+              <button onClick={()=>setEditingEvent(null)} aria-label="Cancel"
                 style={{padding:"5px 9px",background:"none",color:T.dimText,border:`1px solid ${T.dimBorder}`,borderRadius:6,fontSize:12,cursor:"pointer"}}>×</button>
             </div>
           </div>
@@ -5290,7 +5290,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <div style={{fontSize:isMobile?"clamp(7px,1.8vw,10px)":10,color:"#6366f1",fontWeight:700,letterSpacing:"0.1em",marginBottom:isMobile?3:7,textTransform:"uppercase"}}>{tourStep===0?"// Welcome":`Step ${tourStep} of ${TOUR_STEPS.length-1}`}</div>
                   <div style={{fontSize:isMobile?"clamp(12px,3.5vw,16px)":20,fontWeight:800,color:"#fff",lineHeight:1.2}}>{currentStep.title}</div>
                 </div>
-                <button onClick={closeTour} style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
+                <button onClick={closeTour} aria-label="Close tour" style={{fontSize:18,color:"#4b5563",border:"none",background:"none",cursor:"pointer",marginLeft:8,lineHeight:1,flexShrink:0,padding:4}}>×</button>
               </div>
               {currentStep.body.split('\n\n').map((para,i)=>(
                 <p key={i} style={{fontSize:isMobile?"clamp(10px,2.8vw,13px)":14,color:T.dimText,lineHeight:isMobile?1.5:1.75,margin:i===0?"0 0 5px":"5px 0 0"}}>{para}</p>
@@ -5449,7 +5449,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               {/* Currency picker */}
               <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                 <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase"}}>Currency</div>
-                <button onClick={()=>setShowCurrencyPicker(p=>!p)}
+                <button onClick={()=>setShowCurrencyPicker(p=>!p)} aria-label="Change currency" aria-expanded={showCurrencyPicker}
                   style={{height:34,padding:"0 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:"#a5b4fc",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
                   {currency} <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                 </button>
@@ -5469,7 +5469,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               </div>
               <div style={{position:"relative",flexShrink:0,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
                 <div style={{fontSize:9,fontWeight:700,color:T.dimText,letterSpacing:"0.06em",textTransform:"uppercase",whiteSpace:"nowrap"}}>{isDark?"Light mode":"Dark mode"}</div>
-                <button onClick={()=>{setIsDark(d=>!d);setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");}} title={isDark?"Switch to light mode":"Switch to dark mode"}
+                <button onClick={()=>{setIsDark(d=>!d);setShowThemeTip(false);localStorage.setItem("themeTipSeen","1");}} title={isDark?"Switch to light mode":"Switch to dark mode"} aria-label={isDark?"Switch to light mode":"Switch to dark mode"}
                   style={{width:34,height:34,borderRadius:8,border:`1px solid ${T.border}`,background:T.card,color:isDark?"#a5b4fc":"#6366f1",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",transition:"all 0.2s"}}>
                   {isDark
                     ? <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2v2M10 16v2M2 10h2M16 10h2M4.93 4.93l1.41 1.41M13.66 13.66l1.41 1.41M4.93 15.07l1.41-1.41M13.66 6.34l1.41-1.41" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/><circle cx="10" cy="10" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
@@ -5672,7 +5672,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
                 {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:T.actualHdrText,textAlign:"right",background:T.actualHdrBg,borderRight:`1px solid ${T.actualHdrBorder}`,whiteSpace:"nowrap"}}><span style={{fontSize:8,fontWeight:400,opacity:0.6}}>w/c </span>{fmt(w.date)}</th>)}
-                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>WK AVG{!isPro&&!isMobile&&<button onClick={togglePreview} title={previewCollapsed?"Expand forecast preview":"Collapse forecast preview"} style={{marginLeft:4,verticalAlign:"middle",background:"none",border:"none",cursor:"pointer",color:"rgba(99,102,241,0.65)",fontSize:15,lineHeight:1,padding:"0 1px"}}>{previewCollapsed?"›":"‹"}</button>}</th>
+                <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>WK AVG{!isPro&&!isMobile&&<button onClick={togglePreview} title={previewCollapsed?"Expand forecast preview":"Collapse forecast preview"} aria-label={previewCollapsed?"Expand forecast preview":"Collapse forecast preview"} style={{marginLeft:4,verticalAlign:"middle",background:"none",border:"none",cursor:"pointer",color:"rgba(99,102,241,0.65)",fontSize:15,lineHeight:1,padding:"0 1px"}}>{previewCollapsed?"›":"‹"}</button>}</th>
                 {visibleForecastWeeks.map((w,i)=>{
                   const isPreview=!isPro&&i>=6;
                   const op=Math.max(0.45,1-i*0.11);
@@ -5855,13 +5855,13 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
 
       
       {isMobile&&(
-        <button onClick={onFeedback} title="Leave a review"
+        <button onClick={onFeedback} title="Leave a review" aria-label="Leave a review"
           style={{position:"fixed",bottom:16,right:102,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid rgba(99,102,241,0.4)",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><path d="M10 2l2.4 4.9L18 7.6l-4 3.9.9 5.5L10 14.4 5.1 17l.9-5.5L2 7.6l5.6-.7L10 2z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/></svg>
         </button>
       )}
       {isMobile&&(
-        <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen"
+        <button onClick={()=>setShowHomeScreenGuide(true)} title="Add to Home Screen" aria-label="Add to Home Screen"
           style={{position:"fixed",bottom:16,right:62,width:36,height:36,borderRadius:"50%",background:"rgba(30,27,56,0.92)",border:"1px solid #4338ca",color:"#a5b4fc",cursor:"pointer",boxShadow:"0 4px 16px rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500}}>
           <svg width="15" height="15" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
         </button>
@@ -5871,7 +5871,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {showHomeScreenGuide&&(
         <div style={{position:"fixed",inset:0,zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(5,4,20,0.75)",backdropFilter:"blur(6px)"}} onClick={()=>setShowHomeScreenGuide(false)}>
           <div style={{background:"linear-gradient(145deg,#13112b,#1a1830)",border:"1px solid #3730a3",borderRadius:16,padding:"24px 24px 20px",maxWidth:340,width:"90%",boxShadow:"0 20px 60px rgba(0,0,0,0.6)",position:"relative",zoom:isMobile?0.9:1}} onClick={e=>e.stopPropagation()}>
-            <button onClick={()=>setShowHomeScreenGuide(false)} style={{position:"absolute",top:12,right:12,background:"none",border:"none",color:"#6b7280",fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
+            <button onClick={()=>setShowHomeScreenGuide(false)} aria-label="Close guide" style={{position:"absolute",top:12,right:12,background:"none",border:"none",color:"#6b7280",fontSize:18,cursor:"pointer",lineHeight:1}}>×</button>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:18}}>
               <div style={{width:36,height:36,borderRadius:9,background:"linear-gradient(135deg,#6366f1,#8b5cf6)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="#fff" strokeWidth="1.6"/><path d="M10 7v6M7 10h6" stroke="#fff" strokeWidth="1.6" strokeLinecap="round"/></svg>
@@ -6015,7 +6015,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                         <span style={{fontSize:12,color:"#9ca3af",marginLeft:8}}>£{p.amount.toLocaleString()}</span>
                         {wk&&<span style={{fontSize:11,color:"#6b7280",marginLeft:8}}>{`w/c ${wk.date.getDate()} ${wk.date.toLocaleString('en-GB',{month:'short'})}`}</span>}
                       </div>
-                      <button onClick={()=>setDraftPurchases(ps=>ps.filter(x=>x.id!==p.id))} style={{background:"none",border:"none",color:"#ef4444",fontSize:18,cursor:"pointer",padding:"4px 8px",lineHeight:1,flexShrink:0}}>×</button>
+                      <button onClick={()=>setDraftPurchases(ps=>ps.filter(x=>x.id!==p.id))} aria-label="Remove purchase" style={{background:"none",border:"none",color:"#ef4444",fontSize:18,cursor:"pointer",padding:"4px 8px",lineHeight:1,flexShrink:0}}>×</button>
                     </div>
                   );
                 })}
@@ -6189,7 +6189,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       {!isMobile&&(()=>{
         const tourSeen = !!localStorage.getItem("cashFlowTourSeen_v2");
         return(
-          <button onClick={reopenTour} title="Tour & tips"
+          <button onClick={reopenTour} title="Tour & tips" aria-label="Open tour and tips"
             style={{position:"fixed",bottom:28,right:28,height:46,borderRadius:23,background:"#6366f1",border:"none",color:"#fff",cursor:"pointer",boxShadow:"0 4px 18px rgba(99,102,241,0.55)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:500,transition:"all 0.2s",padding:"0 20px",gap:6,fontWeight:700,animation:tourSeen?"none":"tourBtnPulse 2.5s ease-in-out 3"}}>
             <span style={{fontSize:18,lineHeight:1}}>?</span>
             <span style={{fontSize:14,letterSpacing:"0.02em"}}>Tour</span>
@@ -6295,7 +6295,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
                 <div style={{fontSize:11,color:"#6b7280"}}>{localStocks.length} holding{localStocks.length!==1?"s":""}</div>
               </div>
             </div>
-            <button onClick={onDismiss} style={{width:28,height:28,borderRadius:8,border:"1px solid #1f1d35",background:"none",color:"#6b7280",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
+            <button onClick={onDismiss} aria-label="Dismiss" style={{width:28,height:28,borderRadius:8,border:"1px solid #1f1d35",background:"none",color:"#6b7280",fontSize:18,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}>×</button>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
             {localStocks.map(s=>(
@@ -6311,7 +6311,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
                     : <div style={{fontSize:12,color:"#6ee7b7",marginTop:2}}>{s.currentValue?`£${Number(s.currentValue).toLocaleString()}`:"No value set"} <button onClick={()=>{setEditingTicker(s.ticker);setEditVal(s.currentValue||"");}} style={{background:"none",border:"none",color:"#6366f1",fontSize:11,cursor:"pointer",padding:"0 4px"}}>edit</button></div>
                   }
                 </div>
-                <button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:18,padding:"0 2px",flexShrink:0,lineHeight:1}}>×</button>
+                <button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} aria-label={`Remove ${s.ticker}`} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:18,padding:"0 2px",flexShrink:0,lineHeight:1}}>×</button>
               </div>
             ))}
           </div>
@@ -6344,7 +6344,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
           </div>
           {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:8}}>{error}</p>}
           {localStocks.length>0&&(<>
-            <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker} <span style={{color:"#6b7280",fontWeight:400,fontSize:11}}>{s.name}</span></span><div style={{display:"flex",alignItems:"center",gap:8}}>{s.currentValue&&<span style={{color:"#10b981"}}>£{s.currentValue.toLocaleString()}</span>}<button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px"}}>×</button></div></div>)}</div>
+            <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker} <span style={{color:"#6b7280",fontWeight:400,fontSize:11}}>{s.name}</span></span><div style={{display:"flex",alignItems:"center",gap:8}}>{s.currentValue&&<span style={{color:"#10b981"}}>£{s.currentValue.toLocaleString()}</span>}<button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} aria-label={`Remove ${s.ticker}`} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px"}}>×</button></div></div>)}</div>
             <button onClick={()=>setMode('summary')} style={{width:"100%",padding:"12px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:700,cursor:"pointer"}}>Done →</button>
           </>)}
         </>)}

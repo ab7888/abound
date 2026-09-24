@@ -7,6 +7,10 @@ cannon alley, frost-flower mini-boss, snowman boss, GG!! salute, 2026! epilogue)
 Level 2 "Meadow run": a side-scrolling grassland course with a blocky staircase hill, slopes,
 crates, lifts, a whirly-cap flight powerup (from the crate in the first valley), 3 sun medallions,
 a checkpoint and a secret burrow room.
+Level 3 "Ember rail": ride bone carts along rails over a lava cave, jumping the plumes that erupt
+under the low stretches and hopping to the next cart where a rail ends on its hook; a brick and
+rock stretch, a stone checkpoint courtyard, then out under a volcano sky with a red ring, stair-step
+bone ledges, 3 ember medallions and a castle-wall flag.
 
 ## Layout
 - `src/levels.py` – generates every room's tile map (writes `src/levels.json`).
@@ -14,9 +18,10 @@ a checkpoint and a secret burrow room.
 - `src/template.html` – page shell; `__LEVELS__` and `__ENGINE__` get inlined.
 - `build.py` – runs levels.py and assembles `dist/index.html` (single self-contained file).
 - `dist/index.html` – the current playable build. Open it in a browser.
-- `test/smoke.cjs` – headless Playwright check: loads every room, exercises the tower, key-drop,
+- `test/smoke.cjs` – headless Playwright check: loads every room, exercises the key-drop,
   cannon-alley and frost-flower mechanics, and fails on any JS error. `test/room2.cjs` plays
-  through the launch-tower room.
+  through the launch-tower room. `test/level3.cjs` rides level 3 end to end with the scripted
+  rider in `test/l3bot.cjs` (boarding, hook, plume kill, checkpoint, flag).
 
 ## Build
     python3 build.py
@@ -40,13 +45,23 @@ a checkpoint and a secret burrow room.
 10. Good game – GG!! salute, door exit.
 11. Happy new year – 2026! in lights, a switch-block heart, goal flag.
 
+## Level 3 pieces
+Rails are `tracks` on the room: polylines in tile units; the rail sits 12 px into its tile and the
+cart rides 10 px above it. One 10-segment cart waits at the start of each rail and begins to move
+the moment the player stands on it (speed 1.6 px/frame); it stops with its head at the rail's end.
+Jumping off a moving cart keeps the cart's speed. `plumes` are `[tile x, height in tiles, phase]`:
+each erupts from the lava on a 210-frame cycle (40 frames of bubbling warning, 20 up, 60 held,
+20 down) and kills on contact. `bgSplit` is the tile column where the cave backdrop gives way to
+the volcano sky.
+
 ## Tile legend (levels.py)
-`#` solid ground/wall · `-` one-way platform · `A`/`T` amber/teal switch blocks (solid when
+`#` solid ground/wall (rock in the lava theme) · `-` one-way platform (bone ledge in the lava
+theme) · `~` lava (deadly) · `w` brick block · `A`/`T` amber/teal switch blocks (solid when
 switch state is 0/1) · `S` switch block (hit from below) · `<` `>` conveyors · `^` spikes ·
 `/` `\` 45° slopes · `W` stone block · `b` gem crate · `q` cap (powerup) crate · `u` used crate ·
 `H` burrow hole (press down) · `@` player start · `x` return spawn from burrow · `i` entrance door
 (decoration) · `e` blob enemy · `o` gem · `h` hidden gem (appears when the switch is flipped) ·
-`k` key · `O` sun medallion · `P` spring · `R`/`Q` boost hoop right/left ·
+`k` key · `O` sun medallion · `P` spring · `R`/`Q` boost hoop right/left · `N` red ring (reveals the level's hidden gems) ·
 `D` exit door · `L` locked door (needs key) · `G` goal flag · `M` checkpoint · `X` exit ladder ·
 `c`/`C` snowball cannon right/left · `K` switch-powered cannon (left, fires only after the flip
 while a critter is alive) · `I` hanging icicle in that column · `F` frost flower · `Z` snowman boss ·
@@ -54,7 +69,7 @@ while a critter is alive) · `I` hanging icicle in that column · `F` frost flow
 `z` mole (walks like a blob; hovers with wings if nothing is under it; shows the key when it is the
 only critter in a key room) · `v`/`m` vertical/horizontal lift · `r`/`u`/`d` arrow signs.
 
-Room fields: `theme` (day/night/grass/cave), `door` (switch/key/gems/goal/cave, the exit rule),
+Room fields: `theme` (day/night/grass/cave/lava), `door` (switch/key/gems/goal/cave, the exit rule),
 `auto` (flip the switch automatically 1 s after entering: message rooms), `level`, and
 `sub`/`parent` to link a room with its burrow room.
 

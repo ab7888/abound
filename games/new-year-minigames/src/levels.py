@@ -238,6 +238,73 @@ def cave():
     d=r.out();d['level']=2;return d
 m=meadow();m['sub']=len(rooms)+1;rooms.append(m)
 c=cave();c['parent']=len(rooms)-1;rooms.append(c)
+
+# ================= LEVEL 3 =================
+# "Ember rail": ride bone carts along rails over a lava cave, then out under a volcano sky.
+# Rails are polylines in tile units (rail sits 12 px into its tile; the cart rides 10 px above it).
+# Plumes are [tile x, height in tiles, phase offset]; they erupt from the lava every 210 frames.
+def ember():
+    Wd=360; g=[[' ']*Wd for _ in range(H2)]
+    for y in range(H2): g[y][0]='#'; g[y][Wd-1]='#'
+    for x in range(1,Wd-1): g[15][x]='~'; g[16][x]='~'
+    def p(x,y,c): g[y][x]=c
+    def ground(x0,x1,top,c='#'):
+        for x in range(x0,x1+1):
+            for y in range(top,H2): g[y][x]=c
+    def row(x0,x1,y,c):
+        for x in range(x0,x1+1): g[y][x]=c
+    tracks=[]; plumes=[]
+    # A start ledge with crates
+    ground(1,16,10); ground(17,19,12)
+    p(3,9,'@'); p(8,6,'b'); p(9,6,'b'); p(13,9,'r')
+    for x in(11,12,13): p(x,7,'o')
+    # B cart 1: flat run past a plume, steep climb, hook high up
+    tracks.append([(20,12),(38,12),(46,5),(50,5)])
+    plumes+= [[36,5,0],[40,6,100]]
+    for x in(24,26,28): p(x,10,'o')
+    p(41,8,'o'); p(43,6,'o'); p(45,4,'o')
+    # C cart 2: drop, hump with the first medallion, low run with plumes
+    tracks.append([(52,7),(60,11),(66,8),(72,12),(86,12),(92,9),(96,9)])
+    p(66,5,'O')
+    plumes+= [[76,5,60],[82,5,150]]
+    for x in(74,78,84): p(x,10,'o')
+    # D rock island, then cart 3 skimming the lava
+    ground(98,103,11)
+    for x in(99,100,101,102): p(x,8,'o')
+    tracks.append([(105,12),(118,12),(124,13),(130,13),(136,11),(140,11)])
+    plumes+= [[110,5,30],[121,4,120],[127,4,190]]
+    for x in(108,112,116): p(x,10,'o')
+    # E brick and rock platforms over the lava
+    ground(142,147,12); row(146,148,9,'w')
+    plumes+= [[149,6,0]]
+    ground(150,153,9); row(155,157,7,'w'); ground(158,162,11); p(160,7,'b')
+    p(152,6,'o'); p(156,5,'o'); p(153,6,'o')
+    # F cart 4: climb to a high flat with the second medallion, long descent into humps
+    tracks.append([(164,11),(176,11),(182,5),(190,5),(200,12),(206,10),(212,12),(218,10),(224,12),(232,12)])
+    p(186,2,'O')
+    plumes+= [[203,5,40],[210,5,130],[221,5,20]]
+    for x in(184,186,188): p(x,3,'o')
+    for x in(206,218): p(x,8,'o')
+    # G stone courtyard with the checkpoint; the sky opens up from here
+    ground(234,256,12,'W'); ground(246,256,11,'W'); p(250,10,'M')
+    # H cart 5: red ring over the hump reveals a trail of ember gems
+    tracks.append([(258,11),(272,11),(278,13),(284,13),(288,10),(294,13),(300,13),(306,11),(310,11)])
+    p(288,7,'N')
+    for x in(292,294,296,298): p(x,10,'h')
+    plumes+= [[281,4,80],[297,4,170]]
+    for x in(262,266,270): p(x,9,'o')
+    # I stair-step bone ledges over plumes, third medallion above the middle step
+    for x0,y in((312,11),(316,9),(320,11),(324,9),(328,11),(332,10)): row(x0,x0+2,y,'-')
+    plumes+= [[319,8,60],[327,8,150]]
+    p(325,5,'O'); p(317,7,'o'); p(329,9,'o')
+    # J castle wall and the flag
+    ground(336,358,12,'W')
+    for x in range(337,346,2): p(x,10,'o')
+    p(347,11,'G'); ground(351,355,7,'W'); p(353,11,'i')
+    return {"theme":"lava","title":"Ember rail","door":"goal","level":3,"bgSplit":236,
+            "tracks":[[list(pt) for pt in t] for t in tracks],"plumes":plumes,"map":["".join(r) for r in g]}
+rooms.append(ember())
 json.dump(rooms,open(__import__('os').path.join(__import__('os').path.dirname(__file__),'levels.json'),'w'))
 print("\n".join(m['map']))
 print("\n".join(c['map']))
+print("\n".join(rooms[-1]['map']))

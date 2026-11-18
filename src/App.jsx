@@ -3839,6 +3839,8 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
   const [showStockSetup, setShowStockSetup] = useState(false);
   const [stocks, setStocks] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_stocks_v1")||"[]");}catch{return[];}});
   const [stockData, setStockData] = useState({});
+  const [includeStocksInCash, setIncludeStocksInCash] = useState(()=>localStorage.getItem("abound_include_stocks_in_cash")==="true");
+  function toggleIncludeStocksInCash(){setIncludeStocksInCash(v=>{const next=!v;try{localStorage.setItem("abound_include_stocks_in_cash",next?"true":"false");}catch{}return next;});}
   function openStocks(){if(!isPremium()){setShowPremiumGate(true);return;}setShowStockSetup(true);}
   function saveStocks(s){setStocks(s);try{localStorage.setItem("abound_stocks_v1",JSON.stringify(s));}catch{}}
   const [showIncomeWizard,setShowIncomeWizard]=useState(false);
@@ -4340,6 +4342,31 @@ function getLastWorkingDay(year, month) {
   const totalActualByWeek=actualWeeks.map(w=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+Math.abs(weeklyByAccountCat[w.key]?.[acc]?.[c]||0),s),0));
   const totalForecastByWeek=forecastWeeks.map((_,i)=>accounts.reduce((s,acc)=>spendCats.reduce((s2,c)=>s2+(forecastData[acc]?.[c]?.[i]||0),s),0));
 
+  // Same per-week valuation the Stock Portfolio grid rows show (price-history-matched for
+  // actual weeks, drift-projected for forecast weeks) — summed across holdings so the Cash
+  // Balance toggle below can add it in without duplicating that logic or disagreeing with it.
+  const stockPortfolioWeekly = useMemo(()=>{
+    const visibleStocks=stocks.filter(s=>stockData[s.ticker]?.currentPrice);
+    const actual=actualWeeks.map(w=>visibleStocks.reduce((sum,stock)=>{
+      const {currentPrice,history=[]}=stockData[stock.ticker];
+      const currentVal=stock.currentValue||0;
+      if(!history.length) return sum+currentVal;
+      const wDate=new Date(w.key);
+      const closest=history.reduce((a,b)=>Math.abs(new Date(a.date)-wDate)<Math.abs(new Date(b.date)-wDate)?a:b);
+      return sum+(closest?currentVal*(closest.close/currentPrice):currentVal);
+    },0));
+    const forecast=forecastWeeks.map((_,i)=>visibleStocks.reduce((sum,stock)=>{
+      const {currentPrice,history=[]}=stockData[stock.ticker];
+      const currentVal=stock.currentValue||0;
+      const recentCloses=history.slice(-5).map(h=>h.close);
+      const weeklyDrift=recentCloses.length>1?(recentCloses[recentCloses.length-1]-recentCloses[0])/(recentCloses.length-1):0;
+      const lastClose=recentCloses[recentCloses.length-1]||currentPrice;
+      const projPrice=lastClose+weeklyDrift*(i+1);
+      return sum+currentVal*(projPrice/currentPrice);
+    },0));
+    return{actual,forecast};
+  },[stocks,stockData,actualWeeks,forecastWeeks]);
+
   const combinedClosingBalances = useMemo(()=>{
     const mainAcc="Main Account";
 
@@ -4392,10 +4419,16 @@ function getLastWorkingDay(year, month) {
       const vals=perAccount.map(p=>p[field][i]).filter(v=>v!==null);
       return vals.length?vals.reduce((a,b)=>a+b,0):null;
     };
-    const actualClosing=actualWeeks.map((_,i)=>sumWeek("actual",i));
-    const forecastClosing=forecastWeeks.map((_,i)=>sumWeek("forecast",i));
+    const actualClosing=actualWeeks.map((_,i)=>{
+      const base=sumWeek("actual",i);
+      return base===null?null:includeStocksInCash?base+(stockPortfolioWeekly.actual[i]||0):base;
+    });
+    const forecastClosing=forecastWeeks.map((_,i)=>{
+      const base=sumWeek("forecast",i);
+      return base===null?null:includeStocksInCash?base+(stockPortfolioWeekly.forecast[i]||0):base;
+    });
     return{actual:actualClosing,forecast:forecastClosing};
-  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek]);
+  },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek,includeStocksInCash,stockPortfolioWeekly]);
 
   // ─── The verdict ────────────────────────────────────────────────────────────
   // One answer to the only question this app exists to answer: am I going to be
@@ -5859,9 +5892,15 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           if(lastActual===null||lastActual===undefined) return null;
           const portfolioValue = stocks.reduce((s,st)=>s+(st.currentValue||0),0);
           if(!(portfolioValue>0)) return null;
-          const netWorth = lastActual + portfolioValue;
+          // When Cash Balance already includes the portfolio (toggle below), lastActual has it
+          // baked in — adding portfolioValue again would double-count it.
+          const netWorth = includeStocksInCash?lastActual:lastActual+portfolioValue;
           return(
             <div style={{margin:"14px 0 0",background:"rgba(99,102,241,0.05)",border:"1px solid rgba(99,102,241,0.15)",borderRadius:12,padding:"12px 18px",display:"flex",alignItems:"center",justifyContent:"flex-end",gap:16}}>
+              <label style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",userSelect:"none"}} title="When on, Cash Balance and runway include your stock portfolio's value, not just bank cash.">
+                <input type="checkbox" checked={includeStocksInCash} onChange={toggleIncludeStocksInCash} style={{accentColor:"#6366f1",cursor:"pointer"}}/>
+                <span style={{fontSize:10,color:"#6b7280"}}>Include stocks in Cash Balance</span>
+              </label>
               <div style={{display:"flex",alignItems:"baseline",gap:8}}>
                 <span style={{fontSize:9,fontWeight:700,color:"#6b7280",letterSpacing:"0.08em",textTransform:"uppercase"}}>Net Worth</span>
                 <span style={{fontSize:14,fontWeight:800,color:"#a5b4fc",fontVariantNumeric:"tabular-nums"}}>{currency}{Math.round(netWorth).toLocaleString()}</span>

@@ -1237,7 +1237,7 @@ function HeroScreen({onEnter, onResume}) {
     {dot:"#f59e0b",text:"Built for people who want to actually understand their money."},
   ];
   return (
-    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflow:"hidden",opacity:leaving?0:1,transition:"opacity 0.5s ease"}}>
+    <div style={{minHeight:"100vh",background:"#08070f",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",position:"relative",overflowY:"auto",overflowX:"hidden",opacity:leaving?0:1,transition:"opacity 0.5s ease"}}>
       <style>{GLOBAL_CSS}</style>
       {/* Background radial + grid */}
       <div style={{position:"absolute",inset:0,background:"radial-gradient(ellipse at 50% 0%, rgba(99,102,241,0.12) 0%, transparent 60%)",pointerEvents:"none"}}/>
@@ -3667,6 +3667,15 @@ function CashFlowScreen({transactions, categories, onGoToReview, showReviewPromp
     setTooltip({text, x, y});
     tooltipTimer.current = setTimeout(()=>setTooltip(null), 3000);
   }
+  // Belt-and-braces: any click anywhere (opening a modal, clicking a button under
+  // the tooltip, etc.) should dismiss it immediately rather than waiting on the timer.
+  useEffect(()=>{
+    if(!tooltip) return;
+    function dismiss(){ if(tooltipTimer.current) clearTimeout(tooltipTimer.current); setTooltip(null); }
+    document.addEventListener("click", dismiss, true);
+    document.addEventListener("scroll", dismiss, true);
+    return ()=>{ document.removeEventListener("click", dismiss, true); document.removeEventListener("scroll", dismiss, true); };
+  },[tooltip]);
   const [events, setEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_planned_events_v1")||"[]");}catch{return[];}});
   const [editingEvent, setEditingEvent] = useState(null);
   const [incomeEvents, setIncomeEvents] = useState(()=>{try{return JSON.parse(localStorage.getItem("abound_income_events")||"[]").map(e=>({...e,expectedDate:e.expectedDate?new Date(e.expectedDate):null,receivedDate:e.receivedDate?new Date(e.receivedDate):null}));}catch{return[];}});
@@ -5791,7 +5800,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 if(!visibleStocks.length) return null;
                 return(<>
                   <tr style={{background:"rgba(16,185,129,0.04)",borderTop:"2px solid rgba(16,185,129,0.25)"}}>
-                    <td colSpan={2} style={{padding:"6px 12px",fontSize:10,fontWeight:700,color:"#10b981",letterSpacing:"0.1em",textTransform:"uppercase"}}>STOCK PORTFOLIO</td>
+                    <td colSpan={2} style={{padding:"6px 12px",fontSize:10,fontWeight:700,color:"#10b981",letterSpacing:"0.1em",textTransform:"uppercase"}}>STOCK PORTFOLIO <button onClick={openStocks} style={{marginLeft:6,fontSize:9,fontWeight:700,letterSpacing:"0.05em",color:"#6ee7b7",background:"rgba(16,185,129,0.12)",border:"1px solid rgba(16,185,129,0.3)",borderRadius:5,padding:"1px 7px",cursor:"pointer",textTransform:"none",verticalAlign:"middle"}}>Edit →</button></td>
                     {actualWeeks.map((_,i)=><td key={i} style={{borderRight:`1px solid ${T.border}`,background:"rgba(16,185,129,0.04)"}}/>)}
                     <td style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                     {visibleForecastWeeks.map((_,i)=><td key={i} style={{background:"rgba(16,185,129,0.06)",borderRight:`1px solid ${T.border2}`,...blurStyle(i)}}/>)}
@@ -5802,10 +5811,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                     const {currentPrice,history=[]}=sd;
                     const currentVal=stock.currentValue||0;
                     const actualVals=actualWeeks.map(w=>{
-                      if(!history.length) return null;
+                      // No weekly history (price API fell back to a quote-only lookup) — show a
+                      // flat line at today's value rather than a dash for every past week.
+                      if(!history.length) return currentVal;
                       const wDate=new Date(w.key);
                       const closest=history.reduce((a,b)=>Math.abs(new Date(a.date)-wDate)<Math.abs(new Date(b.date)-wDate)?a:b);
-                      return closest?currentVal*(closest.close/currentPrice):null;
+                      return closest?currentVal*(closest.close/currentPrice):currentVal;
                     });
                     const recentCloses=history.slice(-5).map(h=>h.close);
                     const weeklyDrift=recentCloses.length>1?(recentCloses[recentCloses.length-1]-recentCloses[0])/(recentCloses.length-1):0;
@@ -6222,10 +6233,24 @@ async function fetchStockData(ticker) {
   return res.json();
 }
 
+// Holdings are always stored/displayed in GBP. Yahoo reports UK-listed tickers (e.g. BARC.L)
+// in pence ("GBp") and everything else in its local currency — convert both cases to pounds.
+async function convertToGBP(amount, fromCurrency) {
+  if (amount == null || !isFinite(amount)) return amount;
+  if (!fromCurrency || fromCurrency === "GBP") return amount;
+  if (fromCurrency === "GBp" || fromCurrency === "GBX") return amount / 100;
+  try {
+    const r = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(fromCurrency)}&to=GBP`).then(r=>r.json());
+    const rate = r?.rates?.GBP;
+    return rate ? amount * rate : amount;
+  } catch { return amount; }
+}
+
 function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
   const [mode, setMode] = useState(stocks?.length ? 'summary' : null); // null | 'summary' | 'manual' | 'screenshot'
   const [ticker, setTicker] = useState('');
   const [valueInput, setValueInput] = useState('');
+  const [entryMode, setEntryMode] = useState('value'); // 'value' (total £) | 'qty' (shares/units held)
   const [localStocks, setLocalStocks] = useState(stocks||[]);
   const [editingTicker, setEditingTicker] = useState(null);
   const [editVal, setEditVal] = useState('');
@@ -6240,7 +6265,11 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
     try {
       const data = await fetchStockData(ticker.trim());
       onStockDataFetched({[data.ticker]: data});
-      const val = parseFloat(valueInput) || null;
+      const num = parseFloat(String(valueInput).replace(/[^0-9.]/g,'')) || null;
+      // 'value' mode: the figure IS the £ total, typed directly — no conversion.
+      // 'qty' mode: the figure is a share/unit count — price it at the live quote, then
+      // convert from the ticker's own listing currency (USD, GBp pence, etc.) to £.
+      const val = num == null ? null : (entryMode === 'qty' ? await convertToGBP(num * data.price, data.currency) : num);
       setLocalStocks(s=>[...s.filter(x=>x.ticker!==data.ticker), {ticker:data.ticker, name:data.name, currentValue:val, currency:data.currency}]);
       setTicker(''); setValueInput('');
     } catch(e) { setError('Ticker not found — try e.g. AAPL, TSLA, BARC.L for UK stocks'); }
@@ -6315,7 +6344,7 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
                   {editingTicker===s.ticker
                     ? <div style={{display:"flex",gap:6,marginTop:6}}>
                         <input value={editVal} onChange={e=>setEditVal(e.target.value)} placeholder="New value £" autoFocus style={{flex:1,padding:"5px 8px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:6,color:"#e0e7ff",fontSize:12,outline:"none"}}/>
-                        <button onClick={()=>{setLocalStocks(l=>l.map(x=>x.ticker===s.ticker?{...x,currentValue:parseFloat(editVal)||x.currentValue}:x));setEditingTicker(null);}} style={{padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
+                        <button onClick={()=>{const n=parseFloat(String(editVal).replace(/[^0-9.]/g,''));setLocalStocks(l=>l.map(x=>x.ticker===s.ticker?{...x,currentValue:n||x.currentValue}:x));setEditingTicker(null);}} style={{padding:"5px 10px",background:"#6366f1",color:"#fff",border:"none",borderRadius:6,fontSize:11,fontWeight:700,cursor:"pointer"}}>Save</button>
                         <button onClick={()=>setEditingTicker(null)} style={{padding:"5px 8px",background:"none",border:"1px solid #374151",color:"#6b7280",borderRadius:6,fontSize:11,cursor:"pointer"}}>✕</button>
                       </div>
                     : <div style={{fontSize:12,color:"#6ee7b7",marginTop:2}}>{s.currentValue?`£${Number(s.currentValue).toLocaleString()}`:"No value set"} <button onClick={()=>{setEditingTicker(s.ticker);setEditVal(s.currentValue||"");}} style={{background:"none",border:"none",color:"#6366f1",fontSize:11,cursor:"pointer",padding:"0 4px"}}>edit</button></div>
@@ -6349,9 +6378,16 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
           <h3 style={{fontSize:18,fontWeight:800,color:"#e0e7ff",margin:"0 0 16px"}}>Add your holdings</h3>
           <div style={{display:"flex",gap:8,marginBottom:8}}>
             <input value={ticker} onChange={e=>setTicker(e.target.value.toUpperCase())} onKeyDown={e=>e.key==='Enter'&&addManual()} placeholder="Ticker (e.g. AAPL, BARC.L)" style={{flex:1,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
-            <input value={valueInput} onChange={e=>setValueInput(e.target.value)} placeholder="Value £ (optional)" style={{width:140,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
+            <input value={valueInput} onChange={e=>setValueInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&addManual()} placeholder={entryMode==='qty'?"Qty e.g. 0.1":"Value £ (optional)"} style={{width:140,padding:"10px 12px",background:"rgba(255,255,255,0.05)",border:"1px solid #4338ca",borderRadius:8,color:"#e0e7ff",fontSize:13,outline:"none"}}/>
             <button onClick={addManual} disabled={loading} style={{padding:"10px 16px",background:"linear-gradient(135deg,#6366f1,#4f46e5)",color:"#fff",border:"none",borderRadius:8,fontSize:13,fontWeight:700,cursor:"pointer"}}>{loading?"...":"Add"}</button>
           </div>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            <span style={{fontSize:11,color:"#6b7280",marginRight:2,alignSelf:"center"}}>I know the:</span>
+            {[{k:'value',label:'£ value'},{k:'qty',label:'shares / units held'}].map(o=>(
+              <button key={o.k} onClick={()=>setEntryMode(o.k)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${entryMode===o.k?"rgba(99,102,241,0.55)":"rgba(99,102,241,0.2)"}`,background:entryMode===o.k?"rgba(99,102,241,0.22)":"rgba(99,102,241,0.08)",color:entryMode===o.k?"#e0e7ff":"#818cf8",fontSize:11,fontWeight:600,cursor:"pointer"}}>{o.label}</button>
+            ))}
+          </div>
+          {entryMode==='qty'&&<p style={{fontSize:11,color:"#6b7280",margin:"0 0 8px",lineHeight:1.5}}>Priced at the live quote and converted to £ automatically — works for fractional shares too.</p>}
           {error&&<p style={{color:"#ef4444",fontSize:12,marginBottom:8}}>{error}</p>}
           {localStocks.length>0&&(<>
             <div style={{marginBottom:12}}>{localStocks.map(s=><div key={s.ticker} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:"rgba(16,185,129,0.08)",borderRadius:8,marginBottom:6,fontSize:13}}><span style={{color:"#e0e7ff",fontWeight:700}}>{s.ticker} <span style={{color:"#6b7280",fontWeight:400,fontSize:11}}>{s.name}</span></span><div style={{display:"flex",alignItems:"center",gap:8}}>{s.currentValue&&<span style={{color:"#10b981"}}>£{s.currentValue.toLocaleString()}</span>}<button onClick={()=>setLocalStocks(l=>l.filter(x=>x.ticker!==s.ticker))} aria-label={`Remove ${s.ticker}`} style={{background:"none",border:"none",color:"#ef4444",cursor:"pointer",fontSize:14,padding:"0 2px"}}>×</button></div></div>)}</div>

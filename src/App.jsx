@@ -361,6 +361,11 @@ function getWeekMonday(date) {
 }
 function getWeekSunday(mon) { const d=new Date(mon); d.setDate(d.getDate()+6); return d; }
 function fmt(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"2-digit"}); }
+function fmtRange(start,end) {
+  const sameMonth = start.getMonth()===end.getMonth() && start.getFullYear()===end.getFullYear();
+  const startStr = sameMonth ? String(start.getDate()).padStart(2,"0") : start.toLocaleDateString("en-GB",{day:"2-digit",month:"short"});
+  return `${startStr}–${fmt(end)}`;
+}
 function fmtDate(date) { return date.toLocaleDateString("en-GB",{day:"2-digit",month:"short",year:"numeric"}); }
 const CURRENCIES = [
   {code:"GBP", symbol:"£"}, {code:"USD", symbol:"$"}, {code:"EUR", symbol:"€"},
@@ -4523,7 +4528,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
     const tip=ROW_TOOLTIPS[label];
     return(
       <td style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",position:"relative",cursor:tip?"help":"default",color:T.dimText}}
-        onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+        onMouseEnter={e=>{if(tip){const r=e.currentTarget.getBoundingClientRect();showTooltip(tip,r.left,r.bottom+6);}}}
         onMouseLeave={()=>setTooltip(null)}>
         {label}
         {tip&&<span style={{marginLeft:4,fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span>}
@@ -4575,7 +4580,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
         <td data-sticky-label style={{padding:"5px 4px 5px 6px",fontSize:10,color:T.acctLabelColor,whiteSpace:"nowrap",minWidth:isMobile?26:undefined}}>{account==="Main Account"?"Main":account.replace("Credit Card","CC")}</td>
         <td data-sticky-label2 style={{padding:"5px 8px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative"}}
-          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();showTooltip(tip,r.left,r.bottom+6);}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
           {isInvestments&&<span style={{fontSize:9,marginRight:4}}>📈</span>}
@@ -4599,7 +4604,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           return(
             <td key={i} style={{...tdAmt(v===0?"#d1d5db":isRepayment?"#7c3aed":PURPLE,true,false,i,false),...blurStyle(i),outline:isEditing?"2px solid #6366f1":"none",outlineOffset:"-2px",cursor:i>=6&&!isPro?"default":"pointer"}}
               onClick={e=>{if(i>=6&&!isPro)return;if(!isEditing){const r=e.currentTarget.getBoundingClientRect();setEditingEvent({weekKey:wk?.key,cat,account,label:"",amount:"",x:Math.min(r.left,window.innerWidth-220),y:r.bottom+4});e.stopPropagation();}}}
-              onMouseEnter={e=>{if(i>=6&&!isPro)return;const r=e.currentTarget.getBoundingClientRect();setTooltip({text:getForecastTip(cat,account),x:r.left,y:r.bottom+6});}}
+              onMouseEnter={e=>{if(i>=6&&!isPro)return;const r=e.currentTarget.getBoundingClientRect();showTooltip(getForecastTip(cat,account),r.left,r.bottom+6);}}
               onMouseLeave={()=>setTooltip(null)}>
               {fmtMoney(v)}
             </td>
@@ -4808,7 +4813,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:T.summaryRow}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:netMovementTip,x:r.left,y:r.bottom+6});}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(netMovementTip,r.left,r.bottom+6);}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
@@ -4836,7 +4841,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
       <tr className="abound-row" style={{opacity:hidden?0.25:1,borderBottom:`1px solid ${T.catRowBorder}`,background:rowColor,cursor:"default"}}>
         <td data-sticky-label style={{padding:0,minWidth:isMobile?26:undefined,background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":"transparent"}}/>
         <td data-sticky-label2 style={{padding:"5px 12px",fontSize:12,fontWeight:600,whiteSpace:"nowrap",color:textColor,cursor:"help",position:"relative",background:(isIncome||isInvestments)?"rgba(16,185,129,0.04)":T.tableBg}}
-          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();setTooltip({text:tip,x:r.left,y:r.bottom+6});}}}
+          onMouseEnter={e=>{const tip=ROW_TOOLTIPS[cat];if(tip){const r=e.currentTarget.getBoundingClientRect();showTooltip(tip,r.left,r.bottom+6);}}}
           onMouseLeave={()=>setTooltip(null)}>
           {isIncome&&<span style={{fontSize:9,marginRight:4}}>▲</span>}
           {isInvestments&&<span style={{fontSize:9,marginRight:4}}>📈</span>}
@@ -4923,7 +4928,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
         <tr className="abound-row" style={{background:T.summaryRow,borderBottom:`2px solid ${T.border2}`}}>
           <td data-sticky-label style={{background:T.summaryRow}}/>
           <td data-sticky-label2 style={{padding:"7px 12px",fontSize:11,fontWeight:800,color:T.dimText,letterSpacing:"0.04em",cursor:"help",background:T.summaryRow}}
-            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:netMovementTip,x:r.left,y:r.bottom+6});}}
+            onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(netMovementTip,r.left,r.bottom+6);}}
             onMouseLeave={()=>setTooltip(null)}>NET MOVEMENT <span style={{fontSize:9,color:T.dimText,verticalAlign:"super"}}>ⓘ</span></td>
           {weeklyNetActual.map((v,i)=><td key={i} style={{padding:"5px 10px",textAlign:"right",fontSize:12,fontWeight:700,color:v>=0?"#10b981":"#ef4444",borderRight:`1px solid ${T.dimBorderMid}`,fontVariantNumeric:"tabular-nums"}}>{netFmt(v)}</td>)}
           <td style={{...tdTot(false),color:weeklyNetActual.reduce((a,b)=>a+b,0)>=0?"#10b981":"#ef4444"}}>{netFmt(weeklyNetActual.reduce((a,b)=>a+b,0))}</td>
@@ -5264,7 +5269,12 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
           <div style={{position:"fixed",inset:0,zIndex:1000,pointerEvents:"none"}}>
             {/* Only show spotlight overlay on desktop — on mobile it blocks scroll */}
             {!isMobile&&(
-              <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"all"}} onClick={closeTour}>
+              <svg style={{position:"absolute",inset:0,width:"100%",height:"100%",pointerEvents:"all"}} onClick={closeTour}
+                onWheel={e=>{
+                  const tableDiv=document.querySelector("[data-tour-table]");
+                  if(tableDiv) tableDiv.scrollTop+=e.deltaY;
+                  else window.scrollBy(0,e.deltaY);
+                }}>
                 <defs>
                   <mask id="tour-mask">
                     <rect width="100%" height="100%" fill="white"/>
@@ -5671,14 +5681,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                   <span style={{fontSize:12,fontWeight:800,color:T.text,verticalAlign:"middle"}}>Cash Flow</span>
                 </th>
                 <th style={{background:T.theadA,borderRight:`1px solid ${T.border2}`,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:T.actualHdrText,textAlign:"right",background:T.actualHdrBg,borderRight:`1px solid ${T.actualHdrBorder}`,whiteSpace:"nowrap"}}><span style={{fontSize:8,fontWeight:400,opacity:0.6}}>w/c </span>{fmt(w.date)}</th>)}
+                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"8px 10px",fontSize:11,fontWeight:700,color:T.actualHdrText,textAlign:"right",background:T.actualHdrBg,borderRight:`1px solid ${T.actualHdrBorder}`,whiteSpace:"nowrap"}}>{fmtRange(w.date,w.sunday)}</th>)}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:T.dimText,textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>WK AVG{!isPro&&!isMobile&&<button onClick={togglePreview} title={previewCollapsed?"Expand forecast preview":"Collapse forecast preview"} aria-label={previewCollapsed?"Expand forecast preview":"Collapse forecast preview"} style={{marginLeft:4,verticalAlign:"middle",background:"none",border:"none",cursor:"pointer",color:"rgba(99,102,241,0.65)",fontSize:15,lineHeight:1,padding:"0 1px"}}>{previewCollapsed?"›":"‹"}</button>}</th>
                 {visibleForecastWeeks.map((w,i)=>{
                   const isPreview=!isPro&&i>=6;
                   const op=Math.max(0.45,1-i*0.11);
                   const isLast=i===visibleForecastWeeks.length-1;
                   return<th key={w.key} data-tour="forecast" style={{padding:isPreview?"4px 0":"8px 10px",fontSize:11,fontWeight:700,color:`rgba(99,102,241,${op})`,textAlign:"right",background:T.forecastArea,borderRight:isLast?"none":`1px solid ${T.border2}`,whiteSpace:"nowrap",...(isPreview?{width:52,maxWidth:52}:{}),...blurStyle(i)}}>
-                    {!isPreview&&<><span style={{fontSize:8,fontWeight:400,opacity:0.55}}>w/c </span>{fmt(w.date)}</>}
+                    {!isPreview&&fmtRange(w.date,w.sunday)}
                   </th>;
                 })}
                 <th style={{padding:"8px 10px",fontSize:10,fontWeight:700,color:"rgba(99,102,241,0.5)",textAlign:"right",background:T.totBg,borderLeft:T.borderLeft4,borderRight:T.borderLeft4,whiteSpace:"nowrap"}}>
@@ -5695,14 +5705,14 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               </tr>
               <tr style={{background:T.theadD,borderBottom:`1px solid ${T.border2}`}}>
                 <th style={{padding:"3px 12px",position:"sticky",left:0,zIndex:3,background:T.theadD,maxWidth:130,fontSize:9,fontWeight:700,color:T.dimText,textAlign:"left"}}>↑ Mon&nbsp;&nbsp;&nbsp;Sun ↑</th><th style={{background:T.theadD,width:0,padding:0}}/>
-                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>→ {fmt(w.sunday)}</th>)}
+                {actualWeeks.map(w=><th key={w.key} data-tour="actual" style={{padding:"2px 10px 5px",fontSize:10,fontWeight:400,color:T.dimText,textAlign:"right",borderRight:`1px solid ${T.border}`,whiteSpace:"nowrap"}}>&nbsp;</th>)}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
                 {visibleForecastWeeks.map((w,i)=>{
                   const isPreview=!isPro&&i>=6;
                   const op=Math.max(0.35,1-i*0.11);
                   const isLast=i===visibleForecastWeeks.length-1;
                   return<th key={w.key} data-tour="forecast" style={{padding:isPreview?"2px 0":"2px 10px 5px",fontSize:10,fontWeight:400,color:`rgba(99,102,241,${op*0.7})`,textAlign:"right",background:T.forecastCell,borderRight:isLast?"none":`1px dashed ${T.border2}`,whiteSpace:"nowrap",...blurStyle(i)}}>
-                    {!isPreview&&<>→ {fmt(w.sunday)}</>}
+                    {!isPreview&&<>&nbsp;</>}
                   </th>;
                 })}
                 <th style={{background:T.theadD,borderLeft:`2px solid ${T.border2}`,borderRight:`2px solid ${T.border2}`}}/>
@@ -5731,7 +5741,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
                 return(
                   <tr data-tour="cashbalance" style={{position:"sticky",top:theadH,zIndex:3,background:cbg,borderBottom:"1px solid rgba(99,102,241,0.25)",transition:"box-shadow 0.3s",animation:highlightCashBal?"cashBalPulse 1.2s ease-in-out 2":"none"}}>
                     <td data-sticky-label colSpan={2} style={{padding:"8px 12px",fontSize:12,fontWeight:700,color:"#818cf8",cursor:"help",background:cbg,whiteSpace:"nowrap"}}
-                      onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();setTooltip({text:ROW_TOOLTIPS["Cash Balance"],x:r.left,y:r.bottom+6});}}
+                      onMouseEnter={e=>{const r=e.currentTarget.getBoundingClientRect();showTooltip(ROW_TOOLTIPS["Cash Balance"],r.left,r.bottom+6);}}
                       onMouseLeave={()=>setTooltip(null)}>
                       CASH BALANCE <span style={{fontSize:9,color:"#4338ca",verticalAlign:"super"}}>ⓘ</span>
                     </td>
@@ -5991,7 +6001,7 @@ const tdAmt=(color,isForecast,bold,forecastIdx,isOverBudget)=>({padding:"5px 10p
               ))}
             </div>
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-              <input id="wz-label" placeholder="Label" value={purchaseForm.label} onChange={e=>setPurchaseForm(f=>({...f,label:e.target.value}))} style={{padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,outline:"none"}}/>
+              <input id="wz-label" placeholder="Label" value={purchaseForm.label} onChange={e=>setPurchaseForm(f=>({...f,label:e.target.value}))} style={{width:"100%",boxSizing:"border-box",padding:"12px",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,color:"#e0e7ff",fontSize:16,fontFamily:"inherit",lineHeight:1.4,outline:"none"}}/>
               <div style={{display:"flex",alignItems:"center",background:"#0f0e1a",border:"1px solid #2d2a6e",borderRadius:8,overflow:"hidden"}}>
                 <span style={{padding:"0 8px 0 12px",color:"#6b7280",fontSize:15,flexShrink:0}}>£</span>
                 <input id="wz-amount" type="number" min="0" placeholder="0" value={purchaseForm.amount} onChange={e=>setPurchaseForm(f=>({...f,amount:e.target.value}))} onKeyDown={e=>{if(e.key==="Enter")addDraftPurchase();}} style={{flex:1,padding:"12px 12px 12px 0",background:"none",border:"none",color:"#e0e7ff",fontSize:16,outline:"none"}}/>

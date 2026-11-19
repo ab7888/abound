@@ -6278,11 +6278,17 @@ async function convertToGBP(amount, fromCurrency) {
   if (amount == null || !isFinite(amount)) return amount;
   if (!fromCurrency || fromCurrency === "GBP") return amount;
   if (fromCurrency === "GBp" || fromCurrency === "GBX") return amount / 100;
+  // Rate comes from Yahoo via our own endpoint (same-origin, no CORS). Frankfurter is only a
+  // fallback — its old .app domain redirects without CORS headers, which silently broke this.
   try {
-    const r = await fetch(`https://api.frankfurter.app/latest?from=${encodeURIComponent(fromCurrency)}&to=GBP`).then(r=>r.json());
-    const rate = r?.rates?.GBP;
-    return rate ? amount * rate : amount;
-  } catch { return amount; }
+    const fx = await fetchStockData(`${fromCurrency}GBP=X`);
+    if (fx?.price > 0) return amount * fx.price;
+  } catch {}
+  try {
+    const r = await fetch(`https://api.frankfurter.dev/v1/latest?from=${encodeURIComponent(fromCurrency)}&to=GBP`).then(r=>r.json());
+    if (r?.rates?.GBP > 0) return amount * r.rates.GBP;
+  } catch {}
+  throw new Error(`fx_failed:${fromCurrency}`);
 }
 
 function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
@@ -6311,7 +6317,11 @@ function StockSetupModal({stocks, onSave, onDismiss, onStockDataFetched}) {
       const val = num == null ? null : (entryMode === 'qty' ? await convertToGBP(num * data.price, data.currency) : num);
       setLocalStocks(s=>[...s.filter(x=>x.ticker!==data.ticker), {ticker:data.ticker, name:data.name, currentValue:val, currency:data.currency}]);
       setTicker(''); setValueInput('');
-    } catch(e) { setError('Ticker not found — try e.g. AAPL, TSLA, BARC.L for UK stocks'); }
+    } catch(e) {
+      setError(String(e?.message).startsWith('fx_failed')
+        ? `Couldn't get a live ${String(e.message).split(':')[1]}→£ exchange rate — try again, or enter the £ value instead.`
+        : 'Ticker not found — try e.g. AAPL, TSLA, BARC.L for UK stocks');
+    }
     setLoading(false);
   }
 

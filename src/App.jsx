@@ -2871,7 +2871,7 @@ function RotateScreen() {
 }
 
 // ─── Insights Screen ──────────────────────────────────────────────────────────
-function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
+function InsightsScreen({ transactions, categories, liveForecast=null, onGoToCashFlow }) {
   const isMobile = useIsMobile();
   const spendCats = useMemo(()=>categories.filter(c=>c!=="Income"&&c!=="Card Repayment"&&c!=="Investments"),[categories]);
 
@@ -2912,7 +2912,36 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     return{sym,allWks,weekCount:allWks.length,avgIncome:Math.round(avgIncome),avgSpend:Math.round(avgSpend),weeklyNet:Math.round(weeklyNet),balances,forecastDates,lowIdx,lowVal:minVal,topCats,catAvg,cTotals,topCat,salaryTotal:Math.round(salTot),netCashFlow:Math.round(salTot-spTot),invTotal:invTot,currentBalance};
   },[transactions,spendCats]);
 
-  const{sym:currSym,weekCount,avgIncome,avgSpend,weeklyNet,balances,forecastDates,lowIdx,lowVal,topCats,catAvg,cTotals,topCat,salaryTotal,netCashFlow,invTotal,currentBalance}=stats;
+  const{sym:currSym,weekCount,avgIncome,avgSpend,weeklyNet,topCats,catAvg,cTotals,topCat,salaryTotal,netCashFlow,invTotal}=stats;
+
+  // Prefer the Cash Flow screen's forecast (salary dates, planned purchases, card debt). The
+  // averages-based line is only a fallback, and is offset by the real balance — it used to start
+  // at £0, so a £987 drop from £2.7k was reported as "goes negative".
+  const{balances,forecastDates,lowIdx,lowVal,currentBalance}=useMemo(()=>{
+    let bals,dates,cur;
+    const fc=liveForecast?.balances?.filter(v=>v!==null&&v!==undefined)||[];
+    if(liveForecast&&fc.length){
+      cur=liveForecast.current;
+      bals=[cur,...fc].map(Math.round);
+      dates=[new Date(),...liveForecast.dates.slice(0,fc.length)];
+    }else{
+      cur=stats.currentBalance;
+      bals=stats.balances.map(b=>Math.round(b+(cur||0)));
+      dates=stats.forecastDates;
+    }
+    const lv=Math.min(...bals);
+    return{balances:bals,forecastDates:dates,lowIdx:bals.indexOf(lv),lowVal:lv,currentBalance:cur};
+  },[liveForecast,stats]);
+
+  const chartWrapRef=useRef(null);
+  const [chartW,setChartW]=useState(600);
+  useEffect(()=>{
+    const el=chartWrapRef.current;
+    if(!el||typeof ResizeObserver==="undefined")return;
+    const ro=new ResizeObserver(([e])=>setChartW(Math.max(280,Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return()=>ro.disconnect();
+  });
 
   const WIZARD_KEY="abound_insights_wizard";
   const savedWizard=useMemo(()=>{try{return JSON.parse(localStorage.getItem(WIZARD_KEY)||"null");}catch{return null;}},[]);
@@ -2944,7 +2973,7 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
     const goalsCtx=goals.size>0?`\nUser goals: ${[...goals].join(", ")}.`:"";
     const oneOffCtx=oneOffText.trim()?`\nUser noted one-off costs: "${oneOffText}".`:"";
     const lowDateStr=forecastDates[lowIdx]?.toLocaleDateString("en-GB",{day:"numeric",month:"short"});
-    const lowCtx=`\nForecast: balance ${weeklyNet>=0?"grows":"drops"} by ${currSym}${Math.abs(weeklyNet)}/wk on avg. Lowest projected point: w/c ${lowDateStr}, ${lowVal<0?`goes negative by ${currSym}${Math.abs(lowVal)}`:`${currSym}${lowVal} from current`}. Top spend categories: ${topCats.map(c=>`${c.cat} ${currSym}${c.amount}/wk`).join(", ")}.`;
+    const lowCtx=`\nForecast: balance ${weeklyNet>=0?"grows":"drops"} by ${currSym}${Math.abs(weeklyNet)}/wk on avg. Current balance ${currentBalance!=null?`${currSym}${Math.round(currentBalance)}`:"unknown"}. Lowest projected balance: ${lowVal<0?`-${currSym}${Math.abs(lowVal)} (negative)`:`${currSym}${lowVal}`}, w/c ${lowDateStr}. Top spend categories: ${topCats.map(c=>`${c.cat} ${currSym}${c.amount}/wk`).join(", ")}.`;
     const invNote=invTotal>0?`\nInvestment deposits: ${currSym}${invTotal} total (tracked separately).`:"";
     return `You are a concise, direct personal finance advisor inside Abound (${weekCount} weeks of data). Snapshot: ${currSym}${avgSpend}/wk spend, ${currSym}${avgIncome}/wk income, net ${currSym}${Math.abs(netCashFlow)} ${netCashFlow>=0?"surplus":"deficit"}, top category: ${topCat}. Category breakdown: ${catLines||"(none)"}.${invNote}${lowCtx}${oneOffCtx}${goalsCtx} Reply in 4 sentences max. Use ${currSym} and exact data numbers. No bullet points unless explicitly asked.`;
   }
@@ -2998,12 +3027,17 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
   const GOALS=["Build an emergency fund","Pay off debt / credit card","Cut my weekly spending","Save for a goal","Grow my investments","Understand my cash flow"];
 
   function MiniChart(){
-    const W=400,H=130,PL=12,PR=12,PT=20,PB=26;
+    // Drawn at the container's real pixel width so text and dots stay their stated size —
+    // a fixed 400-unit viewBox stretched to a wide screen blew labels up ~4x.
+    const W=chartW,H=isMobile?170:210,PL=16,PR=24,PT=28,PB=28;
     const n=balances.length;
-    const minB=Math.min(...balances,0);
-    const maxB=Math.max(...balances,0);
-    const yRange=Math.max(maxB-minB,200);
-    const toX=i=>PL+(i/(n-1))*(W-PL-PR);
+    const rawMin=Math.min(...balances),rawMax=Math.max(...balances);
+    const pad=Math.max((rawMax-rawMin)*0.12,100);
+    // Only pull £0 into view when the forecast actually crosses it.
+    const minB=rawMin<0?Math.min(rawMin-pad,0):rawMin-pad;
+    const maxB=rawMax+pad;
+    const yRange=maxB-minB;
+    const toX=i=>PL+(i/Math.max(n-1,1))*(W-PL-PR);
     const toY=v=>PT+(1-(v-minB)/yRange)*(H-PT-PB);
     const pts=balances.map((b,i)=>[toX(i),toY(b)]);
     const zeroY=toY(0);
@@ -3014,22 +3048,27 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
       return d;
     }
     const pathD=smoothD(pts);
-    const areaD=`${pathD} L${pts[n-1][0].toFixed(1)},${zeroY.toFixed(1)} L${pts[0][0].toFixed(1)},${zeroY.toFixed(1)} Z`;
+    const baseY=H-PB;
+    const areaD=`${pathD} L${pts[n-1][0].toFixed(1)},${baseY} L${pts[0][0].toFixed(1)},${baseY} Z`;
     const lowPt=pts[lowIdx];
+    const showLow=lowIdx>0;
+    const maxLabels=Math.max(2,Math.floor((W-PL-PR)/90));
+    const step=Math.max(1,Math.ceil((n-1)/(maxLabels-1)));
     const wkLabels=forecastDates.map((d,i)=>{
-      if(i===0)return{x:toX(i),label:"Now"};
-      if(i===n-1||i===Math.floor(n/2))return{x:toX(i),label:d.toLocaleDateString("en-GB",{day:"numeric",month:"short"})};
+      if(i===0)return{x:toX(i),label:"Now",anchor:"start"};
+      if(i===n-1)return{x:toX(i),label:d.toLocaleDateString("en-GB",{day:"numeric",month:"short"}),anchor:"end"};
+      if(i%step===0&&n-1-i>=step/2)return{x:toX(i),label:d.toLocaleDateString("en-GB",{day:"numeric",month:"short"}),anchor:"middle"};
       return null;
     }).filter(Boolean);
-    const labelAbove=lowPt[1]>PT+28;
-    const labelX=Math.min(Math.max(lowPt[0],44),W-44);
-    const labelY=labelAbove?lowPt[1]-14:lowPt[1]+22;
+    const labelAbove=lowPt[1]>PT+30;
+    const labelX=Math.min(Math.max(lowPt[0],60),W-60);
+    const labelY=labelAbove?lowPt[1]-16:lowPt[1]+26;
     // "Now" reference point: anchor the drop to a real, recognisable £ figure instead of an
     // unlabelled baseline dot, so the chart reads correctly even without color/hue.
     const nowAbove=pts[0][1]>PT+24;
-    const nowLabelY=nowAbove?pts[0][1]-10:pts[0][1]+18;
+    const nowLabelY=nowAbove?pts[0][1]-12:pts[0][1]+22;
     return(
-      <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",overflow:"visible",display:"block"}}>
+      <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:H,overflow:"visible",display:"block"}}>
         <defs>
           <linearGradient id="igFill" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor={goesNeg?"#ef4444":"#6366f1"} stopOpacity={goesNeg?"0.2":"0.15"}/>
@@ -3040,28 +3079,34 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
             <stop offset="100%" stopColor={goesNeg?"#ef4444":"#6366f1"}/>
           </linearGradient>
         </defs>
-        {minB<0&&<line x1={PL} y1={zeroY} x2={W-PR} y2={zeroY} stroke="rgba(99,102,241,0.25)" strokeWidth="1" strokeDasharray="5,4"/>}
+        {[0.25,0.5,0.75].map(f=>{const y=PT+f*(H-PT-PB);return <line key={f} x1={PL} y1={y} x2={W-PR} y2={y} stroke="rgba(99,102,241,0.07)" strokeWidth="1"/>;})}
+        {minB<0&&<>
+          <line x1={PL} y1={zeroY} x2={W-PR} y2={zeroY} stroke="rgba(239,68,68,0.35)" strokeWidth="1" strokeDasharray="4,4"/>
+          <text x={W-PR} y={zeroY-5} textAnchor="end" fontSize="10" fill="rgba(248,113,113,0.7)">{currSym}0</text>
+        </>}
         <path d={areaD} fill="url(#igFill)"/>
         <path d={pathD} fill="none" stroke="url(#igLine)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-        <circle cx={pts[0][0]} cy={pts[0][1]} r="3.5" fill="#818cf8"/>
-        {currentBalance!==null&&(
-          <text x={pts[0][0]} y={nowLabelY} textAnchor="start" fontSize="10" fontWeight="700" fill="#a5b4fc">
+        <circle cx={pts[0][0]} cy={pts[0][1]} r="4" fill="#818cf8"/>
+        {currentBalance!==null&&currentBalance!==undefined&&(
+          <text x={pts[0][0]} y={nowLabelY} textAnchor="start" fontSize="13" fontWeight="700" fill="#a5b4fc">
             {currSym}{Math.round(currentBalance).toLocaleString()}
           </text>
         )}
-        {wkLabels.map(({x,label},i)=>(
-          <text key={i} x={x} y={H-4} textAnchor="middle" fontSize="9" fill="rgba(156,163,175,0.7)">{label}</text>
+        {wkLabels.map(({x,label,anchor},i)=>(
+          <text key={i} x={x} y={H-6} textAnchor={anchor} fontSize="11" fill="rgba(156,163,175,0.75)">{label}</text>
         ))}
+        {showLow&&<>
         <circle cx={lowPt[0]} cy={lowPt[1]} r="11" fill="none" stroke={goesNeg?"rgba(239,68,68,0.3)":"rgba(245,158,11,0.35)"} strokeWidth="1.5">
           <animate attributeName="r" values="8;14;8" dur="2.2s" repeatCount="indefinite"/>
           <animate attributeName="opacity" values="0.5;0.1;0.5" dur="2.2s" repeatCount="indefinite"/>
         </circle>
         <circle cx={lowPt[0]} cy={lowPt[1]} r="5" fill={goesNeg?"#ef4444":"#f59e0b"} stroke={goesNeg?"rgba(239,68,68,0.5)":"rgba(245,158,11,0.5)"} strokeWidth="2"/>
-        <text x={labelX} y={labelY} textAnchor="middle" fontSize="10" fontWeight="700" fill={goesNeg?"#f87171":"#fbbf24"}>
+        <text x={labelX} y={labelY} textAnchor="middle" fontSize="12" fontWeight="700" fill={goesNeg?"#f87171":"#fbbf24"}>
           {/* Arrow glyph carries the same "this is bad" meaning as the red hue, so the
               chart doesn't rely on color alone to convey the trend (WCAG 1.4.1). */}
           {goesNeg?`▼ -${currSym}${Math.abs(lowVal).toLocaleString()}`:`▼ ${currSym}${lowVal.toLocaleString()} low`}
         </text>
+        </>}
       </svg>
     );
   }
@@ -3136,7 +3181,7 @@ function InsightsScreen({ transactions, categories, onGoToCashFlow }) {
                       :`Your lowest forecast point is the week of ${lowDateStr}. Here's what's driving your spending.`
                     }
                   </p>
-                  <div style={{background:"var(--card)",border:`1px solid ${goesNeg?"rgba(239,68,68,0.2)":"var(--snap-border)"}`,borderRadius:12,padding:"16px 14px 10px",marginBottom:16,position:"relative",overflow:"visible"}}>
+                  <div ref={chartWrapRef} style={{background:"var(--card)",border:`1px solid ${goesNeg?"rgba(239,68,68,0.2)":"var(--snap-border)"}`,borderRadius:12,padding:"16px 14px 10px",marginBottom:16,position:"relative",overflow:"visible"}}>
                     {goesNeg&&(
                       <div style={{position:"absolute",top:10,right:12,fontSize:10,fontWeight:700,color:"#ef4444",background:"rgba(239,68,68,0.1)",border:"1px solid rgba(239,68,68,0.2)",borderRadius:20,padding:"2px 8px",zIndex:1}}>
                         ⚠ Goes negative
@@ -3333,6 +3378,7 @@ function OrientationGate({children}) {
 function MainScreen({transactions: initialTransactions, categories, onStartOver, onFeedback, onAddAccount}) {
   const [transactions, setTransactions] = useState(()=>initialTransactions.map(t=>t.category==="Salary"?{...t,category:"Income"}:t));
   const [activeTab, setActiveTab] = useState("cashflow");
+  const [liveForecast, setLiveForecast] = useState(null);
   const [showReviewPrompt, setShowReviewPrompt] = useState(true);
   const [reviewEditCount, setReviewEditCount] = useState(0);
   const [nonRecurring, setNonRecurring] = useState(new Set());
@@ -3425,9 +3471,9 @@ function MainScreen({transactions: initialTransactions, categories, onStartOver,
         </div>
         );
       })()}
-      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0,paddingBottom:isMobile?56:0}}><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback} onTourFinish={onTourFinish} onAddAccount={onAddAccount}/></div>
+      <div style={{display:activeTab==="cashflow"?"flex":"none",flex:1,flexDirection:"column",overflow:"hidden",minHeight:0,paddingBottom:isMobile?56:0}}><CashFlowScreen transactions={transactions} categories={categories} onGoToReview={goToReview} showReviewPrompt={showReviewPrompt} onUpdateTxns={setTransactions} reviewEditCount={reviewEditCount} onGoToCashFlow={()=>setActiveTab("cashflow")} onGoToInsights={goToInsights} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring} onFeedback={onFeedback} onTourFinish={onTourFinish} onAddAccount={onAddAccount} onForecast={setLiveForecast}/></div>
       {activeTab==="review"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isMobile?56:0}}><ReviewScreen transactions={transactions} categories={categories} onUpdate={setTransactions} onGoToCashFlow={()=>setActiveTab("cashflow")} onReviewEdit={()=>setReviewEditCount(c=>c+1)} reviewEditCount={reviewEditCount} nonRecurring={nonRecurring} onToggleNonRecurring={toggleNonRecurring}/></div>}
-      {activeTab==="insights"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isMobile?56:0}}><InsightsScreen transactions={transactions} categories={categories} onGoToCashFlow={()=>setActiveTab("cashflow")}/></div>}
+      {activeTab==="insights"&&<div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",paddingBottom:isMobile?56:0}}><InsightsScreen transactions={transactions} categories={categories} liveForecast={liveForecast} onGoToCashFlow={()=>setActiveTab("cashflow")}/></div>}
       {/* Mobile bottom tab bar */}
       {isMobile&&(
         <>
@@ -3644,7 +3690,7 @@ function BottomSheet({open,onClose,title,children}){
 }
 
 // ─── Cash Flow Screen ─────────────────────────────────────────────────────────
-function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback, onTourFinish=()=>{}, onAddAccount=null}) {
+function CashFlowScreen({transactions, categories, onGoToReview, showReviewPrompt=false, onUpdateTxns, reviewEditCount, onGoToCashFlow, onGoToInsights=()=>{}, nonRecurring=new Set(), onToggleNonRecurring=()=>{}, onFeedback, onTourFinish=()=>{}, onAddAccount=null, onForecast=()=>{}}) {
   const isMobile = useIsMobile();
   const isLandscape = useOrientation();
   const [mobileWeekIdx, setMobileWeekIdx] = useState(null);
@@ -4429,6 +4475,12 @@ function getLastWorkingDay(year, month) {
     });
     return{actual:actualClosing,forecast:forecastClosing};
   },[accounts,categories,actualWeeks,forecastWeeks,weeklyByAccountCat,weekBalances,forecastData,events,incomeFcstTotalByWeek,includeStocksInCash,stockPortfolioWeekly]);
+
+  // Share the real forecast with the Insights tab so both screens tell the same story.
+  useEffect(()=>{
+    const current=combinedClosingBalances.actual.filter(v=>v!==null).slice(-1)[0];
+    onForecast(current==null?null:{current,balances:combinedClosingBalances.forecast,dates:forecastWeeks.map(w=>w.date)});
+  },[combinedClosingBalances,forecastWeeks]);// eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── The verdict ────────────────────────────────────────────────────────────
   // One answer to the only question this app exists to answer: am I going to be
